@@ -10,12 +10,20 @@ export interface KasettConfig {
   weights: number[];
   /** Enable thread tracking (default: true) */
   threadTracking: boolean;
+  /**
+   * Model to use for compaction LLM calls.
+   * - "default" (or unset): use whatever model OC provides (the agent's primary model via env vars)
+   * - Any other string: treated as a model identifier and passed directly to the API
+   *   e.g. "claude-haiku-3-5-20241022" or "anthropic/claude-haiku-3-5"
+   */
+  compactionModel?: string;
 }
 
 export const DEFAULT_CONFIG: KasettConfig = {
   windowSize: 3,
   weights: [1.0, 0.6, 0.3],
   threadTracking: true,
+  // compactionModel is intentionally unset — defaults to agent's primary model
 };
 
 /**

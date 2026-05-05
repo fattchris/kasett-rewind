@@ -34,6 +34,10 @@
         "type": "boolean",
         "default": true,
         "description": "Enable thread meta tracking in compaction output"
+      },
+      "compactionModel": {
+        "type": "string",
+        "description": "Model to use for compaction LLM calls. Use \"default\" (or omit) to inherit the agent's primary model from environment variables. Set to a model identifier string (e.g. \"claude-haiku-3-5-20241022\" or \"anthropic/claude-haiku-3-5\") to pin a specific model."
       }
     },
     "additionalProperties": false

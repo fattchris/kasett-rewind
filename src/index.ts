@@ -307,6 +307,7 @@ export function register(api: PluginAPI): void {
           customInstructions: params.customInstructions,
           previousSummary: params.previousSummary,
           steeringPrompt,
+          compactionModel: config.compactionModel,
           logger: api.logger,
         });
 
@@ -367,6 +368,12 @@ interface LLMCallParams {
   customInstructions?: string;
   previousSummary?: string;
   steeringPrompt: string;
+  /**
+   * Model override from plugin config.
+   * Undefined or "default" = use the environment's default model.
+   * Any other value = passed directly to the API as the model identifier.
+   */
+  compactionModel?: string;
   logger: {
     debug(msg: string): void;
     warn(msg: string): void;
@@ -381,8 +388,31 @@ interface LLMCallParams {
  * The steering prompt is injected as system context so the LLM knows to output
  * [THREAD_META] in addition to the narrative summary.
  */
+/**
+ * Resolve the model identifier to use for a given API provider.
+ *
+ * When `compactionModel` is unset or "default", we fall back to the
+ * provider's own default (claude-sonnet-4-20250514 for Anthropic direct,
+ * anthropic/claude-sonnet-4-20250514 for OpenRouter) — i.e. the same
+ * behaviour as before this option was added.
+ *
+ * When an explicit model string is provided, it is used as-is for both
+ * providers. Users are responsible for ensuring the model string is valid
+ * for their chosen provider.
+ */
+function resolveModel(
+  compactionModel: string | undefined,
+  provider: 'anthropic' | 'openrouter',
+  defaultModel: string,
+): string {
+  if (!compactionModel || compactionModel === 'default') {
+    return defaultModel;
+  }
+  return compactionModel;
+}
+
 async function callLLMForCompaction(params: LLMCallParams): Promise<string | undefined> {
-  const { messages, signal, customInstructions, previousSummary, steeringPrompt, logger } = params;
+  const { messages, signal, customInstructions, previousSummary, steeringPrompt, compactionModel, logger } = params;
 
   // Build system prompt: steering + OC custom instructions + previous summary context
   const systemParts: string[] = [steeringPrompt];
@@ -410,9 +440,12 @@ async function callLLMForCompaction(params: LLMCallParams): Promise<string | und
   // Try Anthropic direct API first (fast, reliable)
   const anthropicKey = process.env['ANTHROPIC_API_KEY'];
   if (anthropicKey) {
+    const model = resolveModel(compactionModel, 'anthropic', 'claude-sonnet-4-20250514');
+    logger.debug(`[kasett-rewind] Using model for Anthropic: ${model}`);
     try {
       const result = await callAnthropic({
         apiKey: anthropicKey,
+        model,
         systemPrompt,
         userPrompt,
         signal,
@@ -430,9 +463,12 @@ async function callLLMForCompaction(params: LLMCallParams): Promise<string | und
   // Fallback: OpenRouter API
   const openrouterKey = process.env['OPENROUTER_API_KEY'];
   if (openrouterKey) {
+    const model = resolveModel(compactionModel, 'openrouter', 'anthropic/claude-sonnet-4-20250514');
+    logger.debug(`[kasett-rewind] Using model for OpenRouter: ${model}`);
     try {
       const result = await callOpenRouter({
         apiKey: openrouterKey,
+        model,
         systemPrompt,
         userPrompt,
         signal,
@@ -457,6 +493,7 @@ async function callLLMForCompaction(params: LLMCallParams): Promise<string | und
  */
 async function callAnthropic(params: {
   apiKey: string;
+  model: string;
   systemPrompt: string;
   userPrompt: string;
   signal?: AbortSignal;
@@ -469,7 +506,7 @@ async function callAnthropic(params: {
       'anthropic-version': '2023-06-01',
     },
     body: JSON.stringify({
-      model: 'claude-sonnet-4-20250514',
+      model: params.model,
       max_tokens: 4096,
       system: params.systemPrompt,
       messages: [{ role: 'user', content: params.userPrompt }],
@@ -496,6 +533,7 @@ async function callAnthropic(params: {
  */
 async function callOpenRouter(params: {
   apiKey: string;
+  model: string;
   systemPrompt: string;
   userPrompt: string;
   signal?: AbortSignal;
@@ -507,7 +545,7 @@ async function callOpenRouter(params: {
       'Authorization': `Bearer ${params.apiKey}`,
     },
     body: JSON.stringify({
-      model: 'anthropic/claude-sonnet-4-20250514',
+      model: params.model,
       max_tokens: 4096,
       messages: [
         { role: 'system', content: params.systemPrompt },
@@ -720,6 +758,7 @@ function resolveConfig(api: PluginAPI): KasettConfig & { enabled: boolean } {
       windowSize: raw.windowSize ?? DEFAULT_CONFIG.windowSize,
       weights: raw.weights ?? DEFAULT_CONFIG.weights,
       threadTracking: raw.threadTracking ?? DEFAULT_CONFIG.threadTracking,
+      compactionModel: raw.compactionModel ?? DEFAULT_CONFIG.compactionModel,
     };
   } catch {
     return { enabled: true, ...DEFAULT_CONFIG };
