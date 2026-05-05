@@ -69,28 +69,19 @@ export function buildSteeringPrompt(
   }
 
   // Output format instructions
-  sections.push('### Your Task');
+  sections.push('### Output Requirements');
   sections.push('');
-  sections.push('Produce a compaction summary that:');
-  sections.push('1. Captures what happened in this conversation segment (decisions, actions, state changes)');
-  sections.push('2. Maintains continuity with core threads');
-  sections.push('3. Acknowledges new threads that emerged');
-  sections.push('4. Notes any fading threads if they were intentionally completed or abandoned');
-  sections.push('');
-  sections.push('After your narrative summary, output the current thread meta in this EXACT format:');
+  sections.push('Write a concise compaction summary of the conversation. Then IMMEDIATELY after the summary, append this structured block (filled in with real values):');
   sections.push('');
   sections.push('[THREAD_META]');
-  sections.push('main: <one line describing the primary focus>');
-  sections.push('sub1: <one line for sub-thread 1>');
-  sections.push('sub2: <one line for sub-thread 2>');
-  sections.push('sub3: <one line for sub-thread 3>');
+  sections.push('main: Setting up K8s staging on AWS EKS');
+  sections.push('sub1: ArgoCD deployment pipeline configuration');
+  sections.push('sub2: Database credential management');
+  sections.push('sub3: idle');
   sections.push('[/THREAD_META]');
   sections.push('');
-  sections.push('Rules:');
-  sections.push('- Always output exactly 1 main + 3 subs. No more, no less.');
-  sections.push('- If fewer than 3 sub-threads exist, describe the next likely focus or use "no active sub-thread" as placeholder.');
-  sections.push('- Thread descriptions should be natural language, concise, and capture current state.');
-  sections.push('- The [THREAD_META] block MUST be at the end of your output.');
+  sections.push('That example shows the format. Replace the values with the ACTUAL thread state from the conversation you are summarizing.');
+  sections.push('The [THREAD_META] block must appear at the end. Exactly 1 main + 3 subs. Use "idle" for inactive sub-thread slots.');
 
   return sections.join('\n');
 }

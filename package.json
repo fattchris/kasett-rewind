@@ -8,13 +8,15 @@
     "kasett-rewind": "dist/cli/index.js"
   },
   "openclaw": {
-    "extensions": ["./dist/index.js"]
+    "extensions": [
+      "./dist/index.js"
+    ]
   },
   "scripts": {
-    "build": "tsc && cp -r src/tests/fixtures dist/tests/",
-    "dev": "tsc --watch",
+    "build": "node /usr/lib/node_modules/@tobilu/qmd/node_modules/typescript/bin/tsc && cp -r src/tests/fixtures dist/tests/",
+    "dev": "node /usr/lib/node_modules/@tobilu/qmd/node_modules/typescript/bin/tsc --watch",
     "test": "node --test dist/tests/window.test.js dist/tests/weight.test.js dist/tests/parser.test.js dist/tests/steering.test.js dist/tests/reader.test.js dist/tests/config.test.js dist/tests/integration.test.js",
-    "lint": "tsc --noEmit"
+    "lint": "node /usr/lib/node_modules/@tobilu/qmd/node_modules/typescript/bin/tsc --noEmit"
   },
   "keywords": [
     "openclaw",

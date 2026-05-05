@@ -1,17 +1,42 @@
 /**
- * kasett-rewind — OpenClaw Compaction Plugin
+ * kasett-rewind — OpenClaw CompactionProvider + orientation hook
  *
- * Simple thread-meta feedback loop:
- * - before_compaction: reads N previous thread metas, weights them,
- *   builds a steering prompt, injects as customInstructions
- * - after_compaction: parses [THREAD_META] from output, stores alongside summary
- * - context_load: injects short orientation string from most recent thread meta
+ * ## Architecture (OC 4.14+)
  *
- * The plugin does NOT replace the LLM summarizer. It augments OC's
- * built-in compaction by injecting structured instructions and
- * parsing structured output.
+ * ### CompactionProvider (`api.registerCompactionProvider`)
+ *   OC calls `summarize()` instead of its built-in LLM pipeline when
+ *   `session.compaction.provider: "kasett-rewind"` is set in openclaw.json.
+ *
+ *   `summarize()` receives:
+ *     { messages, signal, customInstructions, summarizationInstructions, previousSummary }
+ *
+ *   `summarize()` must return a string (the compaction summary).
+ *
+ *   The compaction provider:
+ *     a. Reads previous thread metas from the sidecar (if any)
+ *     b. Builds a thread-aware steering prompt (buildSteeringPrompt)
+ *     c. Calls Anthropic claude-haiku-3-5 with the messages + steering
+ *     d. Parses [THREAD_META] from the output
+ *     e. Stores the parsed meta in a per-session sidecar file
+ *     f. Returns the clean summary text to OC
+ *
+ * ### before_prompt_build hook (MODIFYING)
+ *   Fires on every normal agent turn. Reads the sidecar and injects
+ *   a brief orientation string via { prependContext } so the agent
+ *   knows what it was working on after a compaction.
+ *
+ * ### before_compaction hook (VOID)
+ *   Used as a lightweight "session context capture" — stores the
+ *   current sessionKey/sessionId into `pendingCompactionCtx` so the
+ *   stateless `summarize()` method knows which sidecar to write.
+ *
+ * ## Why not the old after_compaction hook?
+ *   summarize() itself now owns the full pipeline, so after_compaction
+ *   is unnecessary — we write the sidecar inside summarize() before returning.
  */
 
+import { readFile, writeFile, mkdir } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
 import { SessionReader, KasettError } from './storage/reader.js';
 import { analyzeThreads } from './threads/weight.js';
 import { buildSteeringPrompt, buildOrientationPrompt } from './threads/steering.js';
@@ -19,29 +44,49 @@ import { parseCompactionOutput } from './threads/parser.js';
 import type { KasettConfig, ThreadMeta } from './types.js';
 import { DEFAULT_CONFIG } from './types.js';
 
-// --- OC Plugin SDK types (structural, not imported at runtime) ---
+// ---------------------------------------------------------------------------
+// OC Plugin hook event types (verified from OC 4.14 source)
+// ---------------------------------------------------------------------------
 
-interface CompactionHookContext {
+interface BeforePromptBuildEvent {
+  prompt: string;
   messages: unknown[];
-  previousSummary?: string;
-  customInstructions?: string;
-  compressionRatio?: number;
-  sessionFilePath?: string;
 }
 
-interface CompactionResult {
-  summary: string;
+interface BeforePromptBuildResult {
+  prependContext?: string;
+  prependSystemContext?: string;
+  appendSystemContext?: string;
+  systemPrompt?: string;
 }
 
-interface ContextLoadHookContext {
-  sessionFilePath?: string;
-  additionalContext?: string;
+interface BeforeCompactionEvent {
+  messageCount: number;
+  tokenCount?: number;
+  sessionFile?: string;
+  messages?: unknown[];
 }
 
-/**
- * Actual OC 4.14+ plugin API shape.
- * Discovered via runtime introspection — do NOT change without re-verifying.
- */
+interface HookContext {
+  sessionId: string;
+  agentId?: string;
+  sessionKey?: string;
+  workspaceDir?: string;
+  messageProvider?: string;
+  runId?: string;
+  modelProviderId?: string;
+  modelId?: string;
+  trigger?: string;
+  channelId?: string;
+}
+
+interface SessionStoreEntry {
+  sessionId?: string;
+  sessionFile?: string;
+  updatedAt?: number;
+  [key: string]: unknown;
+}
+
 interface PluginAPI {
   id: string;
   name: string;
@@ -58,20 +103,71 @@ interface PluginAPI {
   };
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   on(hookName: string, handler: (...args: any[]) => any, opts?: unknown): void;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  registerHook(events: string | string[], handler: (...args: any[]) => any, opts?: unknown): void;
-  registerTool(tool: unknown): void;
-  registerHttpRoute(route: unknown): void;
-  resolvePath(p: string): string;
-  runtime: Record<string, unknown>;
+  registerCompactionProvider(provider: CompactionProvider): void;
+  runtime: {
+    agent: {
+      session: {
+        resolveStorePath(store: unknown, opts?: { agentId?: string }): string;
+        loadSessionStore(storePath: string): Record<string, SessionStoreEntry>;
+      };
+    };
+    state: {
+      resolveStateDir(): string;
+    };
+  };
   config: Record<string, unknown>;
 }
 
-// --- Plugin Registration ---
+/**
+ * CompactionProvider interface — matches what OC expects.
+ * Source: loader-DYJR63Q1.js registerCompactionProvider, model-context-tokens-CwcLB3PA.js tryProviderSummarize
+ */
+interface CompactionProvider {
+  id: string;
+  summarize(params: SummarizeParams): Promise<string | undefined>;
+}
 
 /**
- * Main plugin entry point. Called by the OC plugin loader on startup.
+ * Params passed to summarize() by OC.
+ * Source: model-context-tokens-CwcLB3PA.js compactionSafeguardExtension, tryProviderSummarize
  */
+interface SummarizeParams {
+  /** Conversation messages to summarize (OpenAI role/content format) */
+  messages: Array<{ role: string; content: unknown }>;
+  /** AbortSignal — must be respected for cancellation */
+  signal?: AbortSignal;
+  /** Combined custom + structure instructions from OC config */
+  customInstructions?: string;
+  /** Identifier policy configuration */
+  summarizationInstructions?: {
+    identifierPolicy?: string;
+    identifierInstructions?: string;
+  };
+  /** Previous compaction summary for continuity */
+  previousSummary?: string;
+}
+
+// ---------------------------------------------------------------------------
+// Module-level session context capture
+// ---------------------------------------------------------------------------
+
+/**
+ * Populated by before_compaction hook so summarize() knows which sidecar to write.
+ * before_compaction fires immediately before summarize() is called, in the same
+ * event loop tick sequence. We use a simple object to capture the context.
+ *
+ * Reset to null after summarize() consumes it.
+ */
+let pendingCompactionCtx: {
+  sessionKey: string;
+  agentId: string;
+  stateDir: string;
+} | null = null;
+
+// ---------------------------------------------------------------------------
+// Plugin Registration
+// ---------------------------------------------------------------------------
+
 export function register(api: PluginAPI): void {
   const config = resolveConfig(api);
 
@@ -81,112 +177,541 @@ export function register(api: PluginAPI): void {
   }
 
   api.logger.info(
-    `[kasett-rewind] Registering — window=${config.windowSize}, threads=${config.threadTracking}`,
+    `[kasett-rewind] Registering CompactionProvider + orientation hook — window=${config.windowSize}, threads=${config.threadTracking}`,
   );
 
   const reader = new SessionReader();
 
-  // Hook 1: Before compaction — inject steering prompt
-  api.on('before_compaction', async (ctx: CompactionHookContext) => {
-    if (!config.threadTracking || !ctx.sessionFilePath) {
-      return ctx;
-    }
-
-    try {
-      // Read previous thread metas
-      const events = await reader.readLastNWithMeta(ctx.sessionFilePath, config.windowSize);
-      const metas: ThreadMeta[] = events
-        .filter((e) => e.data.kaspiett != null)
-        .map((e) => e.data.kaspiett!)
-        .reverse(); // Most recent first for weight analysis
-
-      if (metas.length === 0) {
-        // No previous thread metas — still inject basic format instructions
-        const basicSteering = buildSteeringPrompt({ core: [], fresh: [], fading: [] }, []);
-        const merged = ctx.customInstructions
-          ? `${ctx.customInstructions}\n\n${basicSteering}`
-          : basicSteering;
-        return { ...ctx, customInstructions: merged };
-      }
-
-      // Weight and analyze threads
-      const analysis = analyzeThreads(metas, config.weights);
-
-      // Build steering prompt
-      const steering = buildSteeringPrompt(analysis, metas);
-
-      api.logger.debug(
-        `[kasett-rewind] Steering: ${analysis.core.length} core, ${analysis.fresh.length} fresh, ${analysis.fading.length} fading`,
-      );
-
-      // Inject (merge with existing customInstructions)
-      const merged = ctx.customInstructions
-        ? `${ctx.customInstructions}\n\n${steering}`
-        : steering;
-
-      return { ...ctx, customInstructions: merged };
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      api.logger.warn(`[kasett-rewind] Failed to build steering prompt: ${msg}`);
-      return ctx;
-    }
-  });
-
-  // Hook 2: After compaction — parse thread meta from output
-  api.on('after_compaction', (result: CompactionResult) => {
+  // ─────────────────────────────────────────────────────────────────────────
+  // Hook 1: before_compaction (VOID)
+  //
+  // Captures session context into pendingCompactionCtx so summarize() can
+  // find the right sidecar path. Runs just before the compaction starts.
+  // ─────────────────────────────────────────────────────────────────────────
+  api.on('before_compaction', async (_event: BeforeCompactionEvent, ctx: HookContext) => {
     if (!config.threadTracking) return;
 
-    const parsed = parseCompactionOutput(result.summary);
+    const sessionKey = ctx.sessionKey?.trim() || ctx.sessionId;
+    const agentId = ctx.agentId?.trim() || 'main';
+    const stateDir = api.runtime.state.resolveStateDir();
 
-    if (parsed.meta) {
-      api.logger.debug(
-        `[kasett-rewind] Extracted thread meta: main="${parsed.meta.main}"`,
-      );
-
-      // Return modified result with clean summary + kaspiett meta embedded
-      // OC will store this in the compaction event
-      const enrichedData = {
-        summary: parsed.summary,
-        kaspiett: parsed.meta,
-      };
-
-      return { summary: JSON.stringify(enrichedData) } as CompactionResult;
-    } else {
-      api.logger.warn('[kasett-rewind] No [THREAD_META] block found in compaction output');
-    }
+    pendingCompactionCtx = { sessionKey, agentId, stateDir };
+    api.logger.debug(`[kasett-rewind] before_compaction: captured ctx for ${sessionKey}`);
   });
 
-  // Hook 3: Context load — inject orientation string
-  api.on('context_load', async (ctx: ContextLoadHookContext) => {
-    if (!config.threadTracking || !ctx.sessionFilePath) {
-      return ctx;
-    }
+  // ─────────────────────────────────────────────────────────────────────────
+  // Hook 2: before_prompt_build (MODIFYING — return values ARE merged)
+  //
+  // Fires on every normal agent turn (not during compaction).
+  // Reads the sidecar and injects thread orientation via prependContext.
+  // ─────────────────────────────────────────────────────────────────────────
+  api.on(
+    'before_prompt_build',
+    async (
+      _event: BeforePromptBuildEvent,
+      ctx: HookContext,
+    ): Promise<BeforePromptBuildResult | undefined> => {
+      if (!config.threadTracking) return;
 
-    try {
-      const latestMeta = await reader.readLatestMeta(ctx.sessionFilePath);
+      const sessionKey = ctx.sessionKey?.trim() || ctx.sessionId;
+      const agentId = ctx.agentId?.trim() || 'main';
+      const stateDir = api.runtime.state.resolveStateDir();
 
-      if (latestMeta) {
-        const orientation = buildOrientationPrompt(latestMeta);
-        api.logger.debug(`[kasett-rewind] Injecting orientation: "${latestMeta.main}"`);
+      try {
+        // Fast path: check sidecar first
+        const sidecarMeta = await readSidecarMeta(stateDir, sessionKey);
+        if (sidecarMeta) {
+          const orientation = buildOrientationPrompt(sidecarMeta);
+          api.logger.debug(`[kasett-rewind] Injecting orientation from sidecar: "${sidecarMeta.main}"`);
+          return { prependContext: orientation };
+        }
 
-        const merged = ctx.additionalContext
-          ? `${ctx.additionalContext}\n\n${orientation}`
-          : orientation;
-
-        return { ...ctx, additionalContext: merged };
+        // Slow path: scan session JSONL for latest compaction with meta
+        const sessionFile = await resolveSessionFile(api, ctx, agentId, sessionKey);
+        if (sessionFile) {
+          const latestMeta = await reader.readLatestMeta(sessionFile);
+          if (latestMeta) {
+            const orientation = buildOrientationPrompt(latestMeta);
+            api.logger.debug(`[kasett-rewind] Injecting orientation from session JSONL: "${latestMeta.main}"`);
+            return { prependContext: orientation };
+          }
+        }
+      } catch (err) {
+        const msg = err instanceof KasettError ? err.message : String(err);
+        api.logger.warn(`[kasett-rewind] before_prompt_build failed: ${msg}`);
       }
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      api.logger.warn(`[kasett-rewind] Failed to load orientation: ${msg}`);
-    }
 
-    return ctx;
+      return;
+    },
+  );
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // CompactionProvider registration
+  //
+  // OC calls summarize() instead of its built-in LLM pipeline when
+  // session.compaction.provider = "kasett-rewind" is set.
+  // ─────────────────────────────────────────────────────────────────────────
+  api.registerCompactionProvider({
+    id: 'kasett-rewind',
+
+    async summarize(params: SummarizeParams): Promise<string | undefined> {
+      if (!config.threadTracking) return undefined;
+
+      // Consume the pending context captured by before_compaction
+      const capturedCtx = pendingCompactionCtx;
+      pendingCompactionCtx = null;
+
+      api.logger.info('[kasett-rewind] summarize() called — building thread-aware compaction');
+
+      try {
+        // --- 1. Read previous thread metas from sidecar or session JSONL ---
+        let previousMetas: ThreadMeta[] = [];
+
+        if (capturedCtx) {
+          try {
+            // Try sidecar first (fast path)
+            const sidecarMeta = await readSidecarMeta(capturedCtx.stateDir, capturedCtx.sessionKey);
+            if (sidecarMeta) {
+              previousMetas = [sidecarMeta];
+            } else {
+              // Fall back to session JSONL
+              const sessionFile = await resolveSessionFileFromState(
+                api,
+                capturedCtx.stateDir,
+                capturedCtx.agentId,
+                capturedCtx.sessionKey,
+              );
+              if (sessionFile) {
+                const events = await reader.readLastNWithMeta(sessionFile, config.windowSize);
+                previousMetas = events
+                  .filter((e) => e.data.kaspiett != null)
+                  .map((e) => e.data.kaspiett!)
+                  .reverse(); // most recent first
+              }
+            }
+          } catch (err) {
+            api.logger.warn(`[kasett-rewind] Could not load previous metas: ${String(err)}`);
+          }
+        } else {
+          api.logger.warn('[kasett-rewind] No session context captured — summarizing without thread history');
+        }
+
+        // --- 2. Build thread-aware steering prompt ---
+        const analysis = analyzeThreads(previousMetas, config.weights);
+        const steeringPrompt = buildSteeringPrompt(analysis, previousMetas);
+
+        // --- 3. Call LLM with steering injection ---
+        const summary = await callLLMForCompaction({
+          messages: params.messages,
+          signal: params.signal,
+          customInstructions: params.customInstructions,
+          previousSummary: params.previousSummary,
+          steeringPrompt,
+          logger: api.logger,
+        });
+
+        if (!summary) {
+          api.logger.warn('[kasett-rewind] LLM returned empty summary — falling back to OC built-in');
+          return undefined;
+        }
+
+        // --- 4. Parse [THREAD_META] from output ---
+        const parsed = parseCompactionOutput(summary);
+
+        if (parsed.meta && capturedCtx) {
+          api.logger.info(`[kasett-rewind] Extracted thread meta: main="${parsed.meta.main}"`);
+          // --- 5. Store meta in sidecar ---
+          try {
+            await writeSidecarMeta(capturedCtx.stateDir, capturedCtx.sessionKey, parsed.meta);
+            api.logger.debug('[kasett-rewind] Sidecar written successfully');
+          } catch (err) {
+            api.logger.warn(`[kasett-rewind] Failed to write sidecar: ${String(err)}`);
+          }
+        } else if (!parsed.meta) {
+          api.logger.warn(
+            '[kasett-rewind] No [THREAD_META] block found in LLM output. ' +
+            'The steering prompt instructs the LLM to include it — check model compliance.',
+          );
+        }
+
+        // --- 6. Return clean summary text to OC ---
+        // Return the FULL output (with [THREAD_META]) as the summary.
+        // OC stores this as the compaction entry. The [THREAD_META] block is
+        // preserved for future reference and can be re-parsed by before_prompt_build.
+        // We also return parsed.summary (without the block) so OC's context is clean.
+        // Return the FULL output including [THREAD_META] block.
+        // OC stores this as the compaction entry in the session JSONL.
+        // The meta block persists for future orientation injection.
+        return summary;
+      } catch (err) {
+        if (isAbortError(err)) {
+          api.logger.info('[kasett-rewind] summarize() aborted via signal');
+          throw err;
+        }
+        api.logger.warn(`[kasett-rewind] summarize() failed: ${String(err)} — returning undefined to trigger OC fallback`);
+        return undefined;
+      }
+    },
   });
+
+  api.logger.info('[kasett-rewind] CompactionProvider registered as "kasett-rewind"');
+}
+
+// ---------------------------------------------------------------------------
+// LLM call
+// ---------------------------------------------------------------------------
+
+interface LLMCallParams {
+  messages: Array<{ role: string; content: unknown }>;
+  signal?: AbortSignal;
+  customInstructions?: string;
+  previousSummary?: string;
+  steeringPrompt: string;
+  logger: {
+    debug(msg: string): void;
+    warn(msg: string): void;
+    info(msg: string): void;
+  };
 }
 
 /**
- * Resolve plugin config with defaults.
+ * Calls the LLM (Anthropic claude-haiku-3-5 via direct API, or OpenRouter fallback)
+ * to produce a thread-aware compaction summary.
+ *
+ * The steering prompt is injected as system context so the LLM knows to output
+ * [THREAD_META] in addition to the narrative summary.
  */
+async function callLLMForCompaction(params: LLMCallParams): Promise<string | undefined> {
+  const { messages, signal, customInstructions, previousSummary, steeringPrompt, logger } = params;
+
+  // Build system prompt: steering + OC custom instructions + previous summary context
+  const systemParts: string[] = [steeringPrompt];
+
+  if (customInstructions?.trim()) {
+    systemParts.push('\n\n---\n\n## Additional Instructions from OpenClaw\n\n' + customInstructions.trim());
+  }
+
+  if (previousSummary?.trim()) {
+    systemParts.push('\n\n---\n\n## Previous Compaction Summary\n\n' + previousSummary.trim());
+  }
+
+  const systemPrompt = systemParts.join('');
+
+  // Convert messages to text for summarization
+  // Messages are in OpenAI role/content format; extract text content
+  const historyText = messagesToText(messages);
+
+  const userPrompt =
+    'Please produce a compaction summary of the following conversation. ' +
+    'Follow the thread meta instructions in your system prompt exactly.\n\n' +
+    '---\n\n' +
+    historyText;
+
+  // Try Anthropic direct API first (fast, reliable)
+  const anthropicKey = process.env['ANTHROPIC_API_KEY'];
+  if (anthropicKey) {
+    try {
+      const result = await callAnthropic({
+        apiKey: anthropicKey,
+        systemPrompt,
+        userPrompt,
+        signal,
+      });
+      if (result) {
+        logger.debug('[kasett-rewind] LLM call succeeded via Anthropic API');
+        return result;
+      }
+    } catch (err) {
+      if (isAbortError(err)) throw err;
+      logger.warn(`[kasett-rewind] Anthropic API call failed: ${String(err)}`);
+    }
+  }
+
+  // Fallback: OpenRouter API
+  const openrouterKey = process.env['OPENROUTER_API_KEY'];
+  if (openrouterKey) {
+    try {
+      const result = await callOpenRouter({
+        apiKey: openrouterKey,
+        systemPrompt,
+        userPrompt,
+        signal,
+      });
+      if (result) {
+        logger.debug('[kasett-rewind] LLM call succeeded via OpenRouter API');
+        return result;
+      }
+    } catch (err) {
+      if (isAbortError(err)) throw err;
+      logger.warn(`[kasett-rewind] OpenRouter API call failed: ${String(err)}`);
+    }
+  }
+
+  logger.warn('[kasett-rewind] No LLM API available (no ANTHROPIC_API_KEY or OPENROUTER_API_KEY)');
+  return undefined;
+}
+
+/**
+ * Call Anthropic Messages API directly.
+ * Uses claude-haiku-3-5 for cost efficiency.
+ */
+async function callAnthropic(params: {
+  apiKey: string;
+  systemPrompt: string;
+  userPrompt: string;
+  signal?: AbortSignal;
+}): Promise<string | undefined> {
+  const response = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': params.apiKey,
+      'anthropic-version': '2023-06-01',
+    },
+    body: JSON.stringify({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 4096,
+      system: params.systemPrompt,
+      messages: [{ role: 'user', content: params.userPrompt }],
+    }),
+    signal: params.signal,
+  });
+
+  if (!response.ok) {
+    const body = await response.text();
+    throw new Error(`Anthropic API ${response.status}: ${body.slice(0, 200)}`);
+  }
+
+  const data = await response.json() as {
+    content?: Array<{ type: string; text?: string }>;
+  };
+
+  const textBlock = data.content?.find((b) => b.type === 'text');
+  return textBlock?.text ?? undefined;
+}
+
+/**
+ * Call OpenRouter API (OpenAI-compat) as fallback.
+ * Uses claude-haiku-3-5 via openrouter.
+ */
+async function callOpenRouter(params: {
+  apiKey: string;
+  systemPrompt: string;
+  userPrompt: string;
+  signal?: AbortSignal;
+}): Promise<string | undefined> {
+  const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${params.apiKey}`,
+    },
+    body: JSON.stringify({
+      model: 'anthropic/claude-sonnet-4-20250514',
+      max_tokens: 4096,
+      messages: [
+        { role: 'system', content: params.systemPrompt },
+        { role: 'user', content: params.userPrompt },
+      ],
+    }),
+    signal: params.signal,
+  });
+
+  if (!response.ok) {
+    const body = await response.text();
+    throw new Error(`OpenRouter API ${response.status}: ${body.slice(0, 200)}`);
+  }
+
+  const data = await response.json() as {
+    choices?: Array<{ message?: { content?: string } }>;
+  };
+
+  return data.choices?.[0]?.message?.content ?? undefined;
+}
+
+/**
+ * Convert OC messages (OpenAI role/content format) to a flat text representation
+ * suitable for passing to the compaction LLM.
+ */
+function messagesToText(messages: Array<{ role: string; content: unknown }>): string {
+  const lines: string[] = [];
+
+  for (const msg of messages) {
+    const role = msg.role?.toUpperCase() ?? 'UNKNOWN';
+    const content = extractTextContent(msg.content);
+    if (content.trim()) {
+      lines.push(`[${role}]: ${content}`);
+    }
+  }
+
+  return lines.join('\n\n');
+}
+
+/**
+ * Extract text from various OC content formats:
+ * - string: return as-is
+ * - array: join text parts
+ * - object with text: return text
+ */
+function extractTextContent(content: unknown): string {
+  if (typeof content === 'string') return content;
+  if (Array.isArray(content)) {
+    return content
+      .map((part) => {
+        if (typeof part === 'string') return part;
+        if (part && typeof part === 'object') {
+          const p = part as Record<string, unknown>;
+          if (p['type'] === 'text' && typeof p['text'] === 'string') return p['text'];
+          if (typeof p['text'] === 'string') return p['text'];
+          if (typeof p['content'] === 'string') return p['content'];
+        }
+        return '';
+      })
+      .filter(Boolean)
+      .join('\n');
+  }
+  if (content && typeof content === 'object') {
+    const c = content as Record<string, unknown>;
+    if (typeof c['text'] === 'string') return c['text'];
+    if (typeof c['content'] === 'string') return c['content'];
+  }
+  return '';
+}
+
+// ---------------------------------------------------------------------------
+// Sidecar state helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Returns the path to the kasett sidecar JSON file for a given session.
+ * Stored under <stateDir>/plugins/kasett-rewind/meta/<sessionKey-safe>.json
+ */
+function resolveSidecarPath(stateDir: string, sessionKey: string): string {
+  const safeName = sessionKey.replace(/[^a-z0-9_\-:.]/gi, '_');
+  return join(stateDir, 'plugins', 'kasett-rewind', 'meta', `${safeName}.json`);
+}
+
+async function readSidecarMeta(stateDir: string, sessionKey: string): Promise<ThreadMeta | null> {
+  try {
+    const sidecarPath = resolveSidecarPath(stateDir, sessionKey);
+    const raw = await readFile(sidecarPath, 'utf-8');
+    const parsed: unknown = JSON.parse(raw);
+    if (
+      parsed &&
+      typeof parsed === 'object' &&
+      'main' in parsed &&
+      'sub' in parsed &&
+      typeof (parsed as { main: unknown }).main === 'string' &&
+      Array.isArray((parsed as { sub: unknown }).sub)
+    ) {
+      const p = parsed as { main: string; sub: unknown[] };
+      if (p.sub.length === 3 && p.sub.every((s) => typeof s === 'string')) {
+        return { main: p.main, sub: p.sub as [string, string, string] };
+      }
+    }
+    return null;
+  } catch (err: unknown) {
+    if ((err as { code?: string }).code === 'ENOENT') return null;
+    throw err;
+  }
+}
+
+async function writeSidecarMeta(stateDir: string, sessionKey: string, meta: ThreadMeta): Promise<void> {
+  const sidecarPath = resolveSidecarPath(stateDir, sessionKey);
+  await mkdir(dirname(sidecarPath), { recursive: true });
+  await writeFile(sidecarPath, JSON.stringify(meta, null, 2), 'utf-8');
+}
+
+// ---------------------------------------------------------------------------
+// Session file resolution
+// ---------------------------------------------------------------------------
+
+async function resolveSessionFile(
+  api: PluginAPI,
+  ctx: HookContext,
+  agentId: string,
+  sessionKey: string,
+): Promise<string | null> {
+  // Strategy 1: session store lookup
+  try {
+    const storePath = api.runtime.agent.session.resolveStorePath(
+      api.config?.session,
+      { agentId },
+    );
+    const store = api.runtime.agent.session.loadSessionStore(storePath);
+    const entry = resolveStoreEntry(store, sessionKey);
+    if (entry?.sessionFile) return entry.sessionFile;
+  } catch {
+    // Fall through
+  }
+
+  // Strategy 2: derive path from state dir
+  const sessionId = ctx.sessionId?.trim();
+  if (sessionId) {
+    try {
+      const stateDir = api.runtime.state.resolveStateDir();
+      return join(stateDir, 'agents', agentId, 'sessions', `${sessionId}.jsonl`);
+    } catch {
+      // Fall through
+    }
+  }
+
+  return null;
+}
+
+async function resolveSessionFileFromState(
+  api: PluginAPI,
+  stateDir: string,
+  agentId: string,
+  sessionKey: string,
+): Promise<string | null> {
+  // Strategy 1: session store lookup
+  try {
+    const storePath = api.runtime.agent.session.resolveStorePath(
+      api.config?.session,
+      { agentId },
+    );
+    const store = api.runtime.agent.session.loadSessionStore(storePath);
+    const entry = resolveStoreEntry(store, sessionKey);
+    if (entry?.sessionFile) return entry.sessionFile;
+  } catch {
+    // Fall through
+  }
+
+  // Strategy 2: derive from stateDir
+  // sessionKey might be a full key like "agent:main:telegram:..." — use it as session file name
+  const safeName = sessionKey.replace(/[^a-z0-9_\-:.]/gi, '_');
+  const candidate = join(stateDir, 'agents', agentId, 'sessions', `${safeName}.jsonl`);
+  return candidate;
+}
+
+function resolveStoreEntry(
+  store: Record<string, SessionStoreEntry>,
+  sessionKey: string,
+): SessionStoreEntry | undefined {
+  if (store[sessionKey]) return store[sessionKey];
+  const lower = sessionKey.toLowerCase();
+  for (const [k, v] of Object.entries(store)) {
+    if (k.toLowerCase() === lower) return v;
+  }
+  return undefined;
+}
+
+// ---------------------------------------------------------------------------
+// Abort error detection
+// ---------------------------------------------------------------------------
+
+function isAbortError(err: unknown): boolean {
+  if (err instanceof Error) {
+    return err.name === 'AbortError' || err.message?.includes('aborted') || err.message?.includes('abort');
+  }
+  return false;
+}
+
+// ---------------------------------------------------------------------------
+// Config resolution
+// ---------------------------------------------------------------------------
+
 function resolveConfig(api: PluginAPI): KasettConfig & { enabled: boolean } {
   try {
     const raw = (api.pluginConfig ?? {}) as Partial<KasettConfig> & { enabled?: boolean };
@@ -201,7 +726,9 @@ function resolveConfig(api: PluginAPI): KasettConfig & { enabled: boolean } {
   }
 }
 
-// --- Public API Exports ---
+// ---------------------------------------------------------------------------
+// Public API Exports
+// ---------------------------------------------------------------------------
 
 export { SessionReader, KasettError } from './storage/reader.js';
 export { analyzeThreads } from './threads/weight.js';
