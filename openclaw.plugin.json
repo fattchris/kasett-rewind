@@ -1,0 +1,42 @@
+{
+  "id": "kasett-rewind",
+  "name": "Kasett Rewind",
+  "version": "0.1.0",
+  "description": "Rolling compaction window + structured thread tracking. Your agent never forgets what it was doing.",
+  "author": "Molt AI Corp",
+  "license": "UNLICENSED",
+  "main": "dist/index.js",
+  "engines": {
+    "openclaw": ">=4.9.0"
+  },
+  "configSchema": {
+    "type": "object",
+    "properties": {
+      "enabled": {
+        "type": "boolean",
+        "default": true,
+        "description": "Master switch — when false, plugin is completely inert"
+      },
+      "windowSize": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 5,
+        "default": 2,
+        "description": "Number of compaction summaries to retain in the rolling window"
+      },
+      "windowBudgetSplit": {
+        "type": "array",
+        "items": { "type": "number", "minimum": 0, "maximum": 1 },
+        "default": [0.3, 0.3, 0.4],
+        "description": "Token budget proportions [oldest..newest summary, recent turns]. Must sum to 1.0, length = windowSize + 1"
+      },
+      "threadTracking": {
+        "type": "boolean",
+        "default": true,
+        "description": "Enable structured thread snapshots in compaction output"
+      }
+    },
+    "additionalProperties": false
+  },
+  "hooks": ["before_compaction", "after_compaction"]
+}

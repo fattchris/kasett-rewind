@@ -7,6 +7,9 @@
   "bin": {
     "kasett-rewind": "dist/cli/index.js"
   },
+  "openclaw": {
+    "plugin": "openclaw.plugin.json"
+  },
   "scripts": {
     "build": "tsc && cp -r src/tests/fixtures dist/tests/",
     "dev": "tsc --watch",
@@ -15,17 +18,18 @@
   },
   "keywords": [
     "openclaw",
-    "plugin",
+    "openclaw-plugin",
     "compaction",
     "memory",
-    "lora",
-    "allm"
+    "thread-tracking",
+    "rolling-window"
   ],
-  "author": "Chris Fontes",
+  "author": "Molt AI Corp",
   "license": "UNLICENSED",
   "type": "module",
   "engines": {
-    "node": ">=20"
+    "node": ">=20",
+    "openclaw": ">=4.9.0"
   },
   "devDependencies": {
     "@types/node": "^22.19.17",

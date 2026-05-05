@@ -1,40 +1,54 @@
-# Installing kasett-rewind
+# ◄◄ Press REWIND — Installation Guide
 
-## Quick Start (1 minute)
+## Quick Start (30 seconds)
 
 ```bash
-# 1. Install from GitHub
-npm install -g git+https://github.com/fattchris/kasett-rewind.git
+# Install the plugin
+openclaw plugins install github:fattchris/kasett-rewind
 
-# 2. Generate your config
-kasett-rewind generate-config
+# Generate config
+npx kasett-rewind generate-config
 
-# 3. Paste the output into your openclaw.json → compaction section
-
-# 4. Restart gateway
+# Paste the output into openclaw.json, then:
 openclaw gateway restart
 ```
 
-That's it. Your next compaction will produce structured summaries with thread tracking.
+That's it. Next compaction = structured summaries with thread tracking.
+
+## Local Development
+
+```bash
+# Clone the repo
+git clone https://github.com/fattchris/kasett-rewind.git
+cd kasett-rewind
+
+# Build
+npm run build
+
+# Link into your OC install
+openclaw plugins install --link .
+```
+
+The `--link` flag creates a symlink in `~/.openclaw/extensions/kasett-rewind/` pointing to your local checkout. Changes rebuild instantly.
 
 ## What It Does
 
-Without kasett-rewind:
+**Without Kasett:**
 ```
 [compaction happens]
 Agent: "I was... doing something? Let me start fresh."
 ```
 
-With kasett-rewind:
+**With Kasett:**
 ```
 [compaction happens]
 Agent: "Main thread: deploying M2.7 inference server.
-Sub-threads: LoRA training pipeline (active), proxy SSE fix (blocked on upstream).
+Sub-threads: LoRA training pipeline (active), proxy SSE fix (blocked).
 Key state: target_host=ml-prod-3.internal, model_version=2.7.1
-Last compaction I was debugging the SSE timeout — that's resolved now."
+Previously completed: CI pipeline fix (depot runners), Docker image optimization."
 ```
 
-## Options
+## CLI Options
 
 ```bash
 # Default: windowSize=2, thread tracking ON
@@ -50,15 +64,29 @@ kasett-rewind generate-config --no-thread-tracking
 kasett-rewind generate-config --budget-split 0.25,0.35,0.4
 ```
 
-## Verify It's Working
+## Verify
 
-After your next compaction event, check the session JSONL:
+After your next compaction event:
+
 ```bash
-grep "kasettMeta" ~/.openclaw/agents/main/sessions/*.jsonl
-```
+# Check plugin registered
+openclaw logs | grep kasett-rewind
 
-If you see `kasettMeta` in compaction events, it's live.
+# Check structured output in session
+grep "## Main Thread" ~/.openclaw/agents/*/sessions/*.jsonl
+```
 
 ## Uninstall
 
-Remove the `compaction.customInstructions` and plugin entry from openclaw.json, restart gateway. Agent reverts to default compaction immediately.
+```bash
+openclaw plugins uninstall kasett-rewind
+openclaw gateway restart
+```
+
+Agent reverts to default compaction immediately. No residue.
+
+## Requirements
+
+- OpenClaw >= 4.9
+- Node.js >= 20
+- Zero runtime dependencies
