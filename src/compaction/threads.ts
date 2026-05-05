@@ -53,11 +53,18 @@ export class ThreadTracker {
 
     // Previous main thread must appear somewhere
     if (!currentAllThreadNames.has(previous.mainThread.toLowerCase())) {
-      // Check fuzzy match (substring)
+      // Check fuzzy match (substring with longer window)
+      const prevLower = previous.mainThread.toLowerCase();
       const found = [...currentAllThreadNames].some(
-        (name) =>
-          name.includes(previous.mainThread.toLowerCase().slice(0, 20)) ||
-          previous.mainThread.toLowerCase().includes(name.slice(0, 20)),
+        (name) => {
+          // Check significant overlap (at least 50% of shorter string)
+          const shorter = Math.min(name.length, prevLower.length);
+          const checkLen = Math.max(Math.floor(shorter * 0.5), 10);
+          return (
+            name.includes(prevLower.slice(0, checkLen)) ||
+            prevLower.includes(name.slice(0, checkLen))
+          );
+        },
       );
       if (!found) {
         violations.push(
@@ -71,10 +78,16 @@ export class ThreadTracker {
       if (prevThread.status === 'completed' || prevThread.status === 'backgrounded') {
         continue; // Already resolved in previous compaction
       }
+      const prevName = prevThread.name.toLowerCase();
       const found = [...currentAllThreadNames].some(
-        (name) =>
-          name.includes(prevThread.name.toLowerCase().slice(0, 15)) ||
-          prevThread.name.toLowerCase().includes(name.slice(0, 15)),
+        (name) => {
+          const shorter = Math.min(name.length, prevName.length);
+          const checkLen = Math.max(Math.floor(shorter * 0.5), 8);
+          return (
+            name.includes(prevName.slice(0, checkLen)) ||
+            prevName.includes(name.slice(0, checkLen))
+          );
+        },
       );
       if (!found) {
         violations.push(
@@ -141,7 +154,7 @@ export class ThreadTracker {
 
 function extractSection(text: string, heading: string): string | undefined {
   const regex = new RegExp(
-    `###?\\s*${escapeRegex(heading)}\\s*\\n([\\s\\S]*?)(?=\\n###?\\s|$)`,
+    `#{2,3}\\s*${escapeRegex(heading)}[^\\n]*\\n([\\s\\S]*?)(?=\\n#{2,3}\\s|$)`,
     'i',
   );
   const match = text.match(regex);

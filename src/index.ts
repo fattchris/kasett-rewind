@@ -14,6 +14,18 @@ export { CompactionWindow } from './compaction/window.js';
 export { ThreadTracker } from './compaction/threads.js';
 export { buildCompactionPrompt } from './compaction/prompt.js';
 
+// Phase 1 exports
+export { generateCustomInstructions, KasettError } from './phase1/instructions.js';
+export { SectionLoader } from './phase1/section-loader.js';
+export type { LoadedSections } from './phase1/section-loader.js';
+
+// Storage exports
+export { SessionReader } from './storage/reader.js';
+
+// CLI exports
+export { generateConfig } from './cli/generate-config.js';
+export type { GenerateConfigOptions } from './cli/generate-config.js';
+
 export type {
   CompactionSummary,
   CompactionContext,

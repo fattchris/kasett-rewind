@@ -4,10 +4,13 @@
   "description": "OpenClaw compaction plugin — rolling window, structured thread tracking, and ALLM pattern extraction",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "bin": {
+    "kasett-rewind": "dist/cli/index.js"
+  },
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && cp -r src/tests/fixtures dist/tests/",
     "dev": "tsc --watch",
-    "test": "node --test dist/**/*.test.js",
+    "test": "node --test dist/tests/window.test.js dist/tests/threads.test.js dist/tests/prompt.test.js dist/tests/reader.test.js dist/tests/integration.test.js",
     "lint": "tsc --noEmit"
   },
   "keywords": [
@@ -20,6 +23,7 @@
   ],
   "author": "Chris Fontes",
   "license": "UNLICENSED",
+  "type": "module",
   "private": true,
   "engines": {
     "node": ">=20"
