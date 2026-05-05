@@ -38,6 +38,18 @@
       "compactionModel": {
         "type": "string",
         "description": "Model to use for compaction LLM calls. Use \"default\" (or omit) to inherit the agent's primary model from environment variables. Set to a model identifier string (e.g. \"claude-haiku-3-5-20241022\" or \"anthropic/claude-haiku-3-5\") to pin a specific model."
+      },
+      "hotSwap": {
+        "type": "boolean",
+        "default": true,
+        "description": "Enable hot-swap compaction. When true, summarize() returns a stub immediately (zero LLM delay) and the full summary is swapped in between turns via an atomic JSONL rewrite. The user sees no compaction delay."
+      },
+      "hotSwapTimeoutMs": {
+        "type": "integer",
+        "minimum": 1000,
+        "maximum": 120000,
+        "default": 30000,
+        "description": "Maximum time (ms) the background hot-swap worker will wait for the session write lock to clear before giving up. The stub remains in place if this timeout is exceeded."
       }
     },
     "additionalProperties": false

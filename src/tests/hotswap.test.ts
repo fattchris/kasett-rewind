@@ -1,0 +1,574 @@
+/**
+ * Tests for the hot-swap compaction subsystem.
+ *
+ * Tests cover:
+ * - stub.ts: generateStub() — stub content, marker, thread meta extraction
+ * - lock.ts: acquireLock(), waitForLockAbsent() — exclusive locking + stale detection
+ * - worker.ts: performAtomicSwap logic via runHotSwapWorker() integration
+ * - constants.ts: regex correctness
+ */
+
+import { describe, test, before, after } from 'node:test';
+import assert from 'node:assert/strict';
+import { mkdtemp, writeFile, readFile, unlink, mkdir } from 'node:fs/promises';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
+import { randomUUID } from 'node:crypto';
+
+import { generateStub } from '../hotswap/stub.js';
+import { acquireLock, waitForLockAbsent } from '../hotswap/lock.js';
+import { runHotSwapWorker } from '../hotswap/worker.js';
+import { KASETT_STUB_REGEX, THREAD_META_REGEX } from '../hotswap/constants.js';
+
+// ---------------------------------------------------------------------------
+// Helper: create a temp directory
+// ---------------------------------------------------------------------------
+
+let tmpDir: string;
+
+before(async () => {
+  tmpDir = await mkdtemp(join(tmpdir(), 'kasett-hotswap-test-'));
+});
+
+after(async () => {
+  // cleanup is best-effort — OS will clean up anyway
+});
+
+// ---------------------------------------------------------------------------
+// constants.ts
+// ---------------------------------------------------------------------------
+
+describe('constants: KASETT_STUB_REGEX', () => {
+  test('matches a valid stub marker and captures the UUID', () => {
+    const id = randomUUID();
+    const text = `[KASETT_STUB::${id}]\n\nSession compaction in progress.`;
+    const match = text.match(KASETT_STUB_REGEX);
+    assert.ok(match, 'regex should match');
+    assert.equal(match![1], id);
+  });
+
+  test('does not match a stub with corrupted UUID', () => {
+    const text = '[KASETT_STUB::not-a-uuid]\n\nSome text';
+    const match = text.match(KASETT_STUB_REGEX);
+    // The regex is lenient (accepts [0-9a-f-]{36}) — a 36-char hex string matches
+    // Verify that a completely wrong format does NOT match
+    const badText = '[KASETT_STUB::]\n\nSome text';
+    const badMatch = badText.match(KASETT_STUB_REGEX);
+    assert.equal(badMatch, null);
+  });
+
+  test('does not match if prefix is wrong', () => {
+    const id = randomUUID();
+    const text = `[KASETT_SWAP::${id}]`;
+    const match = text.match(KASETT_STUB_REGEX);
+    assert.equal(match, null);
+  });
+});
+
+describe('constants: THREAD_META_REGEX', () => {
+  test('matches a valid [THREAD_META] block', () => {
+    const text = `Some summary.\n\n[THREAD_META]\nmain: doing work\nsub1: active\nsub2: idle\nsub3: idle\n[/THREAD_META]`;
+    const match = text.match(THREAD_META_REGEX);
+    assert.ok(match);
+    assert.ok(match![1].includes('main: doing work'));
+  });
+
+  test('does not match if block is unclosed', () => {
+    const text = '[THREAD_META]\nmain: doing work';
+    const match = text.match(THREAD_META_REGEX);
+    assert.equal(match, null);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// stub.ts: generateStub()
+// ---------------------------------------------------------------------------
+
+describe('generateStub: basic structure', () => {
+  test('returns a stub string with [KASETT_STUB::<uuid>] marker', () => {
+    const { stub, stubId } = generateStub(undefined, []);
+    assert.ok(stub.includes(`[KASETT_STUB::${stubId}]`), 'stub must contain its own marker');
+    // stubId should be a UUID format
+    assert.match(stubId, /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
+  });
+
+  test('stub contains "compaction in progress" orientation text', () => {
+    const { stub } = generateStub(undefined, []);
+    assert.ok(stub.toLowerCase().includes('compaction in progress'));
+  });
+
+  test('stub contains [THREAD_META] block', () => {
+    const { stub } = generateStub(undefined, []);
+    assert.ok(stub.includes('[THREAD_META]'));
+    assert.ok(stub.includes('[/THREAD_META]'));
+  });
+
+  test('each call generates a unique stubId', () => {
+    const a = generateStub(undefined, []);
+    const b = generateStub(undefined, []);
+    assert.notEqual(a.stubId, b.stubId);
+  });
+});
+
+describe('generateStub: thread meta extraction from previousSummary', () => {
+  const previousSummary = `Built the auth system. OAuth2 is live.
+
+[THREAD_META]
+main: OAuth2 authentication system live
+sub1: GitHub OAuth integration complete
+sub2: rate limiting at 100 req/min
+sub3: idle
+[/THREAD_META]`;
+
+  test('extracts thread meta from previousSummary', () => {
+    const { stub } = generateStub(previousSummary, []);
+    assert.ok(stub.includes('main: OAuth2 authentication system live'));
+    assert.ok(stub.includes('sub1: GitHub OAuth integration complete'));
+    assert.ok(stub.includes('sub2: rate limiting at 100 req/min'));
+    assert.ok(stub.includes('sub3: idle'));
+  });
+
+  test('falls back to heuristic when previousSummary has no [THREAD_META]', () => {
+    const { stub } = generateStub('Plain summary with no thread meta.', [
+      { role: 'user', content: 'Set up the Kubernetes cluster on EKS' },
+      { role: 'assistant', content: 'I will configure the EKS cluster now.' },
+    ]);
+    assert.ok(stub.includes('[THREAD_META]'));
+    // Heuristic should produce something from the messages
+    assert.ok(stub.includes('main:'));
+  });
+
+  test('falls back gracefully when previousSummary is undefined', () => {
+    const { stub } = generateStub(undefined, [
+      { role: 'user', content: 'Deploy the app to production' },
+    ]);
+    assert.ok(stub.includes('[THREAD_META]'));
+    assert.ok(stub.includes('main:'));
+  });
+
+  test('falls back gracefully when messages are empty', () => {
+    const { stub } = generateStub(undefined, []);
+    assert.ok(stub.includes('[THREAD_META]'));
+    assert.ok(stub.includes('[/THREAD_META]'));
+  });
+});
+
+describe('generateStub: content handles various message formats', () => {
+  test('handles array-of-parts content format', () => {
+    const messages = [
+      {
+        role: 'user',
+        content: [{ type: 'text', text: 'Configure the database backup job' }],
+      },
+    ];
+    const { stub } = generateStub(undefined, messages);
+    assert.ok(stub.includes('[THREAD_META]'));
+  });
+
+  test('handles object content format', () => {
+    const messages = [
+      {
+        role: 'assistant',
+        content: { text: 'I am setting up the cron job for backups.' },
+      },
+    ];
+    const { stub } = generateStub(undefined, messages);
+    assert.ok(stub.includes('[THREAD_META]'));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// lock.ts: acquireLock() / waitForLockAbsent()
+// ---------------------------------------------------------------------------
+
+describe('acquireLock: exclusive acquisition', () => {
+  test('acquires lock (creates lock file)', async () => {
+    const sessionFile = join(tmpDir, `session-${randomUUID()}.jsonl`);
+    const lockPath = `${sessionFile}.lock`;
+
+    const handle = await acquireLock(sessionFile, { timeoutMs: 1000 });
+    try {
+      // Lock file should exist
+      const { stat } = await import('node:fs/promises');
+      const st = await stat(lockPath);
+      assert.ok(st.isFile());
+    } finally {
+      await handle.release();
+    }
+  });
+
+  test('release() removes the lock file', async () => {
+    const sessionFile = join(tmpDir, `session-${randomUUID()}.jsonl`);
+    const lockPath = `${sessionFile}.lock`;
+
+    const handle = await acquireLock(sessionFile, { timeoutMs: 1000 });
+    await handle.release();
+
+    // Lock file should be gone
+    const { stat } = await import('node:fs/promises');
+    await assert.rejects(() => stat(lockPath), /ENOENT/);
+  });
+
+  test('release() is idempotent', async () => {
+    const sessionFile = join(tmpDir, `session-${randomUUID()}.jsonl`);
+    const handle = await acquireLock(sessionFile, { timeoutMs: 1000 });
+    await handle.release();
+    // Second release should not throw
+    await assert.doesNotReject(() => handle.release());
+  });
+
+  test('second acquire fails within timeout when lock is held', async () => {
+    const sessionFile = join(tmpDir, `session-${randomUUID()}.jsonl`);
+
+    const handle1 = await acquireLock(sessionFile, { timeoutMs: 1000 });
+    try {
+      // Try to acquire again with a short timeout — should fail
+      await assert.rejects(
+        () => acquireLock(sessionFile, { timeoutMs: 200, pollIntervalMs: 50 }),
+        /Timed out waiting for session write lock/,
+      );
+    } finally {
+      await handle1.release();
+    }
+  });
+
+  test('second acquire succeeds after first is released', async () => {
+    const sessionFile = join(tmpDir, `session-${randomUUID()}.jsonl`);
+
+    const handle1 = await acquireLock(sessionFile, { timeoutMs: 1000 });
+
+    // Release after a short delay
+    setTimeout(() => handle1.release(), 100);
+
+    // This should succeed because handle1 will be released within the timeout
+    const handle2 = await acquireLock(sessionFile, { timeoutMs: 1000, pollIntervalMs: 50 });
+    await handle2.release();
+  });
+
+  test('reclaims stale lock (lock file older than staleLockMs)', async () => {
+    const sessionFile = join(tmpDir, `session-${randomUUID()}.jsonl`);
+    const lockPath = `${sessionFile}.lock`;
+
+    // Create a stale lock file manually
+    await writeFile(lockPath, '{}', 'utf-8');
+
+    // Force the lock to appear stale by using staleLockMs = 0
+    const handle = await acquireLock(sessionFile, { timeoutMs: 1000, staleLockMs: 0 });
+    await handle.release();
+  });
+});
+
+describe('waitForLockAbsent', () => {
+  test('returns true immediately when no lock file exists', async () => {
+    const sessionFile = join(tmpDir, `session-${randomUUID()}.jsonl`);
+    const result = await waitForLockAbsent(sessionFile, 500);
+    assert.equal(result, true);
+  });
+
+  test('returns true after lock is released', async () => {
+    const sessionFile = join(tmpDir, `session-${randomUUID()}.jsonl`);
+    const lockPath = `${sessionFile}.lock`;
+
+    // Create lock file
+    await writeFile(lockPath, '{}', 'utf-8');
+
+    // Remove it after 100ms
+    setTimeout(() => unlink(lockPath).catch(() => {}), 100);
+
+    const result = await waitForLockAbsent(sessionFile, 1000, 30);
+    assert.equal(result, true);
+  });
+
+  test('returns false when lock stays held beyond timeout', async () => {
+    const sessionFile = join(tmpDir, `session-${randomUUID()}.jsonl`);
+    const lockPath = `${sessionFile}.lock`;
+
+    await writeFile(lockPath, '{}', 'utf-8');
+    try {
+      const result = await waitForLockAbsent(sessionFile, 200, 50);
+      assert.equal(result, false);
+    } finally {
+      await unlink(lockPath).catch(() => {});
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// worker.ts: runHotSwapWorker() integration
+// ---------------------------------------------------------------------------
+
+/**
+ * Build a minimal JSONL file for testing the atomic swap.
+ */
+function buildTestJsonl(stubId: string, stubSummary: string): string {
+  const header = JSON.stringify({ type: 'session', id: 'test-session', cwd: '/tmp' });
+  const msg1 = JSON.stringify({ type: 'message', id: 'msg_001', data: { role: 'user', content: 'Hello' } });
+  const compaction = JSON.stringify({
+    type: 'compaction',
+    id: 'cmp_001',
+    timestamp: new Date().toISOString(),
+    data: {
+      summary: stubSummary,
+    },
+  });
+  const msg2 = JSON.stringify({ type: 'message', id: 'msg_002', data: { role: 'assistant', content: 'Hi there' } });
+  return [header, msg1, compaction, msg2].join('\n') + '\n';
+}
+
+describe('runHotSwapWorker: atomic JSONL swap', () => {
+  test('replaces stub summary with full LLM output', async () => {
+    const sessionFile = join(tmpDir, `session-${randomUUID()}.jsonl`);
+    const stubId = randomUUID();
+    const stubSummary = `[KASETT_STUB::${stubId}]\n\nCompaction in progress.\n\n[THREAD_META]\nmain: test\nsub1: idle\nsub2: idle\nsub3: idle\n[/THREAD_META]`;
+    const fullSummary = `Full LLM summary of the session.\n\n[THREAD_META]\nmain: finished the work\nsub1: deployed to prod\nsub2: idle\nsub3: idle\n[/THREAD_META]`;
+
+    // Write test JSONL
+    await writeFile(sessionFile, buildTestJsonl(stubId, stubSummary), 'utf-8');
+
+    let callCount = 0;
+    const mockCallLLM = async (): Promise<string | undefined> => {
+      callCount++;
+      return fullSummary;
+    };
+
+    const logger = {
+      info: (_: string) => {},
+      warn: (_: string) => {},
+      error: (_: string) => {},
+      debug: (_: string) => {},
+    };
+
+    await runHotSwapWorker({
+      sessionFile,
+      stubId,
+      messages: [{ role: 'user', content: 'test' }],
+      previousSummaries: [],
+      steeringPrompt: 'Steering prompt text',
+      customInstructions: undefined,
+      signal: undefined,
+      compactionModel: undefined,
+      hotSwapTimeoutMs: 5000,
+      logger,
+      callLLM: mockCallLLM,
+    });
+
+    // Verify LLM was called
+    assert.equal(callCount, 1);
+
+    // Read the result JSONL
+    const content = await readFile(sessionFile, 'utf-8');
+    const lines = content.split('\n').filter((l) => l.trim());
+    const compactionLine = lines.find((l) => l.includes('"compaction"'));
+    assert.ok(compactionLine, 'compaction entry should still exist');
+
+    const entry = JSON.parse(compactionLine) as { type: string; data: { summary: string } };
+    assert.equal(entry.type, 'compaction');
+    assert.equal(entry.data.summary, fullSummary, 'summary should be replaced with full LLM output');
+
+    // Stub marker should be gone
+    assert.ok(!entry.data.summary.includes(`[KASETT_STUB::${stubId}]`));
+  });
+
+  test('discards stale result when stub entry not found', async () => {
+    const sessionFile = join(tmpDir, `session-${randomUUID()}.jsonl`);
+    const stubId = randomUUID();
+
+    // Write a JSONL that has a DIFFERENT compaction (no stub with our ID)
+    const differentSummary = 'A different compaction summary that OC wrote.';
+    const content = [
+      JSON.stringify({ type: 'session', id: 'test', cwd: '/tmp' }),
+      JSON.stringify({
+        type: 'compaction',
+        id: 'cmp_new',
+        data: { summary: differentSummary },
+      }),
+    ].join('\n') + '\n';
+
+    await writeFile(sessionFile, content, 'utf-8');
+
+    let llmCalled = false;
+    const mockCallLLM = async (): Promise<string | undefined> => {
+      llmCalled = true;
+      return 'Full summary that should be discarded';
+    };
+
+    const logger = {
+      info: (_: string) => {},
+      warn: (_: string) => {},
+      error: (_: string) => {},
+      debug: (_: string) => {},
+    };
+
+    await runHotSwapWorker({
+      sessionFile,
+      stubId,
+      messages: [],
+      previousSummaries: [],
+      steeringPrompt: '',
+      hotSwapTimeoutMs: 5000,
+      logger,
+      callLLM: mockCallLLM,
+    });
+
+    assert.ok(llmCalled, 'LLM should still be called (we check for stale after LLM finishes)');
+
+    // JSONL should be UNCHANGED — the different compaction entry should remain
+    const result = await readFile(sessionFile, 'utf-8');
+    assert.ok(result.includes(differentSummary), 'different summary should remain untouched');
+  });
+
+  test('handles LLM returning undefined gracefully', async () => {
+    const sessionFile = join(tmpDir, `session-${randomUUID()}.jsonl`);
+    const stubId = randomUUID();
+    const stubSummary = `[KASETT_STUB::${stubId}]\n\nCompaction in progress.`;
+
+    await writeFile(sessionFile, buildTestJsonl(stubId, stubSummary), 'utf-8');
+
+    const mockCallLLM = async (): Promise<string | undefined> => undefined;
+
+    const warnMessages: string[] = [];
+    const logger = {
+      info: (_: string) => {},
+      warn: (msg: string) => { warnMessages.push(msg); },
+      error: (_: string) => {},
+      debug: (_: string) => {},
+    };
+
+    await runHotSwapWorker({
+      sessionFile,
+      stubId,
+      messages: [],
+      previousSummaries: [],
+      steeringPrompt: '',
+      hotSwapTimeoutMs: 5000,
+      logger,
+      callLLM: mockCallLLM,
+    });
+
+    // Should warn about empty summary, stub should remain
+    assert.ok(warnMessages.some((m) => m.includes('empty summary')));
+
+    const content = await readFile(sessionFile, 'utf-8');
+    // Stub should still be in the file (unchanged)
+    assert.ok(content.includes(stubId));
+  });
+
+  test('preserves non-compaction entries in JSONL after swap', async () => {
+    const sessionFile = join(tmpDir, `session-${randomUUID()}.jsonl`);
+    const stubId = randomUUID();
+    const stubSummary = `[KASETT_STUB::${stubId}]\n\nCompaction in progress.\n\n[THREAD_META]\nmain: x\nsub1: idle\nsub2: idle\nsub3: idle\n[/THREAD_META]`;
+    const fullSummary = 'Full summary after swap.';
+
+    await writeFile(sessionFile, buildTestJsonl(stubId, stubSummary), 'utf-8');
+
+    const mockCallLLM = async (): Promise<string | undefined> => fullSummary;
+
+    const logger = { info: () => {}, warn: () => {}, error: () => {}, debug: () => {} };
+
+    await runHotSwapWorker({
+      sessionFile,
+      stubId,
+      messages: [],
+      previousSummaries: [],
+      steeringPrompt: '',
+      hotSwapTimeoutMs: 5000,
+      logger,
+      callLLM: mockCallLLM,
+    });
+
+    const content = await readFile(sessionFile, 'utf-8');
+    const lines = content.split('\n').filter((l) => l.trim());
+
+    // Header, msg1, compaction, msg2 should all be present
+    assert.ok(lines.some((l) => l.includes('"session"')), 'header should remain');
+    assert.ok(lines.some((l) => l.includes('"msg_001"')), 'msg_001 should remain');
+    assert.ok(lines.some((l) => l.includes('"msg_002"')), 'msg_002 should remain');
+    assert.ok(lines.some((l) => l.includes('"compaction"')), 'compaction should remain');
+    assert.equal(lines.length, 4, 'should have exactly 4 entries');
+  });
+
+  test('respects abort signal before LLM call', async () => {
+    const sessionFile = join(tmpDir, `session-${randomUUID()}.jsonl`);
+    const stubId = randomUUID();
+    const ac = new AbortController();
+    ac.abort();
+
+    let llmCalled = false;
+    const mockCallLLM = async (): Promise<string | undefined> => {
+      llmCalled = true;
+      return 'should not reach here';
+    };
+
+    const logger = { info: () => {}, warn: () => {}, error: () => {}, debug: () => {} };
+
+    await runHotSwapWorker({
+      sessionFile,
+      stubId,
+      messages: [],
+      previousSummaries: [],
+      steeringPrompt: '',
+      hotSwapTimeoutMs: 1000,
+      signal: ac.signal,
+      logger,
+      callLLM: mockCallLLM,
+    });
+
+    // LLM should NOT have been called because signal was already aborted
+    assert.equal(llmCalled, false, 'LLM should not be called when aborted before start');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Integration: generateStub → stub marker → worker finds and replaces it
+// ---------------------------------------------------------------------------
+
+describe('Integration: generateStub + runHotSwapWorker end-to-end', () => {
+  test('stub marker from generateStub is found and replaced by worker', async () => {
+    const sessionFile = join(tmpDir, `session-${randomUUID()}.jsonl`);
+
+    // Generate stub as summarize() would
+    const previousSummary = `Previous summary.\n\n[THREAD_META]\nmain: shipping feature\nsub1: writing tests\nsub2: idle\nsub3: idle\n[/THREAD_META]`;
+    const { stub, stubId } = generateStub(previousSummary, [
+      { role: 'user', content: 'Let us build the hot-swap feature' },
+    ]);
+
+    // Write it into a JSONL (as OC would after summarize() returned)
+    const jsonlContent = [
+      JSON.stringify({ type: 'session', id: 'test', cwd: '/tmp' }),
+      JSON.stringify({
+        type: 'compaction',
+        id: 'cmp_hotswap',
+        timestamp: new Date().toISOString(),
+        data: { summary: stub },
+      }),
+    ].join('\n') + '\n';
+    await writeFile(sessionFile, jsonlContent, 'utf-8');
+
+    // Run worker with a mock LLM
+    const richSummary = `Hot-swap feature built and tested. Zero-delay compaction working.\n\n[THREAD_META]\nmain: hot-swap compaction feature complete\nsub1: tests passing\nsub2: docs updated\nsub3: idle\n[/THREAD_META]`;
+    const mockCallLLM = async (): Promise<string | undefined> => richSummary;
+    const logger = { info: () => {}, warn: () => {}, error: () => {}, debug: () => {} };
+
+    await runHotSwapWorker({
+      sessionFile,
+      stubId,
+      messages: [{ role: 'user', content: 'Let us build the hot-swap feature' }],
+      previousSummaries: [previousSummary],
+      steeringPrompt: 'steer',
+      hotSwapTimeoutMs: 5000,
+      logger,
+      callLLM: mockCallLLM,
+    });
+
+    // Verify the stub was replaced
+    const result = await readFile(sessionFile, 'utf-8');
+    const lines = result.split('\n').filter((l) => l.trim());
+    const cmpLine = lines.find((l) => l.includes('"compaction"'));
+    assert.ok(cmpLine);
+
+    const entry = JSON.parse(cmpLine) as { data: { summary: string } };
+    assert.equal(entry.data.summary, richSummary);
+    assert.ok(!entry.data.summary.includes(`[KASETT_STUB::${stubId}]`));
+    assert.ok(entry.data.summary.includes('hot-swap compaction feature complete'));
+  });
+});

@@ -74,7 +74,13 @@ function buildConfig(options: GenerateConfigOptions): KasettConfig {
     weights = generateDefaultWeights(windowSize);
   }
 
-  return { windowSize, weights, threadTracking };
+  return {
+    windowSize,
+    weights,
+    threadTracking,
+    hotSwap: DEFAULT_CONFIG.hotSwap,
+    hotSwapTimeoutMs: DEFAULT_CONFIG.hotSwapTimeoutMs,
+  };
 }
 
 /**

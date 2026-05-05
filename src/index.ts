@@ -19,6 +19,13 @@
  *     d. Calls the LLM with the messages + steering
  *     e. Returns the full output (including [THREAD_META]) to OC for storage
  *
+ * ### Hot-swap compaction (default, config.hotSwap = true)
+ *   Instead of blocking on the LLM call, summarize() returns a stub immediately
+ *   (zero LLM delay). The stub contains a [KASETT_STUB::<id>] marker and the
+ *   previous [THREAD_META] for minimal orientation. A background worker then
+ *   runs the full LLM summarization and atomically rewrites the JSONL entry
+ *   during the next inter-turn gap, replacing the stub with the rich summary.
+ *
  * ### before_prompt_build hook (MODIFYING)
  *   Fires on every normal agent turn. Reads the last N compaction summaries
  *   (up to windowSize) from the session JSONL, parses [THREAD_META] from each,
@@ -44,6 +51,8 @@ import { SessionReader, KasettError } from './storage/reader.js';
 import { weightSummaries } from './threads/weight.js';
 import { buildSteeringPrompt, buildOrientationPrompt } from './threads/steering.js';
 import { parseCompactionOutput } from './threads/parser.js';
+import { generateStub } from './hotswap/stub.js';
+import { runHotSwapWorker } from './hotswap/worker.js';
 import type { KasettConfig, ThreadMeta } from './types.js';
 import { DEFAULT_CONFIG } from './types.js';
 
@@ -178,7 +187,7 @@ export function register(api: PluginAPI): void {
   }
 
   api.logger.info(
-    `[kasett-rewind] Registering CompactionProvider + orientation hook — window=${config.windowSize}, threads=${config.threadTracking}`,
+    `[kasett-rewind] Registering CompactionProvider + orientation hook — window=${config.windowSize}, threads=${config.threadTracking}, hotSwap=${config.hotSwap}`,
   );
 
   const reader = new SessionReader();
@@ -275,58 +284,37 @@ export function register(api: PluginAPI): void {
 
       api.logger.info('[kasett-rewind] summarize() called — building thread-aware compaction');
 
+      // ─────────────────────────────────────────────────────────────────────
+      // HOT-SWAP PATH (default, config.hotSwap = true)
+      //
+      // 1. Build the compaction context (previous summaries + steering prompt)
+      // 2. Generate a stub summary immediately (no LLM call)
+      // 3. Return the stub to OC (zero delay)
+      // 4. Fire-and-forget: background worker runs full LLM + atomic swap
+      // ─────────────────────────────────────────────────────────────────────
+      if (config.hotSwap) {
+        return await summarizeWithHotSwap({
+          params,
+          capturedCtx,
+          config,
+          api,
+          reader,
+        });
+      }
+
+      // ─────────────────────────────────────────────────────────────────────
+      // LEGACY SYNCHRONOUS PATH (config.hotSwap = false)
+      // Blocks until the LLM returns the full summary.
+      // ─────────────────────────────────────────────────────────────────────
       try {
-        // --- 1. Read previous summaries from session JSONL ---
-        // OC also provides previousSummary directly — use that as the most recent,
-        // then supplement with older ones from the JSONL for the window.
-        let previousSummaries: string[] = [];
+        const { steeringPrompt } = await buildCompactionContext({
+          params,
+          capturedCtx,
+          config,
+          api,
+          reader,
+        });
 
-        if (params.previousSummary?.trim()) {
-          // OC already gave us the most recent summary — use it
-          previousSummaries = [params.previousSummary.trim()];
-        }
-
-        if (capturedCtx && previousSummaries.length < config.windowSize) {
-          try {
-            const sessionFile = await resolveSessionFileFromState(
-              api,
-              capturedCtx.stateDir,
-              capturedCtx.agentId,
-              capturedCtx.sessionKey,
-            );
-            if (sessionFile) {
-              const needed = config.windowSize - previousSummaries.length;
-              // Read last N+1 to avoid duplication with previousSummary
-              const events = await reader.readLastNSummaries(sessionFile, needed + 1);
-              // events are oldest-first; reverse to most-recent-first
-              const fromJsonl = [...events].reverse();
-
-              // If previousSummary matches the most recent JSONL entry, skip it
-              if (
-                previousSummaries.length > 0 &&
-                fromJsonl.length > 0 &&
-                fromJsonl[0].trim() === previousSummaries[0]
-              ) {
-                previousSummaries = [...previousSummaries, ...fromJsonl.slice(1).slice(0, needed)];
-              } else {
-                // No overlap — just append (most recent first)
-                previousSummaries = [...previousSummaries, ...fromJsonl.slice(0, needed)];
-              }
-            }
-          } catch (err) {
-            api.logger.warn(`[kasett-rewind] Could not load previous summaries: ${String(err)}`);
-          }
-        } else if (!capturedCtx) {
-          api.logger.warn('[kasett-rewind] No session context captured — summarizing without full history');
-        }
-
-        // --- 2. Pair summaries with temporal decay weights ---
-        const weighted = weightSummaries(previousSummaries, config.weights);
-
-        // --- 3. Build thread-aware steering prompt ---
-        const steeringPrompt = buildSteeringPrompt(weighted);
-
-        // --- 4. Call LLM with steering injection ---
         const summary = await callLLMForCompaction({
           messages: params.messages,
           signal: params.signal,
@@ -341,7 +329,7 @@ export function register(api: PluginAPI): void {
           return undefined;
         }
 
-        // --- 5. Validate [THREAD_META] was produced ---
+        // Validate [THREAD_META] was produced
         const parsed = parseCompactionOutput(summary);
         if (parsed.meta) {
           api.logger.info(`[kasett-rewind] Extracted thread meta: main="${parsed.meta.main}"`);
@@ -352,10 +340,8 @@ export function register(api: PluginAPI): void {
           );
         }
 
-        // --- 6. Return full output (with [THREAD_META]) to OC ---
+        // Return full output (with [THREAD_META]) to OC.
         // OC stores this as the compaction entry in the session JSONL.
-        // The [THREAD_META] block is preserved for future orientation injection
-        // via before_prompt_build without any sidecar file.
         return summary;
       } catch (err) {
         if (isAbortError(err)) {
@@ -369,6 +355,163 @@ export function register(api: PluginAPI): void {
   });
 
   api.logger.info('[kasett-rewind] CompactionProvider registered as "kasett-rewind"');
+}
+
+// ---------------------------------------------------------------------------
+// Hot-swap summarize implementation
+// ---------------------------------------------------------------------------
+
+interface SummarizeWithHotSwapParams {
+  params: SummarizeParams;
+  capturedCtx: { sessionKey: string; agentId: string; stateDir: string } | null;
+  config: KasettConfig & { enabled: boolean };
+  api: PluginAPI;
+  reader: SessionReader;
+}
+
+/**
+ * Hot-swap summarize: return a stub immediately, then run the full LLM
+ * summarization in the background and atomically replace the stub in the JSONL.
+ */
+async function summarizeWithHotSwap(p: SummarizeWithHotSwapParams): Promise<string | undefined> {
+  const { params, capturedCtx, config, api, reader } = p;
+
+  try {
+    // Step 1: Build compaction context (previous summaries + steering prompt)
+    // This is fast — just file reads and string ops, no LLM call.
+    const { previousSummaries, steeringPrompt, sessionFile } = await buildCompactionContext({
+      params,
+      capturedCtx,
+      config,
+      api,
+      reader,
+    });
+
+    // Step 2: Generate stub immediately (no LLM call)
+    const { stub, stubId } = generateStub(params.previousSummary, params.messages);
+
+    api.logger.info(`[kasett-rewind] Hot-swap: returning stub ${stubId} immediately`);
+
+    // Step 3: Fire-and-forget the background worker
+    // IMPORTANT: do NOT await this. The stub is returned first.
+    if (sessionFile) {
+      runHotSwapWorker({
+        sessionFile,
+        stubId,
+        messages: params.messages,
+        previousSummaries,
+        steeringPrompt,
+        customInstructions: params.customInstructions,
+        signal: params.signal,
+        compactionModel: config.compactionModel,
+        hotSwapTimeoutMs: config.hotSwapTimeoutMs,
+        logger: api.logger,
+        callLLM: callLLMForCompaction,
+      }).catch((err: unknown) => {
+        // Background errors are logged but never propagate
+        api.logger.error(`[kasett-rewind] Hot-swap background worker threw: ${String(err)}`);
+      });
+    } else {
+      api.logger.warn(
+        '[kasett-rewind] Hot-swap: no session file path — background worker skipped. ' +
+        'Stub will remain in place until next compaction.',
+      );
+    }
+
+    // Step 4: Return the stub to OC immediately
+    return stub;
+  } catch (err) {
+    if (isAbortError(err)) {
+      api.logger.info('[kasett-rewind] Hot-swap summarize() aborted via signal');
+      throw err;
+    }
+    api.logger.warn(
+      `[kasett-rewind] Hot-swap stub generation failed: ${String(err)} — ` +
+      'returning undefined to trigger OC fallback',
+    );
+    return undefined;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Shared compaction context builder
+// ---------------------------------------------------------------------------
+
+interface CompactionContext {
+  previousSummaries: string[];
+  steeringPrompt: string;
+  sessionFile: string | null;
+}
+
+interface BuildCompactionContextParams {
+  params: SummarizeParams;
+  capturedCtx: { sessionKey: string; agentId: string; stateDir: string } | null;
+  config: KasettConfig;
+  api: PluginAPI;
+  reader: SessionReader;
+}
+
+/**
+ * Build the compaction context: gather previous summaries, weight them,
+ * and build the steering prompt. Returns the context along with the
+ * resolved session file path (for hot-swap worker).
+ *
+ * This is fast (file reads + string ops, no LLM call).
+ */
+async function buildCompactionContext(
+  p: BuildCompactionContextParams,
+): Promise<CompactionContext> {
+  const { params, capturedCtx, config, api, reader } = p;
+
+  // --- 1. Collect previous summaries ---
+  // OC provides previousSummary directly — use that as most recent,
+  // then supplement with older ones from the JSONL for the window.
+  let previousSummaries: string[] = [];
+  let sessionFile: string | null = null;
+
+  if (params.previousSummary?.trim()) {
+    previousSummaries = [params.previousSummary.trim()];
+  }
+
+  if (capturedCtx && previousSummaries.length < config.windowSize) {
+    try {
+      sessionFile = await resolveSessionFileFromState(
+        api,
+        capturedCtx.stateDir,
+        capturedCtx.agentId,
+        capturedCtx.sessionKey,
+      );
+      if (sessionFile) {
+        const needed = config.windowSize - previousSummaries.length;
+        // Read last N+1 to avoid duplication with previousSummary
+        const events = await reader.readLastNSummaries(sessionFile, needed + 1);
+        // events are oldest-first; reverse to most-recent-first
+        const fromJsonl = [...events].reverse();
+
+        if (
+          previousSummaries.length > 0 &&
+          fromJsonl.length > 0 &&
+          fromJsonl[0].trim() === previousSummaries[0]
+        ) {
+          previousSummaries = [...previousSummaries, ...fromJsonl.slice(1).slice(0, needed)];
+        } else {
+          previousSummaries = [...previousSummaries, ...fromJsonl.slice(0, needed)];
+        }
+      }
+    } catch (err) {
+      api.logger.warn(`[kasett-rewind] Could not load previous summaries: ${String(err)}`);
+    }
+  } else if (!capturedCtx) {
+    api.logger.warn('[kasett-rewind] No session context captured — summarizing without full history');
+  }
+
+  // --- 2. Weight summaries by recency ---
+  const weighted = weightSummaries(previousSummaries, config.weights);
+
+  // --- 3. Build thread-aware steering prompt ---
+  const steeringPrompt = buildSteeringPrompt(weighted);
+
+  return { previousSummaries, steeringPrompt, sessionFile };
 }
 
 // ---------------------------------------------------------------------------
@@ -703,6 +846,8 @@ function resolveConfig(api: PluginAPI): KasettConfig & { enabled: boolean } {
       weights: raw.weights ?? DEFAULT_CONFIG.weights,
       threadTracking: raw.threadTracking ?? DEFAULT_CONFIG.threadTracking,
       compactionModel: raw.compactionModel ?? DEFAULT_CONFIG.compactionModel,
+      hotSwap: raw.hotSwap ?? DEFAULT_CONFIG.hotSwap,
+      hotSwapTimeoutMs: raw.hotSwapTimeoutMs ?? DEFAULT_CONFIG.hotSwapTimeoutMs,
     };
   } catch {
     return { enabled: true, ...DEFAULT_CONFIG };
@@ -723,6 +868,9 @@ export { emptyThreadMeta, isValidThreadMeta } from './threads/meta.js';
 export { CompactionWindow } from './compaction/window.js';
 export { generateConfig } from './cli/generate-config.js';
 export type { GenerateConfigOptions } from './cli/generate-config.js';
+export { generateStub } from './hotswap/stub.js';
+export { runHotSwapWorker } from './hotswap/worker.js';
+export { acquireLock, waitForLockAbsent } from './hotswap/lock.js';
 
 export type {
   KasettConfig,

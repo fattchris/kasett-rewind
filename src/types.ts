@@ -17,6 +17,19 @@ export interface KasettConfig {
    *   e.g. "claude-haiku-3-5-20241022" or "anthropic/claude-haiku-3-5"
    */
   compactionModel?: string;
+  /**
+   * Enable hot-swap compaction (zero-delay stub return with background rewrite).
+   * When true, summarize() returns a stub immediately and the full LLM summary
+   * is written to the JSONL between turns via an atomic hot-swap.
+   * Default: true
+   */
+  hotSwap: boolean;
+  /**
+   * Maximum time (ms) to wait for the session write lock to clear before
+   * the background hot-swap worker gives up.
+   * Default: 30000
+   */
+  hotSwapTimeoutMs: number;
 }
 
 export const DEFAULT_CONFIG: KasettConfig = {
@@ -24,6 +37,8 @@ export const DEFAULT_CONFIG: KasettConfig = {
   weights: [1.0, 0.6, 0.3],
   threadTracking: true,
   // compactionModel is intentionally unset — defaults to agent's primary model
+  hotSwap: true,
+  hotSwapTimeoutMs: 30_000,
 };
 
 /**
