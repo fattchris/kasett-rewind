@@ -240,6 +240,7 @@ testing infrastructure is ready, just needs the k6 script finished.
 | `windowSize` | `1-5` | `2` | Summaries retained. Higher = deeper memory, less room for new turns. |
 | `windowBudgetSplit` | `number[]` | `[0.3, 0.3, 0.4]` | Budget proportions. Length = `windowSize + 1`. Sum = `1.0`. |
 | `threadTracking` | `boolean` | `true` | Structured thread snapshots. Can disable independently of windowing. |
+| `compactionModel` | `string` | *(unset)* | Model for compaction LLM calls. Omit or set to `"default"` to use the agent's primary model (from `ANTHROPIC_API_KEY`/`OPENROUTER_API_KEY` env). Set to a model string to pin a specific model — e.g. `"claude-haiku-3-5-20241022"` (Anthropic direct) or `"anthropic/claude-haiku-3-5"` (OpenRouter). |
 
 ### Budget Split Explained
 
