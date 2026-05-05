@@ -220,11 +220,18 @@ testing infrastructure is ready, just needs the k6 script finished.
   "plugins": {
     "entries": {
       "kasett-rewind": {
-        "enabled": true,
+        "enabled": true,              // Master switch — false = plugin is invisible
         "config": {
-          "windowSize": 2,              // Keep 2 summaries in the rolling window
-          "windowBudgetSplit": [0.3, 0.3, 0.4],  // [oldest, newest, recent turns]
-          "threadTracking": true        // Enforce structured thread snapshots
+          "compaction": {
+            "model": "default",       // Omit or "default" = agent's primary model
+            "hotSwap": true,          // Zero-delay stub, full summary written between turns
+            "hotSwapTimeoutMs": 30000, // Max wait for session write lock
+            "windowSize": 3,          // Keep 3 summaries in the rolling window
+            "weights": [1.0, 0.6, 0.3] // Recency weights, most recent first
+          },
+          "steering": {
+            "threadTracking": true    // Inject thread trajectory on every agent turn
+          }
         }
       }
     }
@@ -234,25 +241,30 @@ testing infrastructure is ready, just needs the k6 script finished.
 
 ### Config Reference
 
+**Root**
+
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `enabled` | `boolean` | `true` | Master switch. `false` = plugin is invisible. |
-| `windowSize` | `1-5` | `2` | Summaries retained. Higher = deeper memory, less room for new turns. |
-| `windowBudgetSplit` | `number[]` | `[0.3, 0.3, 0.4]` | Budget proportions. Length = `windowSize + 1`. Sum = `1.0`. |
-| `threadTracking` | `boolean` | `true` | Structured thread snapshots. Can disable independently of windowing. |
-| `compactionModel` | `string` | *(unset)* | Model for compaction LLM calls. Omit or set to `"default"` to use the agent's primary model (from `ANTHROPIC_API_KEY`/`OPENROUTER_API_KEY` env). Set to a model string to pin a specific model — e.g. `"claude-haiku-3-5-20241022"` (Anthropic direct) or `"anthropic/claude-haiku-3-5"` (OpenRouter). |
+| `enabled` | `boolean` | `true` | Master switch. `false` = plugin is completely inert. |
 
-### Budget Split Explained
+**`compaction` group** — controls the compaction provider and rolling window
 
-```
-windowSize: 2, budgetSplit: [0.3, 0.3, 0.4]
-                                │    │    │
-                                │    │    └── 40% → Recent conversation turns
-                                │    └─────── 30% → Most recent compaction summary
-                                └──────────── 30% → Older compaction summary
-```
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `compaction.model` | `string` | *(unset)* | Model for compaction LLM calls. Omit or `"default"` = use the agent's primary model (from `ANTHROPIC_API_KEY`/`OPENROUTER_API_KEY` env). Set to a model string to pin — e.g. `"claude-haiku-3-5-20241022"` (Anthropic direct) or `"anthropic/claude-haiku-3-5"` (OpenRouter). |
+| `compaction.hotSwap` | `boolean` | `true` | Zero-delay stub return. Full LLM summary is written atomically between turns via background worker. |
+| `compaction.hotSwapTimeoutMs` | `integer` | `30000` | Max ms the background worker waits for the session write lock before giving up. |
+| `compaction.windowSize` | `1–5` | `3` | Compaction summaries to retain in the rolling window. Higher = deeper memory. |
+| `compaction.weights` | `number[]` | `[1.0, 0.6, 0.3]` | Recency weights per slot, most recent first. Length must equal `windowSize`. |
 
-More window = deeper memory but less room for new work. `windowSize: 2` is the sweet spot for most agents.
+**`steering` group** — controls the per-turn orientation hook
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `steering.threadTracking` | `boolean` | `true` | Inject thread trajectory orientation on every agent turn. Can be disabled independently of compaction. |
+
+> **Backward compatibility:** The old flat config keys (`windowSize`, `weights`, `threadTracking`, `compactionModel`, `hotSwap`, `hotSwapTimeoutMs`) are still accepted and mapped automatically to the new nested structure. Existing installations won't break.
+
 
 ---
 

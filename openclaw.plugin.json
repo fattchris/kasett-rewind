@@ -17,39 +17,53 @@
         "default": true,
         "description": "Master switch — when false, plugin is completely inert"
       },
-      "windowSize": {
-        "type": "integer",
-        "minimum": 1,
-        "maximum": 5,
-        "default": 3,
-        "description": "Number of previous compaction thread metas to evaluate"
+      "compaction": {
+        "type": "object",
+        "description": "Settings for the compaction provider and rolling window",
+        "properties": {
+          "model": {
+            "type": "string",
+            "description": "Model to use for compaction LLM calls. Use \"default\" (or omit) to inherit the agent's primary model from environment variables. Set to a model identifier string (e.g. \"claude-haiku-3-5-20241022\" or \"anthropic/claude-haiku-3-5\") to pin a specific model."
+          },
+          "hotSwap": {
+            "type": "boolean",
+            "default": true,
+            "description": "Enable hot-swap compaction. When true, summarize() returns a stub immediately (zero LLM delay) and the full summary is swapped in between turns via an atomic JSONL rewrite. The user sees no compaction delay."
+          },
+          "hotSwapTimeoutMs": {
+            "type": "integer",
+            "minimum": 1000,
+            "maximum": 120000,
+            "default": 30000,
+            "description": "Maximum time (ms) the background hot-swap worker will wait for the session write lock to clear before giving up. The stub remains in place if this timeout is exceeded."
+          },
+          "windowSize": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 5,
+            "default": 3,
+            "description": "Number of previous compaction thread metas to evaluate"
+          },
+          "weights": {
+            "type": "array",
+            "items": { "type": "number", "minimum": 0, "maximum": 1 },
+            "default": [1.0, 0.6, 0.3],
+            "description": "Weight per compaction slot, most recent first. Length must equal windowSize."
+          }
+        },
+        "additionalProperties": false
       },
-      "weights": {
-        "type": "array",
-        "items": { "type": "number", "minimum": 0, "maximum": 1 },
-        "default": [1.0, 0.6, 0.3],
-        "description": "Weight per compaction slot, most recent first. Length must equal windowSize."
-      },
-      "threadTracking": {
-        "type": "boolean",
-        "default": true,
-        "description": "Enable thread meta tracking in compaction output"
-      },
-      "compactionModel": {
-        "type": "string",
-        "description": "Model to use for compaction LLM calls. Use \"default\" (or omit) to inherit the agent's primary model from environment variables. Set to a model identifier string (e.g. \"claude-haiku-3-5-20241022\" or \"anthropic/claude-haiku-3-5\") to pin a specific model."
-      },
-      "hotSwap": {
-        "type": "boolean",
-        "default": true,
-        "description": "Enable hot-swap compaction. When true, summarize() returns a stub immediately (zero LLM delay) and the full summary is swapped in between turns via an atomic JSONL rewrite. The user sees no compaction delay."
-      },
-      "hotSwapTimeoutMs": {
-        "type": "integer",
-        "minimum": 1000,
-        "maximum": 120000,
-        "default": 30000,
-        "description": "Maximum time (ms) the background hot-swap worker will wait for the session write lock to clear before giving up. The stub remains in place if this timeout is exceeded."
+      "steering": {
+        "type": "object",
+        "description": "Settings for the per-turn orientation/steering hook",
+        "properties": {
+          "threadTracking": {
+            "type": "boolean",
+            "default": true,
+            "description": "Enable thread meta tracking and injection into every agent turn"
+          }
+        },
+        "additionalProperties": false
       }
     },
     "additionalProperties": false

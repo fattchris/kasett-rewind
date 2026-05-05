@@ -9,7 +9,11 @@ describe('generateConfig', () => {
 
     assert.ok(result.includes('✓ Generated'));
     assert.ok(result.includes('"kasett-rewind"'));
+    // Nested structure: compaction group
+    assert.ok(result.includes('"compaction"'));
     assert.ok(result.includes('"windowSize": 3'));
+    // Nested structure: steering group
+    assert.ok(result.includes('"steering"'));
     assert.ok(result.includes('"threadTracking": true'));
     assert.ok(result.includes('1'));
     assert.ok(result.includes('0.6'));

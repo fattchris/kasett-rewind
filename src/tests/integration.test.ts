@@ -17,12 +17,12 @@ describe('Integration: Full Pipeline', () => {
     // Step 1: Read session JSONL — get last N summaries
     const reader = new SessionReader();
     const filePath = join(fixturesDir, 'session-with-kasett-meta.jsonl');
-    const summaries = await reader.readLastNSummaries(filePath, DEFAULT_CONFIG.windowSize);
+    const summaries = await reader.readLastNSummaries(filePath, DEFAULT_CONFIG.compaction.windowSize);
 
     assert.equal(summaries.length, 3);
 
     // Step 2: Pair summaries with temporal decay weights (most recent first)
-    const weighted = weightSummaries([...summaries].reverse(), DEFAULT_CONFIG.weights);
+    const weighted = weightSummaries([...summaries].reverse(), DEFAULT_CONFIG.compaction.weights);
 
     assert.equal(weighted.length, 3);
     assert.equal(weighted[0].weight, 1.0);
@@ -64,7 +64,7 @@ sub3: planning v2 auth features (PKCE, refresh tokens)
     const reader = new SessionReader();
     const filePath = join(fixturesDir, 'session-with-kasett-meta.jsonl');
     // Read last 3 summaries (oldest first), reverse to most-recent-first, parse thread metas
-    const recentSummaries = await reader.readLastNSummaries(filePath, DEFAULT_CONFIG.windowSize);
+    const recentSummaries = await reader.readLastNSummaries(filePath, DEFAULT_CONFIG.compaction.windowSize);
     const metas: ThreadMeta[] = recentSummaries
       .slice()
       .reverse()
@@ -99,7 +99,7 @@ sub3: planning v2 auth features (PKCE, refresh tokens)
   test('plain session: summaries have no [THREAD_META], orientation returns null', async () => {
     const reader = new SessionReader();
     const filePath = join(fixturesDir, 'session-plain-compaction.jsonl');
-    const recentSummaries = await reader.readLastNSummaries(filePath, DEFAULT_CONFIG.windowSize);
+    const recentSummaries = await reader.readLastNSummaries(filePath, DEFAULT_CONFIG.compaction.windowSize);
 
     // Has summaries but no [THREAD_META] blocks — metas will be empty
     assert.ok(recentSummaries.length > 0);

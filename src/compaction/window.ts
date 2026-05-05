@@ -8,7 +8,7 @@ export class CompactionWindow {
   private events: CompactionEvent[] = [];
   private readonly windowSize: number;
 
-  constructor(config: Pick<KasettConfig, 'windowSize'>) {
+  constructor(config: Pick<KasettConfig['compaction'], 'windowSize'>) {
     this.windowSize = config.windowSize;
   }
 

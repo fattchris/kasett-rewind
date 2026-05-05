@@ -3,20 +3,14 @@
  * Simple thread meta model: 1 main thread + 3 sub-threads as plain strings.
  */
 
-export interface KasettConfig {
-  /** Number of previous compaction thread metas to evaluate (default: 3) */
-  windowSize: number;
-  /** Weight per compaction slot, most recent first (default: [1.0, 0.6, 0.3]) */
-  weights: number[];
-  /** Enable thread tracking (default: true) */
-  threadTracking: boolean;
+export interface KasettCompactionConfig {
   /**
    * Model to use for compaction LLM calls.
    * - "default" (or unset): use whatever model OC provides (the agent's primary model via env vars)
    * - Any other string: treated as a model identifier and passed directly to the API
    *   e.g. "claude-haiku-3-5-20241022" or "anthropic/claude-haiku-3-5"
    */
-  compactionModel?: string;
+  model?: string;
   /**
    * Enable hot-swap compaction (zero-delay stub return with background rewrite).
    * When true, summarize() returns a stub immediately and the full LLM summary
@@ -30,15 +24,35 @@ export interface KasettConfig {
    * Default: 30000
    */
   hotSwapTimeoutMs: number;
+  /** Number of previous compaction thread metas to evaluate (default: 3) */
+  windowSize: number;
+  /** Weight per compaction slot, most recent first (default: [1.0, 0.6, 0.3]) */
+  weights: number[];
+}
+
+export interface KasettSteeringConfig {
+  /** Enable thread tracking and injection on every agent turn (default: true) */
+  threadTracking: boolean;
+}
+
+export interface KasettConfig {
+  /** Compaction provider and rolling window settings */
+  compaction: KasettCompactionConfig;
+  /** Per-turn orientation/steering hook settings */
+  steering: KasettSteeringConfig;
 }
 
 export const DEFAULT_CONFIG: KasettConfig = {
-  windowSize: 3,
-  weights: [1.0, 0.6, 0.3],
-  threadTracking: true,
-  // compactionModel is intentionally unset — defaults to agent's primary model
-  hotSwap: true,
-  hotSwapTimeoutMs: 30_000,
+  compaction: {
+    // model is intentionally unset — defaults to agent's primary model
+    hotSwap: true,
+    hotSwapTimeoutMs: 30_000,
+    windowSize: 3,
+    weights: [1.0, 0.6, 0.3],
+  },
+  steering: {
+    threadTracking: true,
+  },
 };
 
 /**

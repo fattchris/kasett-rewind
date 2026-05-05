@@ -187,7 +187,7 @@ export function register(api: PluginAPI): void {
   }
 
   api.logger.info(
-    `[kasett-rewind] Registering CompactionProvider + orientation hook — window=${config.windowSize}, threads=${config.threadTracking}, hotSwap=${config.hotSwap}`,
+    `[kasett-rewind] Registering CompactionProvider + orientation hook — window=${config.compaction.windowSize}, threads=${config.steering.threadTracking}, hotSwap=${config.compaction.hotSwap}`,
   );
 
   const reader = new SessionReader();
@@ -199,7 +199,7 @@ export function register(api: PluginAPI): void {
   // find the right session JSONL. Runs just before the compaction starts.
   // ─────────────────────────────────────────────────────────────────────────
   api.on('before_compaction', async (_event: BeforeCompactionEvent, ctx: HookContext) => {
-    if (!config.threadTracking) return;
+    if (!config.steering.threadTracking) return;
 
     const sessionKey = ctx.sessionKey?.trim() || ctx.sessionId;
     const agentId = ctx.agentId?.trim() || 'main';
@@ -225,7 +225,7 @@ export function register(api: PluginAPI): void {
       _event: BeforePromptBuildEvent,
       ctx: HookContext,
     ): Promise<BeforePromptBuildResult | undefined> => {
-      if (!config.threadTracking) return;
+      if (!config.steering.threadTracking) return;
 
       const sessionKey = ctx.sessionKey?.trim() || ctx.sessionId;
       const agentId = ctx.agentId?.trim() || 'main';
@@ -235,7 +235,7 @@ export function register(api: PluginAPI): void {
         const sessionFile = await resolveSessionFile(api, ctx, agentId, sessionKey, stateDir);
         if (sessionFile) {
           // Read last N summaries (windowSize), oldest first
-          const recentSummaries = await reader.readLastNSummaries(sessionFile, config.windowSize);
+          const recentSummaries = await reader.readLastNSummaries(sessionFile, config.compaction.windowSize);
 
           if (recentSummaries.length > 0) {
             // Parse [THREAD_META] from each, collect valid ones
@@ -276,7 +276,7 @@ export function register(api: PluginAPI): void {
     id: 'kasett-rewind',
 
     async summarize(params: SummarizeParams): Promise<string | undefined> {
-      if (!config.threadTracking) return undefined;
+      if (!config.steering.threadTracking) return undefined;
 
       // Consume the pending context captured by before_compaction
       const capturedCtx = pendingCompactionCtx;
@@ -292,7 +292,7 @@ export function register(api: PluginAPI): void {
       // 3. Return the stub to OC (zero delay)
       // 4. Fire-and-forget: background worker runs full LLM + atomic swap
       // ─────────────────────────────────────────────────────────────────────
-      if (config.hotSwap) {
+      if (config.compaction.hotSwap) {
         return await summarizeWithHotSwap({
           params,
           capturedCtx,
@@ -320,7 +320,7 @@ export function register(api: PluginAPI): void {
           signal: params.signal,
           customInstructions: params.customInstructions,
           steeringPrompt,
-          compactionModel: config.compactionModel,
+          compactionModel: config.compaction.model,
           logger: api.logger,
         });
 
@@ -403,8 +403,8 @@ async function summarizeWithHotSwap(p: SummarizeWithHotSwapParams): Promise<stri
         steeringPrompt,
         customInstructions: params.customInstructions,
         signal: params.signal,
-        compactionModel: config.compactionModel,
-        hotSwapTimeoutMs: config.hotSwapTimeoutMs,
+        compactionModel: config.compaction.model,
+        hotSwapTimeoutMs: config.compaction.hotSwapTimeoutMs,
         logger: api.logger,
         callLLM: callLLMForCompaction,
       }).catch((err: unknown) => {
@@ -473,7 +473,7 @@ async function buildCompactionContext(
     previousSummaries = [params.previousSummary.trim()];
   }
 
-  if (capturedCtx && previousSummaries.length < config.windowSize) {
+  if (capturedCtx && previousSummaries.length < config.compaction.windowSize) {
     try {
       sessionFile = await resolveSessionFileFromState(
         api,
@@ -482,7 +482,7 @@ async function buildCompactionContext(
         capturedCtx.sessionKey,
       );
       if (sessionFile) {
-        const needed = config.windowSize - previousSummaries.length;
+        const needed = config.compaction.windowSize - previousSummaries.length;
         // Read last N+1 to avoid duplication with previousSummary
         const events = await reader.readLastNSummaries(sessionFile, needed + 1);
         // events are oldest-first; reverse to most-recent-first
@@ -506,7 +506,7 @@ async function buildCompactionContext(
   }
 
   // --- 2. Weight summaries by recency ---
-  const weighted = weightSummaries(previousSummaries, config.weights);
+  const weighted = weightSummaries(previousSummaries, config.compaction.weights);
 
   // --- 3. Build thread-aware steering prompt ---
   const steeringPrompt = buildSteeringPrompt(weighted);
@@ -839,15 +839,42 @@ function isAbortError(err: unknown): boolean {
 
 function resolveConfig(api: PluginAPI): KasettConfig & { enabled: boolean } {
   try {
-    const raw = (api.pluginConfig ?? {}) as Partial<KasettConfig> & { enabled?: boolean };
+    const raw = (api.pluginConfig ?? {}) as Record<string, unknown> & { enabled?: boolean };
+
+    // Support nested structure (new) and flat structure (legacy backward compat)
+    const rawCompaction = (raw['compaction'] as Record<string, unknown> | undefined) ?? {};
+    const rawSteering = (raw['steering'] as Record<string, unknown> | undefined) ?? {};
+
+    // Backward compat: flat keys map to nested structure if nested keys not present
+    const windowSize =
+      (rawCompaction['windowSize'] as number | undefined) ??
+      (raw['windowSize'] as number | undefined) ??
+      DEFAULT_CONFIG.compaction.windowSize;
+    const weights =
+      (rawCompaction['weights'] as number[] | undefined) ??
+      (raw['weights'] as number[] | undefined) ??
+      DEFAULT_CONFIG.compaction.weights;
+    const model =
+      (rawCompaction['model'] as string | undefined) ??
+      (raw['compactionModel'] as string | undefined) ??
+      DEFAULT_CONFIG.compaction.model;
+    const hotSwap =
+      (rawCompaction['hotSwap'] as boolean | undefined) ??
+      (raw['hotSwap'] as boolean | undefined) ??
+      DEFAULT_CONFIG.compaction.hotSwap;
+    const hotSwapTimeoutMs =
+      (rawCompaction['hotSwapTimeoutMs'] as number | undefined) ??
+      (raw['hotSwapTimeoutMs'] as number | undefined) ??
+      DEFAULT_CONFIG.compaction.hotSwapTimeoutMs;
+    const threadTracking =
+      (rawSteering['threadTracking'] as boolean | undefined) ??
+      (raw['threadTracking'] as boolean | undefined) ??
+      DEFAULT_CONFIG.steering.threadTracking;
+
     return {
-      enabled: raw.enabled ?? true,
-      windowSize: raw.windowSize ?? DEFAULT_CONFIG.windowSize,
-      weights: raw.weights ?? DEFAULT_CONFIG.weights,
-      threadTracking: raw.threadTracking ?? DEFAULT_CONFIG.threadTracking,
-      compactionModel: raw.compactionModel ?? DEFAULT_CONFIG.compactionModel,
-      hotSwap: raw.hotSwap ?? DEFAULT_CONFIG.hotSwap,
-      hotSwapTimeoutMs: raw.hotSwapTimeoutMs ?? DEFAULT_CONFIG.hotSwapTimeoutMs,
+      enabled: raw['enabled'] as boolean ?? true,
+      compaction: { model, hotSwap, hotSwapTimeoutMs, windowSize, weights },
+      steering: { threadTracking },
     };
   } catch {
     return { enabled: true, ...DEFAULT_CONFIG };

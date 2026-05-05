@@ -40,9 +40,13 @@ export function generateConfig(options: GenerateConfigOptions): string {
       enabled: true,
       path: './node_modules/kasett-rewind',
       config: {
-        windowSize: config.windowSize,
-        weights: config.weights,
-        threadTracking: config.threadTracking,
+        compaction: {
+          windowSize: config.compaction.windowSize,
+          weights: config.compaction.weights,
+        },
+        steering: {
+          threadTracking: config.steering.threadTracking,
+        },
       },
     },
   };
@@ -50,7 +54,7 @@ export function generateConfig(options: GenerateConfigOptions): string {
   output.push(JSON.stringify(pluginBlock, null, 2));
   output.push('');
   output.push('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-  output.push(`Window size: ${config.windowSize} | Thread tracking: ${config.threadTracking ? 'ON' : 'OFF'} | Weights: [${config.weights.join(', ')}]`);
+  output.push(`Window size: ${config.compaction.windowSize} | Thread tracking: ${config.steering.threadTracking ? 'ON' : 'OFF'} | Weights: [${config.compaction.weights.join(', ')}]`)
   output.push('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
   return output.join('\n');
@@ -60,26 +64,30 @@ export function generateConfig(options: GenerateConfigOptions): string {
  * Build a validated KasettConfig from CLI options + defaults.
  */
 function buildConfig(options: GenerateConfigOptions): KasettConfig {
-  const windowSize = options.windowSize ?? DEFAULT_CONFIG.windowSize;
-  const threadTracking = options.threadTracking ?? DEFAULT_CONFIG.threadTracking;
+  const windowSize = options.windowSize ?? DEFAULT_CONFIG.compaction.windowSize;
+  const threadTracking = options.threadTracking ?? DEFAULT_CONFIG.steering.threadTracking;
 
   let weights: number[];
 
   if (options.weights) {
     weights = [...options.weights];
-  } else if (windowSize === DEFAULT_CONFIG.windowSize) {
-    weights = [...DEFAULT_CONFIG.weights];
+  } else if (windowSize === DEFAULT_CONFIG.compaction.windowSize) {
+    weights = [...DEFAULT_CONFIG.compaction.weights];
   } else {
     // Generate default weights with decay for the given window size
     weights = generateDefaultWeights(windowSize);
   }
 
   return {
-    windowSize,
-    weights,
-    threadTracking,
-    hotSwap: DEFAULT_CONFIG.hotSwap,
-    hotSwapTimeoutMs: DEFAULT_CONFIG.hotSwapTimeoutMs,
+    compaction: {
+      windowSize,
+      weights,
+      hotSwap: DEFAULT_CONFIG.compaction.hotSwap,
+      hotSwapTimeoutMs: DEFAULT_CONFIG.compaction.hotSwapTimeoutMs,
+    },
+    steering: {
+      threadTracking,
+    },
   };
 }
 
@@ -99,28 +107,30 @@ function generateDefaultWeights(windowSize: number): number[] {
  * Validate a KasettConfig and throw on invalid state.
  */
 function validateConfig(config: KasettConfig): void {
-  if (config.windowSize < 1 || config.windowSize > 5) {
+  const { windowSize, weights } = config.compaction;
+
+  if (windowSize < 1 || windowSize > 5) {
     throw new KasettError(
-      `windowSize must be between 1 and 5, got ${config.windowSize}`,
+      `windowSize must be between 1 and 5, got ${windowSize}`,
       'INVALID_CONFIG',
     );
   }
 
-  if (!Number.isInteger(config.windowSize)) {
+  if (!Number.isInteger(windowSize)) {
     throw new KasettError(
-      `windowSize must be an integer, got ${config.windowSize}`,
+      `windowSize must be an integer, got ${windowSize}`,
       'INVALID_CONFIG',
     );
   }
 
-  if (config.weights.length !== config.windowSize) {
+  if (weights.length !== windowSize) {
     throw new KasettError(
-      `weights length must equal windowSize (${config.windowSize}), got ${config.weights.length}`,
+      `weights length must equal windowSize (${windowSize}), got ${weights.length}`,
       'INVALID_CONFIG',
     );
   }
 
-  for (const value of config.weights) {
+  for (const value of weights) {
     if (value < 0 || value > 1) {
       throw new KasettError(
         `weights values must be between 0 and 1, got ${value}`,
