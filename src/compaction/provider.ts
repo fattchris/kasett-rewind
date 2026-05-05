@@ -99,12 +99,6 @@ export class CompactionProvider {
     // Push into window (may drop oldest)
     const dropped = this.window.push(summary);
 
-    // If ALLM extraction is enabled, feed dropped summary to extractor
-    if (dropped && this.config.allmExtraction) {
-      // TODO: Feed to ALLM pattern extractor
-      // await this.allmExtractor.ingest(dropped);
-    }
-
     return summary;
   }
 

@@ -4,7 +4,8 @@ OpenClaw compaction plugin implementing:
 
 1. **Rolling Compaction Window** — retains N compaction summaries instead of one, preventing context loss across multiple compactions
 2. **Structured Thread Tracking** — each compaction embeds main thread + sub-threads + key state as structured data
-3. **ALLM Pattern Extraction** — extracts behavioral patterns from session data for adaptive LoRA lifecycle management
+
+ALLM (Adaptive LoRA Lifecycle Management) is a separate system in the broader ecosystem. Research and patent briefs for ALLM live in this repo under `/research` and `/patents`, but the code is out of scope for this plugin.
 
 ## Architecture
 
@@ -16,11 +17,6 @@ src/
 │   ├── window.ts         # Rolling window manager (read/write N summaries)
 │   ├── threads.ts        # Thread tracker (extract & evolve threads)
 │   └── prompt.ts         # Compaction prompt builder
-├── allm/
-│   ├── extractor.ts      # Pattern extraction from session JSONL
-│   ├── vitality.ts       # Vitality scoring V(p,t)
-│   ├── diff.ts           # Trailing-window diff engine
-│   └── types.ts          # Pattern/score types
 └── types.ts              # Shared types & OC plugin interface
 ```
 

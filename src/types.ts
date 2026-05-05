@@ -68,16 +68,10 @@ export interface KasettConfig {
   windowBudgetSplit: number[];
   /** Enable structured thread tracking (default: true) */
   threadTracking: boolean;
-  /** Enable ALLM pattern extraction during compaction (default: false) */
-  allmExtraction: boolean;
-  /** Path to store ALLM patterns (default: ./data/allm/) */
-  allmDataPath: string;
 }
 
 export const DEFAULT_CONFIG: KasettConfig = {
   windowSize: 2,
   windowBudgetSplit: [0.3, 0.3, 0.4],
   threadTracking: true,
-  allmExtraction: false,
-  allmDataPath: './data/allm/',
 };
