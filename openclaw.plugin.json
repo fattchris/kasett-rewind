@@ -1,9 +1,9 @@
 {
   "id": "kasett-rewind",
   "name": "Kasett Rewind",
-  "version": "0.1.0",
-  "description": "Rolling compaction window + structured thread tracking. Your agent never forgets what it was doing.",
-  "author": "Molt AI Corp",
+  "version": "0.2.0",
+  "description": "Thread-meta feedback loop for compaction. Your agent never forgets what it was doing.",
+  "author": "Kasett",
   "license": "UNLICENSED",
   "main": "dist/index.js",
   "engines": {
@@ -21,22 +21,22 @@
         "type": "integer",
         "minimum": 1,
         "maximum": 5,
-        "default": 2,
-        "description": "Number of compaction summaries to retain in the rolling window"
+        "default": 3,
+        "description": "Number of previous compaction thread metas to evaluate"
       },
-      "windowBudgetSplit": {
+      "weights": {
         "type": "array",
         "items": { "type": "number", "minimum": 0, "maximum": 1 },
-        "default": [0.3, 0.3, 0.4],
-        "description": "Token budget proportions [oldest..newest summary, recent turns]. Must sum to 1.0, length = windowSize + 1"
+        "default": [1.0, 0.6, 0.3],
+        "description": "Weight per compaction slot, most recent first. Length must equal windowSize."
       },
       "threadTracking": {
         "type": "boolean",
         "default": true,
-        "description": "Enable structured thread snapshots in compaction output"
+        "description": "Enable thread meta tracking in compaction output"
       }
     },
     "additionalProperties": false
   },
-  "hooks": ["before_compaction", "after_compaction"]
+  "hooks": ["before_compaction", "after_compaction", "context_load"]
 }

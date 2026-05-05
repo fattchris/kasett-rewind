@@ -1,22 +1,22 @@
 /**
  * kasett-rewind — OpenClaw Compaction Plugin
  *
- * Rolling compaction window + structured thread tracking.
- * Prevents goldfish brain by retaining N compaction summaries
- * and enforcing thread evolution rules across compactions.
- *
- * Registration modes:
- *   1. before_compaction hook — injects customInstructions dynamically
- *   2. after_compaction hook — validates thread evolution
+ * Simple thread-meta feedback loop:
+ * - before_compaction: reads N previous thread metas, weights them,
+ *   builds a steering prompt, injects as customInstructions
+ * - after_compaction: parses [THREAD_META] from output, stores alongside summary
+ * - context_load: injects short orientation string from most recent thread meta
  *
  * The plugin does NOT replace the LLM summarizer. It augments OC's
  * built-in compaction by injecting structured instructions and
- * validating the output.
+ * parsing structured output.
  */
 
-import { generateCustomInstructions } from './phase1/instructions.js';
-import { ThreadTracker } from './compaction/threads.js';
-import type { KasettConfig, ThreadSnapshot } from './types.js';
+import { SessionReader, KasettError } from './storage/reader.js';
+import { analyzeThreads } from './threads/weight.js';
+import { buildSteeringPrompt, buildOrientationPrompt } from './threads/steering.js';
+import { parseCompactionOutput } from './threads/parser.js';
+import type { KasettConfig, ThreadMeta } from './types.js';
 import { DEFAULT_CONFIG } from './types.js';
 
 // --- OC Plugin SDK types (structural, not imported at runtime) ---
@@ -26,17 +26,24 @@ interface CompactionHookContext {
   previousSummary?: string;
   customInstructions?: string;
   compressionRatio?: number;
+  sessionFilePath?: string;
 }
 
 interface CompactionResult {
   summary: string;
 }
 
+interface ContextLoadHookContext {
+  sessionFilePath?: string;
+  additionalContext?: string;
+}
+
 interface PluginAPI {
   getConfig<T>(pluginId: string): T;
   hooks: {
-    on(event: 'before_compaction', handler: (ctx: CompactionHookContext) => CompactionHookContext | void): void;
-    on(event: 'after_compaction', handler: (result: CompactionResult) => void): void;
+    on(event: 'before_compaction', handler: (ctx: CompactionHookContext) => CompactionHookContext | Promise<CompactionHookContext | void> | void): void;
+    on(event: 'after_compaction', handler: (result: CompactionResult) => CompactionResult | void): void;
+    on(event: 'context_load', handler: (ctx: ContextLoadHookContext) => ContextLoadHookContext | Promise<ContextLoadHookContext | void> | void): void;
   };
   log: {
     info(msg: string): void;
@@ -49,11 +56,6 @@ interface PluginAPI {
 
 /**
  * Main plugin entry point. Called by the OC plugin loader on startup.
- *
- * If `enabled` is false in config, does nothing — plugin is invisible.
- * If `enabled` is true, registers:
- *   - before_compaction hook to inject structured instructions
- *   - after_compaction hook to validate thread evolution
  */
 export function register(api: PluginAPI): void {
   const config = resolveConfig(api);
@@ -67,51 +69,103 @@ export function register(api: PluginAPI): void {
     `[kasett-rewind] Registering — window=${config.windowSize}, threads=${config.threadTracking}`,
   );
 
-  let lastThreadSnapshot: ThreadSnapshot | undefined;
+  const reader = new SessionReader();
 
-  // Hook 1: Inject structured compaction instructions before OC runs the summarizer
-  api.hooks.on('before_compaction', (ctx: CompactionHookContext) => {
-    const instructions = generateCustomInstructions(config);
-
-    // If there's a previous summary, try to parse thread state from it
-    if (ctx.previousSummary && config.threadTracking) {
-      lastThreadSnapshot = ThreadTracker.parse(ctx.previousSummary);
-      api.log.debug(
-        `[kasett-rewind] Parsed previous thread state: main="${lastThreadSnapshot.mainThread}"`,
-      );
+  // Hook 1: Before compaction — inject steering prompt
+  api.hooks.on('before_compaction', async (ctx: CompactionHookContext) => {
+    if (!config.threadTracking || !ctx.sessionFilePath) {
+      return ctx;
     }
 
-    // Inject our instructions (merges with any existing customInstructions)
-    const merged = ctx.customInstructions
-      ? `${ctx.customInstructions}\n\n${instructions}`
-      : instructions;
+    try {
+      // Read previous thread metas
+      const events = await reader.readLastNWithMeta(ctx.sessionFilePath, config.windowSize);
+      const metas: ThreadMeta[] = events
+        .filter((e) => e.data.kaspiett != null)
+        .map((e) => e.data.kaspiett!)
+        .reverse(); // Most recent first for weight analysis
 
-    return { ...ctx, customInstructions: merged };
+      if (metas.length === 0) {
+        // No previous thread metas — still inject basic format instructions
+        const basicSteering = buildSteeringPrompt({ core: [], fresh: [], fading: [] }, []);
+        const merged = ctx.customInstructions
+          ? `${ctx.customInstructions}\n\n${basicSteering}`
+          : basicSteering;
+        return { ...ctx, customInstructions: merged };
+      }
+
+      // Weight and analyze threads
+      const analysis = analyzeThreads(metas, config.weights);
+
+      // Build steering prompt
+      const steering = buildSteeringPrompt(analysis, metas);
+
+      api.log.debug(
+        `[kasett-rewind] Steering: ${analysis.core.length} core, ${analysis.fresh.length} fresh, ${analysis.fading.length} fading`,
+      );
+
+      // Inject (merge with existing customInstructions)
+      const merged = ctx.customInstructions
+        ? `${ctx.customInstructions}\n\n${steering}`
+        : steering;
+
+      return { ...ctx, customInstructions: merged };
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      api.log.warn(`[kasett-rewind] Failed to build steering prompt: ${msg}`);
+      return ctx;
+    }
   });
 
-  // Hook 2: Validate thread evolution after compaction completes
+  // Hook 2: After compaction — parse thread meta from output
   api.hooks.on('after_compaction', (result: CompactionResult) => {
     if (!config.threadTracking) return;
 
-    const currentSnapshot = ThreadTracker.parse(result.summary);
+    const parsed = parseCompactionOutput(result.summary);
 
-    if (lastThreadSnapshot) {
-      const violations = ThreadTracker.validate(currentSnapshot, lastThreadSnapshot);
+    if (parsed.meta) {
+      api.log.debug(
+        `[kasett-rewind] Extracted thread meta: main="${parsed.meta.main}"`,
+      );
 
-      if (violations.length > 0) {
-        api.log.warn(
-          `[kasett-rewind] Thread evolution violations (${violations.length}):`,
-        );
-        for (const v of violations) {
-          api.log.warn(`  → ${v}`);
-        }
-      } else {
-        api.log.debug('[kasett-rewind] Thread evolution validated ✓');
-      }
+      // Return modified result with clean summary + kaspiett meta embedded
+      // OC will store this in the compaction event
+      const enrichedData = {
+        summary: parsed.summary,
+        kaspiett: parsed.meta,
+      };
+
+      return { summary: JSON.stringify(enrichedData) } as CompactionResult;
+    } else {
+      api.log.warn('[kasett-rewind] No [THREAD_META] block found in compaction output');
+    }
+  });
+
+  // Hook 3: Context load — inject orientation string
+  api.hooks.on('context_load', async (ctx: ContextLoadHookContext) => {
+    if (!config.threadTracking || !ctx.sessionFilePath) {
+      return ctx;
     }
 
-    // Store for next compaction cycle
-    lastThreadSnapshot = currentSnapshot;
+    try {
+      const latestMeta = await reader.readLatestMeta(ctx.sessionFilePath);
+
+      if (latestMeta) {
+        const orientation = buildOrientationPrompt(latestMeta);
+        api.log.debug(`[kasett-rewind] Injecting orientation: "${latestMeta.main}"`);
+
+        const merged = ctx.additionalContext
+          ? `${ctx.additionalContext}\n\n${orientation}`
+          : orientation;
+
+        return { ...ctx, additionalContext: merged };
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      api.log.warn(`[kasett-rewind] Failed to load orientation: ${msg}`);
+    }
+
+    return ctx;
   });
 }
 
@@ -124,39 +178,31 @@ function resolveConfig(api: PluginAPI): KasettConfig & { enabled: boolean } {
     return {
       enabled: raw.enabled ?? true,
       windowSize: raw.windowSize ?? DEFAULT_CONFIG.windowSize,
-      windowBudgetSplit: raw.windowBudgetSplit ?? DEFAULT_CONFIG.windowBudgetSplit,
+      weights: raw.weights ?? DEFAULT_CONFIG.weights,
       threadTracking: raw.threadTracking ?? DEFAULT_CONFIG.threadTracking,
     };
   } catch {
-    // If config fetch fails, use defaults with enabled=true
     return { enabled: true, ...DEFAULT_CONFIG };
   }
 }
 
 // --- Public API Exports ---
 
-export { CompactionProvider } from './compaction/provider.js';
+export { SessionReader, KasettError } from './storage/reader.js';
+export { analyzeThreads } from './threads/weight.js';
+export type { WeightedThreadAnalysis } from './threads/weight.js';
+export { buildSteeringPrompt, buildOrientationPrompt } from './threads/steering.js';
+export { parseCompactionOutput } from './threads/parser.js';
+export type { ParseResult } from './threads/parser.js';
+export { emptyThreadMeta, isValidThreadMeta } from './threads/meta.js';
 export { CompactionWindow } from './compaction/window.js';
-export { ThreadTracker } from './compaction/threads.js';
-export { buildCompactionPrompt } from './compaction/prompt.js';
-
-// Phase 1 exports
-export { generateCustomInstructions, KasettError } from './phase1/instructions.js';
-export { SectionLoader } from './phase1/section-loader.js';
-export type { LoadedSections } from './phase1/section-loader.js';
-
-// Storage exports
-export { SessionReader } from './storage/reader.js';
-
-// CLI exports
 export { generateConfig } from './cli/generate-config.js';
 export type { GenerateConfigOptions } from './cli/generate-config.js';
 
 export type {
-  CompactionSummary,
-  CompactionContext,
-  ThreadSnapshot,
-  SubThread,
   KasettConfig,
+  CompactionEvent,
+  ThreadMeta,
+  ConversationTurn,
 } from './types.js';
 export { DEFAULT_CONFIG } from './types.js';

@@ -1,44 +1,35 @@
 import { createReadStream } from 'node:fs';
 import { createInterface } from 'node:readline';
-import type { CompactionSummary, ThreadSnapshot } from '../types.js';
-import { KasettError } from '../phase1/instructions.js';
+import type { CompactionEvent, ThreadMeta } from '../types.js';
 
 /**
- * Represents a raw compaction event read from a session JSONL file.
+ * Error class for kasett-rewind operations.
  */
-interface RawCompactionEvent {
-  readonly type: string;
-  readonly id?: string;
-  readonly timestamp?: string;
-  readonly data?: {
-    readonly summary?: string;
-    readonly kasettMeta?: {
-      readonly windowIndex?: number;
-      readonly windowTotal?: number;
-      readonly threadSnapshot?: ThreadSnapshot;
-      readonly tokenCount?: number;
-    };
-  };
+export class KasettError extends Error {
+  readonly code: string;
+
+  constructor(message: string, code: string) {
+    super(message);
+    this.name = 'KasettError';
+    this.code = code;
+  }
 }
 
 /**
- * Reads session JSONL files and extracts compaction summaries.
- * Handles both kasett-enriched events (with kasettMeta) and
- * plain OC compaction events (graceful fallback).
- *
+ * Reads session JSONL files and extracts compaction events with kaspiett thread meta.
  * Uses streaming for memory efficiency on large session files.
  */
 export class SessionReader {
   /**
-   * Read all compaction summaries from a session JSONL file.
-   * Returns summaries in chronological order (oldest first).
+   * Read all compaction events from a session JSONL file.
+   * Returns events in chronological order (oldest first).
    *
    * @param filePath - Absolute path to the session .jsonl file
-   * @returns Array of CompactionSummary objects
+   * @returns Array of CompactionEvent objects
    * @throws KasettError if file cannot be read
    */
-  async readCompactionSummaries(filePath: string): Promise<CompactionSummary[]> {
-    const summaries: CompactionSummary[] = [];
+  async readCompactionEvents(filePath: string): Promise<CompactionEvent[]> {
+    const events: CompactionEvent[] = [];
 
     try {
       const stream = createReadStream(filePath, { encoding: 'utf-8' });
@@ -49,13 +40,8 @@ export class SessionReader {
         if (!trimmed) continue;
 
         const event = this.parseLine(trimmed);
-        if (!event) continue;
-
-        if (event.type === 'compaction' && event.data?.summary) {
-          const summary = this.eventToSummary(event);
-          if (summary) {
-            summaries.push(summary);
-          }
+        if (event) {
+          events.push(event);
         }
       }
     } catch (err: unknown) {
@@ -66,96 +52,87 @@ export class SessionReader {
       );
     }
 
-    return summaries;
+    return events;
   }
 
   /**
-   * Read the last N compaction summaries from a session file.
-   * More efficient for large files when only recent history is needed.
+   * Read the last N compaction events that have kaspiett thread meta.
+   * Falls back to events without kaspiett if fewer than N have it.
    *
    * @param filePath - Absolute path to the session .jsonl file
-   * @param count - Maximum number of summaries to return
-   * @returns The last N CompactionSummary objects (oldest first)
+   * @param count - Maximum number of events to return
+   * @returns The last N CompactionEvent objects with kaspiett (oldest first)
    */
-  async readLastN(filePath: string, count: number): Promise<CompactionSummary[]> {
+  async readLastNWithMeta(filePath: string, count: number): Promise<CompactionEvent[]> {
     if (count <= 0) return [];
-    const all = await this.readCompactionSummaries(filePath);
-    return all.slice(-count);
+    const all = await this.readCompactionEvents(filePath);
+    const withMeta = all.filter((e) => e.data.kaspiett != null);
+    return withMeta.slice(-count);
   }
 
   /**
-   * Parse a single JSONL line into a raw event.
-   * Returns undefined if the line is not valid JSON or not a compaction event.
+   * Read the most recent thread meta from the session JSONL.
+   * Returns null if no compaction with kaspiett meta exists.
    */
-  private parseLine(line: string): RawCompactionEvent | undefined {
+  async readLatestMeta(filePath: string): Promise<ThreadMeta | null> {
+    const all = await this.readCompactionEvents(filePath);
+    for (let i = all.length - 1; i >= 0; i--) {
+      if (all[i].data.kaspiett) {
+        return all[i].data.kaspiett!;
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Parse a single JSONL line into a CompactionEvent.
+   * Returns undefined if the line is not a valid compaction event.
+   */
+  private parseLine(line: string): CompactionEvent | undefined {
     try {
       const parsed: unknown = JSON.parse(line);
       if (
         typeof parsed === 'object' &&
         parsed !== null &&
         'type' in parsed &&
-        typeof (parsed as Record<string, unknown>).type === 'string'
+        (parsed as Record<string, unknown>).type === 'compaction' &&
+        'data' in parsed
       ) {
-        return parsed as RawCompactionEvent;
+        const obj = parsed as Record<string, unknown>;
+        const data = obj.data as Record<string, unknown>;
+        if (typeof data?.summary !== 'string') return undefined;
+
+        // Extract kaspiett if present
+        let kaspiett: ThreadMeta | undefined;
+        if (data.kaspiett && typeof data.kaspiett === 'object') {
+          const k = data.kaspiett as Record<string, unknown>;
+          if (
+            typeof k.main === 'string' &&
+            Array.isArray(k.sub) &&
+            k.sub.length === 3 &&
+            k.sub.every((s: unknown) => typeof s === 'string')
+          ) {
+            kaspiett = {
+              main: k.main,
+              sub: k.sub as [string, string, string],
+            };
+          }
+        }
+
+        return {
+          type: 'compaction',
+          id: typeof obj.id === 'string' ? obj.id : undefined,
+          timestamp: typeof obj.timestamp === 'string' ? obj.timestamp : undefined,
+          data: {
+            summary: data.summary as string,
+            kaspiett,
+          },
+        };
       }
       return undefined;
     } catch {
-      // Skip unparseable lines — session JSONL can contain non-JSON markers
+      // Skip unparseable lines
       return undefined;
     }
   }
-
-  /**
-   * Convert a raw compaction event to a CompactionSummary.
-   * If the event has kasettMeta, use it. Otherwise, create a
-   * fallback summary from the raw summary text.
-   */
-  private eventToSummary(event: RawCompactionEvent): CompactionSummary | undefined {
-    const data = event.data;
-    if (!data?.summary) return undefined;
-
-    const meta = data.kasettMeta;
-
-    if (meta?.threadSnapshot) {
-      // Full kasett-enriched event
-      return {
-        summary: data.summary,
-        windowIndex: meta.windowIndex ?? 0,
-        windowTotal: meta.windowTotal ?? 1,
-        threadSnapshot: meta.threadSnapshot,
-        timestamp: event.timestamp ?? new Date().toISOString(),
-        tokenCount: meta.tokenCount ?? estimateTokens(data.summary),
-      };
-    }
-
-    // Fallback: plain OC compaction event without kasettMeta
-    return {
-      summary: data.summary,
-      windowIndex: 0,
-      windowTotal: 1,
-      threadSnapshot: createEmptyThreadSnapshot(),
-      timestamp: event.timestamp ?? new Date().toISOString(),
-      tokenCount: estimateTokens(data.summary),
-    };
-  }
-}
-
-/**
- * Creates an empty thread snapshot for fallback use.
- */
-function createEmptyThreadSnapshot(): ThreadSnapshot {
-  return {
-    mainThread: 'Unknown',
-    subThreads: [],
-    keyState: {},
-    unresolved: [],
-    threadHistory: [],
-  };
-}
-
-/**
- * Rough token estimate (4 chars per token for English).
- */
-function estimateTokens(text: string): number {
-  return Math.ceil(text.length / 4);
 }

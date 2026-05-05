@@ -2,8 +2,7 @@ import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { SessionReader } from '../storage/reader.js';
-import { KasettError } from '../phase1/instructions.js';
+import { SessionReader, KasettError } from '../storage/reader.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const fixturesDir = join(__dirname, 'fixtures');
@@ -11,85 +10,67 @@ const fixturesDir = join(__dirname, 'fixtures');
 describe('SessionReader', () => {
   const reader = new SessionReader();
 
-  describe('readCompactionSummaries', () => {
-    test('reads kasett-enriched compaction events', async () => {
+  describe('readCompactionEvents', () => {
+    test('reads compaction events with kaspiett meta', async () => {
       const filePath = join(fixturesDir, 'session-with-kasett-meta.jsonl');
-      const summaries = await reader.readCompactionSummaries(filePath);
+      const events = await reader.readCompactionEvents(filePath);
 
-      assert.equal(summaries.length, 2);
+      assert.equal(events.length, 3);
 
       // First compaction
-      assert.equal(summaries[0].windowIndex, 0);
-      assert.equal(summaries[0].windowTotal, 2);
-      assert.equal(summaries[0].timestamp, '2026-05-05T07:00:00Z');
+      assert.equal(events[0].type, 'compaction');
+      assert.ok(events[0].data.kaspiett);
       assert.equal(
-        summaries[0].threadSnapshot.mainThread,
-        'Building OAuth2 authentication system for MoltAI platform',
+        events[0].data.kaspiett.main,
+        'building OAuth2 authentication system for MoltAI platform',
       );
-      assert.equal(summaries[0].threadSnapshot.subThreads.length, 2);
-      assert.equal(
-        summaries[0].threadSnapshot.keyState['targetVersion'],
-        'PostgreSQL 15.2',
-      );
-      assert.equal(summaries[0].threadSnapshot.unresolved.length, 2);
-      assert.equal(summaries[0].tokenCount, 320);
+      assert.equal(events[0].data.kaspiett.sub.length, 3);
+      assert.equal(events[0].data.kaspiett.sub[0], 'setting up Google + GitHub federation');
 
       // Second compaction
-      assert.equal(summaries[1].windowIndex, 1);
-      assert.equal(summaries[1].threadSnapshot.threadHistory.length, 1);
+      assert.ok(events[1].data.kaspiett);
       assert.equal(
-        summaries[1].threadSnapshot.threadHistory[0].thread,
-        'Database migration',
+        events[1].data.kaspiett.sub[1],
+        'adding rate limiting to token endpoint',
       );
+
+      // Third compaction
+      assert.ok(events[2].data.kaspiett);
       assert.equal(
-        summaries[1].threadSnapshot.threadHistory[0].status,
-        'completed',
+        events[2].data.kaspiett.sub[0],
+        'completing GitHub OAuth integration',
       );
     });
 
-    test('reads plain compaction events (no kasettMeta) with fallback', async () => {
+    test('reads plain compaction events (no kaspiett)', async () => {
       const filePath = join(fixturesDir, 'session-plain-compaction.jsonl');
-      const summaries = await reader.readCompactionSummaries(filePath);
+      const events = await reader.readCompactionEvents(filePath);
 
-      assert.equal(summaries.length, 2);
-
-      // Fallback: should have empty thread snapshot
-      assert.equal(summaries[0].threadSnapshot.mainThread, 'Unknown');
-      assert.deepEqual(summaries[0].threadSnapshot.subThreads, []);
-      assert.deepEqual(summaries[0].threadSnapshot.keyState, {});
-      assert.equal(summaries[0].windowIndex, 0);
-      assert.equal(summaries[0].windowTotal, 1);
-
-      // Should preserve the summary text
-      assert.ok(summaries[0].summary.includes('CI/CD pipeline'));
-      assert.ok(summaries[1].summary.includes('GitHub Actions'));
+      assert.equal(events.length, 2);
+      assert.equal(events[0].data.kaspiett, undefined);
+      assert.equal(events[1].data.kaspiett, undefined);
+      assert.ok(events[0].data.summary.includes('CI/CD pipeline'));
+      assert.ok(events[1].data.summary.includes('GitHub Actions'));
     });
 
-    test('reads mixed session (plain + kasett-enriched)', async () => {
+    test('reads mixed session (plain + kaspiett)', async () => {
       const filePath = join(fixturesDir, 'session-mixed.jsonl');
-      const summaries = await reader.readCompactionSummaries(filePath);
+      const events = await reader.readCompactionEvents(filePath);
 
-      assert.equal(summaries.length, 2);
+      assert.equal(events.length, 2);
+      assert.equal(events[0].data.kaspiett, undefined);
+      assert.ok(events[0].data.summary.includes('notification service'));
 
-      // First is plain (no kasettMeta)
-      assert.equal(summaries[0].threadSnapshot.mainThread, 'Unknown');
-      assert.ok(summaries[0].summary.includes('notification service'));
-
-      // Second is kasett-enriched
+      assert.ok(events[1].data.kaspiett);
       assert.equal(
-        summaries[1].threadSnapshot.mainThread,
-        'Refactoring notification service to event-driven architecture',
-      );
-      assert.equal(summaries[1].threadSnapshot.subThreads.length, 2);
-      assert.equal(
-        summaries[1].threadSnapshot.keyState['webhookEndpoint'],
-        '/api/webhooks/notify',
+        events[1].data.kaspiett!.main,
+        'refactoring notification service to event-driven architecture',
       );
     });
 
     test('throws KasettError for non-existent file', async () => {
       await assert.rejects(
-        () => reader.readCompactionSummaries('/nonexistent/path.jsonl'),
+        () => reader.readCompactionEvents('/nonexistent/path.jsonl'),
         (err: unknown) => {
           assert.ok(err instanceof KasettError);
           assert.equal(err.code, 'READ_ERROR');
@@ -97,35 +78,56 @@ describe('SessionReader', () => {
         },
       );
     });
-
-    test('readLastN returns empty for count 0', async () => {
-      const filePath = join(fixturesDir, 'session-with-kasett-meta.jsonl');
-      const summaries = await reader.readLastN(filePath, 0);
-      assert.deepEqual(summaries, []);
-    });
   });
 
-  describe('readLastN', () => {
-    test('returns last N summaries', async () => {
+  describe('readLastNWithMeta', () => {
+    test('returns last N events with kaspiett meta', async () => {
       const filePath = join(fixturesDir, 'session-with-kasett-meta.jsonl');
-      const summaries = await reader.readLastN(filePath, 1);
+      const events = await reader.readLastNWithMeta(filePath, 2);
 
-      assert.equal(summaries.length, 1);
-      assert.equal(summaries[0].windowIndex, 1); // Should be the second/last one
+      assert.equal(events.length, 2);
+      assert.ok(events[0].data.kaspiett);
+      assert.ok(events[1].data.kaspiett);
+      // Should be the last 2 (cmp_002, cmp_003)
+      assert.ok(events[1].data.kaspiett!.sub[0].includes('GitHub OAuth'));
     });
 
     test('returns all when N exceeds available', async () => {
       const filePath = join(fixturesDir, 'session-with-kasett-meta.jsonl');
-      const summaries = await reader.readLastN(filePath, 10);
-
-      assert.equal(summaries.length, 2);
+      const events = await reader.readLastNWithMeta(filePath, 10);
+      assert.equal(events.length, 3);
     });
 
     test('returns empty for N=0', async () => {
       const filePath = join(fixturesDir, 'session-with-kasett-meta.jsonl');
-      const summaries = await reader.readLastN(filePath, 0);
+      const events = await reader.readLastNWithMeta(filePath, 0);
+      assert.equal(events.length, 0);
+    });
 
-      assert.equal(summaries.length, 0);
+    test('skips events without kaspiett meta', async () => {
+      const filePath = join(fixturesDir, 'session-mixed.jsonl');
+      const events = await reader.readLastNWithMeta(filePath, 5);
+
+      // Only one event has kaspiett
+      assert.equal(events.length, 1);
+      assert.ok(events[0].data.kaspiett);
+    });
+  });
+
+  describe('readLatestMeta', () => {
+    test('returns most recent thread meta', async () => {
+      const filePath = join(fixturesDir, 'session-with-kasett-meta.jsonl');
+      const meta = await reader.readLatestMeta(filePath);
+
+      assert.ok(meta);
+      assert.equal(meta.main, 'building OAuth2 authentication system for MoltAI platform');
+      assert.equal(meta.sub[0], 'completing GitHub OAuth integration');
+    });
+
+    test('returns null when no kaspiett meta exists', async () => {
+      const filePath = join(fixturesDir, 'session-plain-compaction.jsonl');
+      const meta = await reader.readLatestMeta(filePath);
+      assert.equal(meta, null);
     });
   });
 });

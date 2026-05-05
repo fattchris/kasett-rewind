@@ -1,17 +1,17 @@
 import { DEFAULT_CONFIG } from '../types.js';
-import { generateCustomInstructions, KasettError } from '../phase1/instructions.js';
 import type { KasettConfig } from '../types.js';
+import { KasettError } from '../storage/reader.js';
 
 /**
  * Options for the generate-config command.
  */
 export interface GenerateConfigOptions {
-  /** Override window size (default: 2) */
+  /** Override window size (default: 3) */
   readonly windowSize?: number;
   /** Override thread tracking (default: true) */
   readonly threadTracking?: boolean;
-  /** Override budget split array */
-  readonly budgetSplit?: readonly number[];
+  /** Override weights array */
+  readonly weights?: readonly number[];
 }
 
 /**
@@ -26,24 +26,9 @@ export function generateConfig(options: GenerateConfigOptions): string {
   const config = buildConfig(options);
   validateConfig(config);
 
-  const customInstructions = generateCustomInstructions(config);
   const output: string[] = [];
 
   output.push('✓ Generated kasett-rewind configuration:');
-  output.push('');
-  output.push('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-  output.push('Add to your openclaw.json → "compaction" section:');
-  output.push('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-  output.push('');
-
-  const compactionBlock = {
-    compaction: {
-      customInstructions,
-      maxHistoryShare: computeMaxHistoryShare(config),
-    },
-  };
-
-  output.push(JSON.stringify(compactionBlock, null, 2));
   output.push('');
   output.push('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   output.push('Add to your openclaw.json → "plugins.entries" section:');
@@ -56,7 +41,7 @@ export function generateConfig(options: GenerateConfigOptions): string {
       path: './node_modules/kasett-rewind',
       config: {
         windowSize: config.windowSize,
-        windowBudgetSplit: config.windowBudgetSplit,
+        weights: config.weights,
         threadTracking: config.threadTracking,
       },
     },
@@ -65,7 +50,7 @@ export function generateConfig(options: GenerateConfigOptions): string {
   output.push(JSON.stringify(pluginBlock, null, 2));
   output.push('');
   output.push('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-  output.push(`Window size: ${config.windowSize} | Thread tracking: ${config.threadTracking ? 'ON' : 'OFF'} | Budget split: [${config.windowBudgetSplit.join(', ')}]`);
+  output.push(`Window size: ${config.windowSize} | Thread tracking: ${config.threadTracking ? 'ON' : 'OFF'} | Weights: [${config.weights.join(', ')}]`);
   output.push('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
   return output.join('\n');
@@ -78,43 +63,30 @@ function buildConfig(options: GenerateConfigOptions): KasettConfig {
   const windowSize = options.windowSize ?? DEFAULT_CONFIG.windowSize;
   const threadTracking = options.threadTracking ?? DEFAULT_CONFIG.threadTracking;
 
-  let windowBudgetSplit: number[];
+  let weights: number[];
 
-  if (options.budgetSplit) {
-    windowBudgetSplit = [...options.budgetSplit];
+  if (options.weights) {
+    weights = [...options.weights];
   } else if (windowSize === DEFAULT_CONFIG.windowSize) {
-    windowBudgetSplit = [...DEFAULT_CONFIG.windowBudgetSplit];
+    weights = [...DEFAULT_CONFIG.weights];
   } else {
-    // Generate a sensible default split for the given window size
-    windowBudgetSplit = generateDefaultSplit(windowSize);
+    // Generate default weights with decay for the given window size
+    weights = generateDefaultWeights(windowSize);
   }
 
-  return { windowSize, windowBudgetSplit, threadTracking };
+  return { windowSize, weights, threadTracking };
 }
 
 /**
- * Generate a sensible default budget split for a given window size.
- * Allocates 40% to recent turns and divides the rest evenly among summaries.
+ * Generate default weights with exponential decay.
+ * Most recent = 1.0, then 0.6^n decay.
  */
-function generateDefaultSplit(windowSize: number): number[] {
-  const recentTurnsShare = 0.4;
-  const summaryShare = (1 - recentTurnsShare) / windowSize;
-  const split: number[] = [];
-
+function generateDefaultWeights(windowSize: number): number[] {
+  const weights: number[] = [];
   for (let i = 0; i < windowSize; i++) {
-    split.push(Math.round(summaryShare * 100) / 100);
+    weights.push(Math.round(Math.pow(0.6, i) * 100) / 100);
   }
-  split.push(recentTurnsShare);
-
-  // Normalize to sum to exactly 1.0
-  const sum = split.reduce((a, b) => a + b, 0);
-  if (Math.abs(sum - 1.0) > 0.001) {
-    // Adjust the last summary slot to compensate for rounding
-    split[windowSize - 1] += 1.0 - sum;
-    split[windowSize - 1] = Math.round(split[windowSize - 1] * 100) / 100;
-  }
-
-  return split;
+  return weights;
 }
 
 /**
@@ -135,39 +107,19 @@ function validateConfig(config: KasettConfig): void {
     );
   }
 
-  const expectedLength = config.windowSize + 1;
-  if (config.windowBudgetSplit.length !== expectedLength) {
+  if (config.weights.length !== config.windowSize) {
     throw new KasettError(
-      `windowBudgetSplit length must be windowSize + 1 (${expectedLength}), got ${config.windowBudgetSplit.length}`,
+      `weights length must equal windowSize (${config.windowSize}), got ${config.weights.length}`,
       'INVALID_CONFIG',
     );
   }
 
-  const sum = config.windowBudgetSplit.reduce((a, b) => a + b, 0);
-  if (Math.abs(sum - 1.0) > 0.01) {
-    throw new KasettError(
-      `windowBudgetSplit must sum to 1.0 (±0.01), got ${sum}`,
-      'INVALID_CONFIG',
-    );
-  }
-
-  for (const value of config.windowBudgetSplit) {
+  for (const value of config.weights) {
     if (value < 0 || value > 1) {
       throw new KasettError(
-        `windowBudgetSplit values must be between 0 and 1, got ${value}`,
+        `weights values must be between 0 and 1, got ${value}`,
         'INVALID_CONFIG',
       );
     }
   }
-}
-
-/**
- * Compute maxHistoryShare for OC config.
- * This is the proportion of context allocated to compaction summaries
- * (everything except recent turns).
- */
-function computeMaxHistoryShare(config: KasettConfig): number {
-  // Recent turns is the last element of the split
-  const recentTurnsShare = config.windowBudgetSplit[config.windowBudgetSplit.length - 1];
-  return Math.round((1 - recentTurnsShare) * 100) / 100;
 }

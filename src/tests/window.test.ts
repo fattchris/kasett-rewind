@@ -1,27 +1,18 @@
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { CompactionWindow } from '../compaction/window.js';
-import type { CompactionSummary, ThreadSnapshot } from '../types.js';
+import type { CompactionEvent } from '../types.js';
 
-function makeSummary(overrides: Partial<CompactionSummary> = {}): CompactionSummary {
+function makeEvent(overrides: Partial<CompactionEvent['data']> & { id?: string } = {}): CompactionEvent {
+  const { id, ...dataOverrides } = overrides;
   return {
-    summary: 'Test summary content',
-    windowIndex: 0,
-    windowTotal: 2,
-    threadSnapshot: makeThreadSnapshot(),
+    type: 'compaction',
+    id: id ?? 'test-id',
     timestamp: new Date().toISOString(),
-    tokenCount: 100,
-    ...overrides,
-  };
-}
-
-function makeThreadSnapshot(): ThreadSnapshot {
-  return {
-    mainThread: 'Test main thread',
-    subThreads: [],
-    keyState: {},
-    unresolved: [],
-    threadHistory: [],
+    data: {
+      summary: 'Test summary',
+      ...dataOverrides,
+    },
   };
 }
 
@@ -35,89 +26,67 @@ describe('CompactionWindow', () => {
   });
 
   describe('push', () => {
-    test('adds summary to empty window', () => {
+    test('adds event to empty window', () => {
       const window = new CompactionWindow({ windowSize: 2 });
-      const summary = makeSummary();
-      const dropped = window.push(summary);
+      const event = makeEvent();
+      const dropped = window.push(event);
 
       assert.equal(dropped, undefined);
       assert.equal(window.size, 1);
-      assert.equal(window.getAll()[0].windowIndex, 0);
-      assert.equal(window.getAll()[0].windowTotal, 2);
     });
 
-    test('adds multiple summaries within window size', () => {
+    test('adds multiple events within window size', () => {
       const window = new CompactionWindow({ windowSize: 3 });
-      window.push(makeSummary({ summary: 'first' }));
-      window.push(makeSummary({ summary: 'second' }));
+      window.push(makeEvent({ summary: 'first' }));
+      window.push(makeEvent({ summary: 'second' }));
 
       assert.equal(window.size, 2);
-      assert.equal(window.getAll()[0].summary, 'first');
-      assert.equal(window.getAll()[1].summary, 'second');
-      assert.equal(window.getAll()[0].windowIndex, 0);
-      assert.equal(window.getAll()[1].windowIndex, 1);
+      assert.equal(window.getAll()[0].data.summary, 'first');
+      assert.equal(window.getAll()[1].data.summary, 'second');
     });
 
     test('drops oldest when window is full', () => {
       const window = new CompactionWindow({ windowSize: 2 });
-      window.push(makeSummary({ summary: 'first' }));
-      window.push(makeSummary({ summary: 'second' }));
-      const dropped = window.push(makeSummary({ summary: 'third' }));
+      window.push(makeEvent({ summary: 'first' }));
+      window.push(makeEvent({ summary: 'second' }));
+      const dropped = window.push(makeEvent({ summary: 'third' }));
 
       assert.equal(window.size, 2);
-      assert.equal(dropped?.summary, 'first');
-      assert.equal(window.getAll()[0].summary, 'second');
-      assert.equal(window.getAll()[1].summary, 'third');
-    });
-
-    test('re-indexes all summaries after push', () => {
-      const window = new CompactionWindow({ windowSize: 3 });
-      window.push(makeSummary({ summary: 'a' }));
-      window.push(makeSummary({ summary: 'b' }));
-      window.push(makeSummary({ summary: 'c' }));
-
-      const all = window.getAll();
-      assert.equal(all[0].windowIndex, 0);
-      assert.equal(all[1].windowIndex, 1);
-      assert.equal(all[2].windowIndex, 2);
-      assert.equal(all[0].windowTotal, 3);
-      assert.equal(all[1].windowTotal, 3);
-      assert.equal(all[2].windowTotal, 3);
+      assert.equal(dropped?.data.summary, 'first');
+      assert.equal(window.getAll()[0].data.summary, 'second');
+      assert.equal(window.getAll()[1].data.summary, 'third');
     });
 
     test('window size 1 always drops oldest', () => {
       const window = new CompactionWindow({ windowSize: 1 });
-      window.push(makeSummary({ summary: 'first' }));
-      const dropped = window.push(makeSummary({ summary: 'second' }));
+      window.push(makeEvent({ summary: 'first' }));
+      const dropped = window.push(makeEvent({ summary: 'second' }));
 
       assert.equal(window.size, 1);
-      assert.equal(dropped?.summary, 'first');
-      assert.equal(window.getAll()[0].summary, 'second');
+      assert.equal(dropped?.data.summary, 'first');
+      assert.equal(window.getAll()[0].data.summary, 'second');
     });
   });
 
   describe('load', () => {
-    test('loads summaries and trims to window size', () => {
+    test('loads events and trims to window size', () => {
       const window = new CompactionWindow({ windowSize: 2 });
-      const summaries = [
-        makeSummary({ summary: 'old' }),
-        makeSummary({ summary: 'middle' }),
-        makeSummary({ summary: 'recent' }),
+      const events = [
+        makeEvent({ summary: 'old' }),
+        makeEvent({ summary: 'middle' }),
+        makeEvent({ summary: 'recent' }),
       ];
 
-      window.load(summaries);
+      window.load(events);
       assert.equal(window.size, 2);
-      assert.equal(window.getAll()[0].summary, 'middle');
-      assert.equal(window.getAll()[1].summary, 'recent');
+      assert.equal(window.getAll()[0].data.summary, 'middle');
+      assert.equal(window.getAll()[1].data.summary, 'recent');
     });
 
-    test('loads fewer summaries than window size', () => {
+    test('loads fewer events than window size', () => {
       const window = new CompactionWindow({ windowSize: 5 });
-      const summaries = [makeSummary({ summary: 'only one' })];
-
-      window.load(summaries);
+      window.load([makeEvent({ summary: 'only one' })]);
       assert.equal(window.size, 1);
-      assert.equal(window.getAll()[0].summary, 'only one');
     });
 
     test('loads empty array', () => {
@@ -133,80 +102,53 @@ describe('CompactionWindow', () => {
       assert.equal(window.getLatest(), undefined);
     });
 
-    test('returns most recent summary', () => {
+    test('returns most recent event', () => {
       const window = new CompactionWindow({ windowSize: 3 });
-      window.push(makeSummary({ summary: 'old' }));
-      window.push(makeSummary({ summary: 'new' }));
+      window.push(makeEvent({ summary: 'old' }));
+      window.push(makeEvent({ summary: 'new' }));
 
-      assert.equal(window.getLatest()?.summary, 'new');
-    });
-  });
-
-  describe('computeBudgets', () => {
-    test('computes budgets with default split', () => {
-      const window = new CompactionWindow({ windowSize: 2 });
-      const result = window.computeBudgets(10000, [0.3, 0.3, 0.4]);
-
-      assert.equal(result.summaryBudgets.length, 2);
-      assert.equal(result.summaryBudgets[0], 3000);
-      assert.equal(result.summaryBudgets[1], 3000);
-      assert.equal(result.recentTurnsBudget, 4000);
-    });
-
-    test('computes budgets with asymmetric split', () => {
-      const window = new CompactionWindow({ windowSize: 3 });
-      const result = window.computeBudgets(10000, [0.2, 0.2, 0.2, 0.4]);
-
-      assert.equal(result.summaryBudgets.length, 3);
-      assert.equal(result.summaryBudgets[0], 2000);
-      assert.equal(result.summaryBudgets[1], 2000);
-      assert.equal(result.summaryBudgets[2], 2000);
-      assert.equal(result.recentTurnsBudget, 4000);
-    });
-
-    test('handles small budgets with floor rounding', () => {
-      const window = new CompactionWindow({ windowSize: 2 });
-      const result = window.computeBudgets(100, [0.3, 0.3, 0.4]);
-
-      assert.equal(result.summaryBudgets[0], 30);
-      assert.equal(result.summaryBudgets[1], 30);
-      assert.equal(result.recentTurnsBudget, 40);
-    });
-
-    test('window size 1 gives single summary budget', () => {
-      const window = new CompactionWindow({ windowSize: 1 });
-      const result = window.computeBudgets(10000, [0.6, 0.4]);
-
-      assert.equal(result.summaryBudgets.length, 1);
-      assert.equal(result.summaryBudgets[0], 6000);
-      assert.equal(result.recentTurnsBudget, 4000);
-    });
-  });
-
-  describe('serialize', () => {
-    test('returns copies of summaries', () => {
-      const window = new CompactionWindow({ windowSize: 2 });
-      window.push(makeSummary({ summary: 'test' }));
-
-      const serialized = window.serialize();
-      assert.equal(serialized.length, 1);
-      assert.equal(serialized[0].summary, 'test');
-
-      // Verify it's a copy (not a reference)
-      serialized[0].summary = 'modified';
-      assert.equal(window.getAll()[0].summary, 'test');
+      assert.equal(window.getLatest()?.data.summary, 'new');
     });
   });
 
   describe('getAll', () => {
-    test('returns copy of summaries array', () => {
+    test('returns copy of events array', () => {
       const window = new CompactionWindow({ windowSize: 2 });
-      window.push(makeSummary({ summary: 'test' }));
+      window.push(makeEvent({ summary: 'test' }));
 
       const all = window.getAll();
-      all.push(makeSummary({ summary: 'injected' }));
+      all.push(makeEvent({ summary: 'injected' }));
 
       assert.equal(window.size, 1);
+    });
+  });
+
+  describe('serialize', () => {
+    test('returns copies of events', () => {
+      const window = new CompactionWindow({ windowSize: 2 });
+      window.push(makeEvent({ summary: 'test' }));
+
+      const serialized = window.serialize();
+      assert.equal(serialized.length, 1);
+      assert.equal(serialized[0].data.summary, 'test');
+    });
+  });
+
+  describe('with kaspiett meta', () => {
+    test('preserves kaspiett in events', () => {
+      const window = new CompactionWindow({ windowSize: 2 });
+      window.push(makeEvent({
+        summary: 'test',
+        kaspiett: {
+          main: 'building auth',
+          sub: ['OAuth', 'rate limiting', 'monitoring'],
+        },
+      }));
+
+      const latest = window.getLatest();
+      assert.ok(latest?.data.kaspiett);
+      assert.equal(latest.data.kaspiett.main, 'building auth');
+      assert.deepEqual(latest.data.kaspiett.sub, ['OAuth', 'rate limiting', 'monitoring']);
     });
   });
 });

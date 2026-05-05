@@ -3,249 +3,138 @@ import assert from 'node:assert/strict';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { SessionReader } from '../storage/reader.js';
-import { ThreadTracker } from '../compaction/threads.js';
-import { CompactionWindow } from '../compaction/window.js';
-import { buildCompactionPrompt } from '../compaction/prompt.js';
-import { generateCustomInstructions } from '../phase1/instructions.js';
-import { SectionLoader } from '../phase1/section-loader.js';
+import { analyzeThreads } from '../threads/weight.js';
+import { buildSteeringPrompt, buildOrientationPrompt } from '../threads/steering.js';
+import { parseCompactionOutput } from '../threads/parser.js';
 import { DEFAULT_CONFIG } from '../types.js';
-import type { CompactionSummary, KasettConfig } from '../types.js';
+import type { ThreadMeta } from '../types.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const fixturesDir = join(__dirname, 'fixtures');
 
 describe('Integration: Full Pipeline', () => {
-  test('read fixture → load into window → generate prompt → parse mock output → validate threads', async () => {
+  test('read fixture → extract metas → weight → steer → parse output', async () => {
     // Step 1: Read session JSONL
     const reader = new SessionReader();
     const filePath = join(fixturesDir, 'session-with-kasett-meta.jsonl');
-    const summaries = await reader.readCompactionSummaries(filePath);
+    const events = await reader.readLastNWithMeta(filePath, DEFAULT_CONFIG.windowSize);
 
-    assert.equal(summaries.length, 2);
+    assert.equal(events.length, 3);
 
-    // Step 2: Load into window
-    const window = new CompactionWindow({ windowSize: 2 });
-    window.load(summaries);
-    assert.equal(window.size, 2);
+    // Step 2: Extract metas (most recent first for analysis)
+    const metas: ThreadMeta[] = events
+      .filter((e) => e.data.kaspiett != null)
+      .map((e) => e.data.kaspiett!)
+      .reverse();
 
-    // Step 3: Generate prompt for next compaction
-    const previousSummaries = window.getAll();
-    const prompt = buildCompactionPrompt(previousSummaries, 2000);
+    assert.equal(metas.length, 3);
 
-    assert.ok(prompt.includes('PREVIOUS COMPACTION'));
-    assert.ok(prompt.includes('OAuth2'));
-    assert.ok(prompt.includes('OUTPUT FORMAT'));
+    // Step 3: Analyze with weights
+    const analysis = analyzeThreads(metas, DEFAULT_CONFIG.weights);
 
-    // Step 4: Simulate LLM output (mock)
-    // Keep the main thread name close to previous for fuzzy match to pass
-    const mockLlmOutput = `### Main Thread
-Building OAuth2 authentication system — completing rate limiting
+    // "building OAuth2 authentication system for MoltAI platform" appears in all 3 = core
+    assert.ok(analysis.core.some((t) => t.toLowerCase().includes('oauth2 authentication')));
 
-### Active Sub-threads (max 3)
-1. Rate limiting — Implemented 100 req/min per client
-2. GitHub OAuth — Redirect URL registered, testing flow
+    // Step 4: Build steering prompt
+    const steering = buildSteeringPrompt(analysis, metas);
+    assert.ok(steering.includes('[THREAD_META]'));
+    assert.ok(steering.includes('Core Threads'));
 
-### Thread History
-- OAuth2 provider config: completed — Google flow fully working
-- Database migration: completed — Postgres 15.2 upgrade successful
+    // Step 5: Simulate LLM output with thread meta
+    const mockLlmOutput = `GitHub OAuth integration completed and deployed to production.
+Rate limiting stable at 100 req/min. All auth endpoints monitored.
+System is ready for production traffic.
 
-### Key State
-- targetVersion: PostgreSQL 15.2
-- oauthProviders: Google (live), GitHub (testing)
-- redirectUrl: https://auth.moltai.com/callback
-- rateLimitTarget: /api/v1/token
-- rateLimit: 100 req/min per client
+[THREAD_META]
+main: OAuth2 auth system deployed and operational
+sub1: GitHub OAuth live in production
+sub2: monitoring auth system performance metrics
+sub3: planning v2 auth features (PKCE, refresh tokens)
+[/THREAD_META]`;
 
-### Unresolved
-- GitHub OAuth scope approval pending from security team
+    // Step 6: Parse the output
+    const parsed = parseCompactionOutput(mockLlmOutput);
 
-### Narrative Summary
-Rate limiting implementation completed for the token endpoint at 100 req/min. Google OAuth is in production. GitHub OAuth redirect registered and flow testing underway. All database work finished.`;
+    assert.ok(parsed.meta);
+    assert.equal(parsed.meta.main, 'OAuth2 auth system deployed and operational');
+    assert.equal(parsed.meta.sub[0], 'GitHub OAuth live in production');
+    assert.equal(parsed.meta.sub[1], 'monitoring auth system performance metrics');
+    assert.equal(parsed.meta.sub[2], 'planning v2 auth features (PKCE, refresh tokens)');
 
-    // Step 5: Parse the mock output
-    const parsedSnapshot = ThreadTracker.parse(mockLlmOutput);
-
-    assert.equal(
-      parsedSnapshot.mainThread,
-      'Building OAuth2 authentication system — completing rate limiting',
-    );
-    assert.equal(parsedSnapshot.subThreads.length, 2);
-    assert.equal(parsedSnapshot.subThreads[0].name, 'Rate limiting');
-    assert.equal(parsedSnapshot.subThreads[1].name, 'GitHub OAuth');
-    assert.equal(parsedSnapshot.threadHistory.length, 2);
-    assert.equal(parsedSnapshot.keyState['rateLimit'], '100 req/min per client');
-    assert.equal(parsedSnapshot.unresolved.length, 1);
-
-    // Step 6: Validate thread evolution against previous
-    const latestSummary = window.getLatest();
-    assert.ok(latestSummary);
-    const violations = ThreadTracker.validate(
-      parsedSnapshot,
-      latestSummary.threadSnapshot,
-    );
-
-    // Should have no violations — all threads from previous are accounted for
-    assert.deepEqual(violations, []);
+    // Summary should not contain the meta block
+    assert.ok(!parsed.summary.includes('[THREAD_META]'));
+    assert.ok(parsed.summary.includes('GitHub OAuth integration completed'));
   });
 
-  test('detect thread violation in mock output', async () => {
-    // Read fixture
+  test('orientation prompt from latest meta', async () => {
     const reader = new SessionReader();
     const filePath = join(fixturesDir, 'session-with-kasett-meta.jsonl');
-    const summaries = await reader.readCompactionSummaries(filePath);
+    const meta = await reader.readLatestMeta(filePath);
 
-    // Load the latest
-    const latestSnapshot = summaries[summaries.length - 1].threadSnapshot;
+    assert.ok(meta);
 
-    // Bad mock output that drops a thread
-    const badMockOutput = `### Main Thread
-Working on something completely new
+    const orientation = buildOrientationPrompt(meta);
 
-### Active Sub-threads (max 3)
-1. New thing A — doing stuff
-
-### Key State
-- key: value
-
-### Summary
-Forgot everything about OAuth and rate limiting.`;
-
-    const parsedSnapshot = ThreadTracker.parse(badMockOutput);
-    const violations = ThreadTracker.validate(parsedSnapshot, latestSnapshot);
-
-    // Should detect violations — OAuth2 provider config and Rate limiting are missing
-    assert.ok(violations.length > 0);
+    assert.ok(orientation.includes('building OAuth2 authentication system'));
+    assert.ok(orientation.includes('completing GitHub OAuth integration'));
+    assert.ok(orientation.includes('rate limiting live at 100 req/min'));
+    assert.ok(orientation.includes('monitoring auth system performance'));
   });
 
-  test('thread history merging across multiple compactions', async () => {
+  test('mixed session: only kaspiett events are analyzed', async () => {
     const reader = new SessionReader();
-    const filePath = join(fixturesDir, 'session-with-kasett-meta.jsonl');
-    const summaries = await reader.readCompactionSummaries(filePath);
+    const filePath = join(fixturesDir, 'session-mixed.jsonl');
+    const events = await reader.readLastNWithMeta(filePath, 3);
 
-    // Take the second summary as "previous"
-    const previousSummary = summaries[1];
+    // Only 1 event has kaspiett
+    assert.equal(events.length, 1);
 
-    // Create a new snapshot where OAuth is now done
-    const currentSnapshot = ThreadTracker.parse(`### Main Thread
-Building rate limiting system
+    const metas = events.map((e) => e.data.kaspiett!).reverse();
+    const analysis = analyzeThreads(metas, [1.0]);
 
-### Active Sub-threads (max 3)
-1. Rate limiting — Testing with load balancer
-
-### Thread History
-- OAuth2 provider config: completed — Both Google and GitHub working
-
-### Key State
-- rateLimit: 100 req/min
-- loadBalancer: nginx
-
-### Unresolved
-- Load test results pending`);
-
-    // Merge history
-    const merged = ThreadTracker.mergeHistory(currentSnapshot, previousSummary);
-
-    // Should carry forward the "Database migration" history from previous
-    const dbThread = merged.threadHistory.find(
-      (h) => h.thread === 'Database migration',
-    );
-    assert.ok(dbThread, 'Database migration history should be carried forward');
-    assert.equal(dbThread.status, 'completed');
+    // All threads are "fresh" since only one compaction
+    assert.ok(analysis.fresh.length > 0);
+    assert.deepEqual(analysis.core, []);
+    assert.deepEqual(analysis.fading, []);
   });
 
-  test('section loader formats previous summaries for injection', async () => {
-    const config: KasettConfig = {
-      windowSize: 2,
-      windowBudgetSplit: [0.3, 0.3, 0.4],
-      threadTracking: true,
-    };
-
-    const loader = new SectionLoader(config);
-    const filePath = join(fixturesDir, 'session-with-kasett-meta.jsonl');
-    const result = await loader.loadSections(filePath, 5000);
-
-    // Should load 1 previous summary (excludes the most recent)
-    assert.equal(result.summaryCount, 1);
-    assert.ok(result.content.includes('kasett-rewind'));
-    assert.ok(result.content.includes('OAuth2'));
-    assert.ok(result.content.includes('PostgreSQL 15.2'));
-  });
-
-  test('section loader returns empty for single-window config', async () => {
-    const config: KasettConfig = {
-      windowSize: 1,
-      windowBudgetSplit: [0.6, 0.4],
-      threadTracking: true,
-    };
-
-    const loader = new SectionLoader(config);
-    const filePath = join(fixturesDir, 'session-with-kasett-meta.jsonl');
-    const result = await loader.loadSections(filePath, 5000);
-
-    assert.equal(result.summaryCount, 0);
-    assert.equal(result.content, '');
-    assert.equal(result.wasTruncated, false);
-  });
-
-  test('section loader truncates when budget is small', async () => {
-    const config: KasettConfig = {
-      windowSize: 2,
-      windowBudgetSplit: [0.3, 0.3, 0.4],
-      threadTracking: true,
-    };
-
-    const loader = new SectionLoader(config);
-    const filePath = join(fixturesDir, 'session-with-kasett-meta.jsonl');
-
-    // Very small budget forces truncation
-    const result = await loader.loadSections(filePath, 200);
-
-    assert.equal(result.summaryCount, 1);
-    assert.ok(result.content.length > 0);
-    assert.equal(result.wasTruncated, true);
-  });
-
-  test('custom instructions contain all required sections', () => {
-    const instructions = generateCustomInstructions(DEFAULT_CONFIG);
-
-    // Verify all mandatory sections are present
-    const requiredSections = [
-      'Main Thread',
-      'Active Sub-threads',
-      'Thread History',
-      'Key State',
-      'Unresolved',
-      'Summary',
-      'RULES:',
-    ];
-
-    for (const section of requiredSections) {
-      assert.ok(
-        instructions.includes(section),
-        `Missing required section: ${section}`,
-      );
-    }
-  });
-
-  test('end-to-end: plain OC session → kasett window bootstrap', async () => {
-    // Simulate: user has a session with plain compaction events,
-    // then enables kasett-rewind. The reader should handle gracefully.
+  test('plain session: no metas available, orientation returns null', async () => {
     const reader = new SessionReader();
     const filePath = join(fixturesDir, 'session-plain-compaction.jsonl');
-    const summaries = await reader.readCompactionSummaries(filePath);
+    const meta = await reader.readLatestMeta(filePath);
 
-    // Load into window
-    const window = new CompactionWindow({ windowSize: 2 });
-    window.load(summaries);
+    assert.equal(meta, null);
+  });
 
-    // Should work — just with empty thread snapshots
-    assert.equal(window.size, 2);
-    const latest = window.getLatest();
-    assert.ok(latest);
-    assert.equal(latest.threadSnapshot.mainThread, 'Unknown');
+  test('thread evolution: core threads persist, fading threads captured', async () => {
+    // Simulate 3 compactions where a thread fades out
+    const metas: ThreadMeta[] = [
+      // Most recent: auth is gone, now doing deploys
+      {
+        main: 'deploying to production',
+        sub: ['health checks', 'load balancer config', 'DNS setup'],
+      },
+      // Previous: auth still main
+      {
+        main: 'building auth system',
+        sub: ['OAuth setup', 'rate limiting', 'deploying to production'],
+      },
+      // Oldest: auth was main
+      {
+        main: 'building auth system',
+        sub: ['OAuth setup', 'database migration', 'testing'],
+      },
+    ];
 
-    // Generate prompt (should still work with empty snapshots)
-    const prompt = buildCompactionPrompt(window.getAll(), 2000);
-    assert.ok(prompt.includes('OUTPUT FORMAT'));
+    const analysis = analyzeThreads(metas, [1.0, 0.6, 0.3]);
+
+    // "deploying to production" appears in index 0 and 1 = core
+    assert.ok(analysis.core.some((t) => t.toLowerCase().includes('deploying to production')));
+
+    // "building auth system" appears in index 1 and 2 but NOT 0 = fading
+    assert.ok(analysis.fading.some((t) => t.toLowerCase().includes('building auth')));
+
+    // "health checks", "load balancer config", "DNS setup" only in 0 = fresh
+    assert.ok(analysis.fresh.some((t) => t.toLowerCase().includes('health checks')));
   });
 });

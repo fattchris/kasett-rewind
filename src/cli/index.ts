@@ -10,7 +10,7 @@ import { generateConfig } from './generate-config.js';
  *   generate-config  — Output the openclaw.json config block
  *
  * Usage:
- *   npx kasett-rewind generate-config [--window-size 2] [--no-thread-tracking] [--budget-split 0.3,0.3,0.4]
+ *   npx kasett-rewind generate-config [--window-size 3] [--no-thread-tracking] [--weights 1.0,0.6,0.3]
  */
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
@@ -42,7 +42,7 @@ async function runGenerateConfig(args: readonly string[]): Promise<void> {
     options: {
       'window-size': { type: 'string', short: 'w' },
       'no-thread-tracking': { type: 'boolean' },
-      'budget-split': { type: 'string', short: 'b' },
+      'weights': { type: 'string' },
       help: { type: 'boolean', short: 'h' },
     },
     strict: true,
@@ -59,11 +59,11 @@ async function runGenerateConfig(args: readonly string[]): Promise<void> {
 
   const threadTracking = values['no-thread-tracking'] ? false : undefined;
 
-  const budgetSplit = values['budget-split']
-    ? values['budget-split'].split(',').map(Number)
+  const weights = values['weights']
+    ? values['weights'].split(',').map(Number)
     : undefined;
 
-  const output = generateConfig({ windowSize, threadTracking, budgetSplit });
+  const output = generateConfig({ windowSize, threadTracking, weights });
   console.log(output);
 }
 
@@ -86,7 +86,7 @@ EXAMPLES:
   kasett-rewind generate-config
   kasett-rewind generate-config --window-size 3
   kasett-rewind generate-config --no-thread-tracking
-  kasett-rewind generate-config --budget-split 0.25,0.25,0.5`);
+  kasett-rewind generate-config --weights 1.0,0.7,0.4`);
 }
 
 /**
@@ -99,15 +99,15 @@ USAGE:
   kasett-rewind generate-config [options]
 
 OPTIONS:
-  -w, --window-size <n>      Number of summaries to retain (1-5, default: 2)
-  --no-thread-tracking       Disable structured thread tracking
-  -b, --budget-split <csv>   Comma-separated budget proportions (must sum to 1.0)
-                             Length must be windowSize + 1
+  -w, --window-size <n>      Number of previous compactions to evaluate (1-5, default: 3)
+  --no-thread-tracking       Disable thread tracking
+  --weights <csv>            Comma-separated weights, most recent first (must be 0-1)
+                             Length must equal windowSize
   -h, --help                 Show this help message
 
 EXAMPLES:
   kasett-rewind generate-config
-  kasett-rewind generate-config -w 3 -b 0.2,0.2,0.2,0.4
+  kasett-rewind generate-config -w 4 --weights 1.0,0.7,0.4,0.2
   kasett-rewind generate-config --no-thread-tracking`);
 }
 
