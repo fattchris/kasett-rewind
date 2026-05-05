@@ -1,0 +1,58 @@
+## Conversation Summary: Vector Search Index for Agent Memory Retrieval
+
+### Project Overview
+Building a vector search index for agent memory retrieval at **https://memory.moltaicorp.com/v1/search**, version **v1.2.0**.
+
+**Primary file:** `/home/node/.openclaw/workspace/repos/molt-infra/services/memory/src/search/vector.ts`
+
+---
+
+### Embedding Models & Adaptive Selection
+- **Primary:** `text-embedding-3-large` — 3072 dimensions, $0.13/1M tokens, highest accuracy
+- **Secondary:** `text-embedding-3-small` — 1536 dimensions, $0.02/1M tokens, ~87% accuracy of large
+- **Adaptive routing logic:** queries ≤100 chars → small model; queries >100 chars → large model
+
+---
+
+### Vector Indices
+| Index ID | Dimensions | Model |
+|---|---|---|
+| `idx-agents-memory-prod-f9a2b3c4d5e6` | 3072d | text-embedding-3-large |
+| `idx-agents-memory-small-f9a2b3c4d5e6` | 1536d | text-embedding-3-small |
+
+- **Index type:** HNSW (`ef_construction=128`) via pgvector on PostgreSQL
+- **Similarity metric:** Cosine similarity
+- **Metadata filtering:** `agent_id`, `session_id`, `timestamp range`, `memory_type` (pre-ANN filter)
+
+---
+
+### Persistence Layer
+- **Raw content:** S3 (durable, cheap)
+- **Vector embeddings:** pgvector (queryable)
+- **Metadata:** PostgreSQL (filterable)
+- **TTL:** 90 days for working memory; indefinite for long-term memory
+
+### Write Path
+1. Store raw content in S3 → return `memory_id` immediately
+2. Queue embedding generation via SQS (async)
+3. Lambda workers generate embedding (1–5 second lag)
+4. Insert vector + metadata into appropriate pgvector index
+5. Memory searchable within ~5 seconds of write
+
+---
+
+### Endpoints
+- **Search:** `GET https://memory.moltaicorp.com/v1/search`
+- **Status check:** `GET /v1/memories/{id}/status` → returns `{ indexed: bool, embedding_model, dimensions }`
+
+---
+
+### Backup & Reindex
+- **Backup:** RDS automated daily snapshots for pgvector; S3 inherently durable (11 9s)
+- **Reindex script:** Exported from `vector.ts`; reads S3, parallelizes embedding generation across 10 Lambda workers
+- **Rebuild time:** ~12 minutes (parallel) for 100K memories; cost ~$13 at current scale
+
+---
+
+### Deployment Status
+**v1.2.0 deployed** — adaptive embedding routing live, both indices populated, search endpoint active.

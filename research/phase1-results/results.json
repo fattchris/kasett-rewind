@@ -1,0 +1,219 @@
+{
+  "timestamp": "2026-05-05T12:20:47.223Z",
+  "model": "anthropic/claude-sonnet-4-6",
+  "temperature": 0,
+  "sessions": [
+    {
+      "id": "session-01",
+      "tier": 1,
+      "threadCount": 1,
+      "keyStateCount": 3,
+      "vanilla": {
+        "TRR": 1,
+        "KSSR": 1,
+        "threadsRetained": 1,
+        "valuesRetained": 3
+      },
+      "kasett": {
+        "TRR": 1,
+        "KSSR": 1,
+        "threadsRetained": 1,
+        "valuesRetained": 3
+      }
+    },
+    {
+      "id": "session-02",
+      "tier": 1,
+      "threadCount": 2,
+      "keyStateCount": 4,
+      "vanilla": {
+        "TRR": 0.5,
+        "KSSR": 1,
+        "threadsRetained": 1,
+        "valuesRetained": 4
+      },
+      "kasett": {
+        "TRR": 0.5,
+        "KSSR": 1,
+        "threadsRetained": 1,
+        "valuesRetained": 4
+      }
+    },
+    {
+      "id": "session-03",
+      "tier": 1,
+      "threadCount": 2,
+      "keyStateCount": 4,
+      "vanilla": {
+        "TRR": 1,
+        "KSSR": 1,
+        "threadsRetained": 2,
+        "valuesRetained": 4
+      },
+      "kasett": {
+        "TRR": 1,
+        "KSSR": 1,
+        "threadsRetained": 2,
+        "valuesRetained": 4
+      }
+    },
+    {
+      "id": "session-04",
+      "tier": 2,
+      "threadCount": 3,
+      "keyStateCount": 5,
+      "vanilla": {
+        "TRR": 1,
+        "KSSR": 1,
+        "threadsRetained": 3,
+        "valuesRetained": 5
+      },
+      "kasett": {
+        "TRR": 1,
+        "KSSR": 1,
+        "threadsRetained": 3,
+        "valuesRetained": 5
+      }
+    },
+    {
+      "id": "session-05",
+      "tier": 2,
+      "threadCount": 4,
+      "keyStateCount": 6,
+      "vanilla": {
+        "TRR": 1,
+        "KSSR": 0.8333333333333334,
+        "threadsRetained": 4,
+        "valuesRetained": 5
+      },
+      "kasett": {
+        "TRR": 1,
+        "KSSR": 0.8333333333333334,
+        "threadsRetained": 4,
+        "valuesRetained": 5
+      }
+    },
+    {
+      "id": "session-06",
+      "tier": 2,
+      "threadCount": 3,
+      "keyStateCount": 5,
+      "vanilla": {
+        "TRR": 1,
+        "KSSR": 1,
+        "threadsRetained": 3,
+        "valuesRetained": 5
+      },
+      "kasett": {
+        "TRR": 1,
+        "KSSR": 1,
+        "threadsRetained": 3,
+        "valuesRetained": 5
+      }
+    },
+    {
+      "id": "session-07",
+      "tier": 2,
+      "threadCount": 3,
+      "keyStateCount": 6,
+      "vanilla": {
+        "TRR": 1,
+        "KSSR": 1,
+        "threadsRetained": 3,
+        "valuesRetained": 6
+      },
+      "kasett": {
+        "TRR": 1,
+        "KSSR": 1,
+        "threadsRetained": 3,
+        "valuesRetained": 6
+      }
+    },
+    {
+      "id": "session-08",
+      "tier": 3,
+      "threadCount": 5,
+      "keyStateCount": 10,
+      "vanilla": {
+        "TRR": 1,
+        "KSSR": 1,
+        "threadsRetained": 5,
+        "valuesRetained": 10
+      },
+      "kasett": {
+        "TRR": 1,
+        "KSSR": 0.9,
+        "threadsRetained": 5,
+        "valuesRetained": 9
+      }
+    },
+    {
+      "id": "session-09",
+      "tier": 3,
+      "threadCount": 5,
+      "keyStateCount": 9,
+      "vanilla": {
+        "TRR": 0.8,
+        "KSSR": 0.8888888888888888,
+        "threadsRetained": 4,
+        "valuesRetained": 8
+      },
+      "kasett": {
+        "TRR": 0.8,
+        "KSSR": 0.8888888888888888,
+        "threadsRetained": 4,
+        "valuesRetained": 8
+      }
+    },
+    {
+      "id": "session-10",
+      "tier": 3,
+      "threadCount": 6,
+      "keyStateCount": 11,
+      "vanilla": {
+        "TRR": 1,
+        "KSSR": 1,
+        "threadsRetained": 6,
+        "valuesRetained": 11
+      },
+      "kasett": {
+        "TRR": 1,
+        "KSSR": 1,
+        "threadsRetained": 6,
+        "valuesRetained": 11
+      }
+    }
+  ],
+  "summary": {
+    "overall": {
+      "vanillaTRR": 0.93,
+      "kasettTRR": 0.93,
+      "vanillaKSSR": 0.9722222222222221,
+      "kasettKSSR": 0.9622222222222222
+    },
+    "effectSizes": {
+      "TRR_cohens_d": 0,
+      "KSSR_cohens_d": -0.16238857359255063
+    },
+    "byTier": {
+      "1": {
+        "vanillaTRR": 0.8333333333333334,
+        "kasettTRR": 0.8333333333333334,
+        "vanillaKSSR": 1,
+        "kasettKSSR": 1
+      },
+      "2": {
+        "vanillaTRR": 1,
+        "kasettTRR": 1,
+        "vanillaKSSR": 0.9583333333333334,
+        "kasettKSSR": 0.9583333333333334
+      },
+      "3": {
+        "vanillaTRR": 0.9333333333333332,
+        "kasettTRR": 0.9333333333333332,
+        "vanillaKSSR": 0.9629629629629629,
+        "kasettKSSR": 0.9296296296296296
+      }
+    }
+  }
+}

@@ -1,0 +1,57 @@
+## Molt AI Platform v3.0.0 — Conversation Summary
+
+### Project Overview
+**Molt AI** multi-tenant agent orchestration platform, shipped at version **v3.0.0** (promoted from v3.0.0-rc1). All 47 integration tests passed prior to promotion.
+
+---
+
+### Core Endpoints & Infrastructure
+- **Primary API:** `https://platform.moltaicorp.com/v3/orchestrate`
+- **EKS Cluster ARN:** `arn:aws:eks:us-east-1:843979154439:cluster/molt-agents-prod`
+- **Orchestrator source:** `/home/node/.openclaw/workspace/repos/molt-infra/platform/src/orchestrator/index.ts`
+- **OTEL Trace Endpoint:** `https://otel.moltaicorp.com/v1/traces`
+
+---
+
+### Five Development Threads
+
+**Thread 1 — Orchestrator**
+- Handles 10,000 concurrent agent sessions
+- Async event loop, connection pooling, HPA on orchestrator pods
+- Routes to least-loaded pod in `molt-agents-prod` namespace
+- Sticky sessions: affinity stored in Redis, keyed by `tenant_id + session_id`; falls back to least-loaded on pod failure
+
+**Thread 2 — OpenTelemetry Tracing**
+- Service name: `molt-orchestrator-prod`
+- Exports to `https://otel.moltaicorp.com/v1/traces`
+- W3C TraceContext propagation across services
+- Span attributes: `tenant_id`, `agent_id`, `session_id`
+- Custom metrics: `active_sessions` (gauge), `orchestration_latency` (histogram), `billing_events_sent` (counter)
+
+**Thread 3 — Tenant Onboarding API**
+- Test tenant UUID: `onboard-7f3a9c2d-1b4e-5f8a-9c2b-3e5f8a1d4c7b` (successfully onboarded)
+- Onboarding flow: DB record → K8s namespace/RBAC → API key issuance → Stripe customer + meter subscription → return API key
+- Default quota: **100K `api_calls_v2`/month**
+
+**Thread 4 — Kubernetes Configuration**
+- Namespace: `molt-agents-prod`; per-tenant sub-namespaces: `molt-agents-prod/{tenant_id}`
+- Pod resource limits: request 500m CPU / 1Gi memory; limit 2000m CPU / 4Gi memory
+- PodDisruptionBudget: `minAvailable=1` for deployments with >1 replica
+- NetworkPolicy: agent pods egress only to orchestrator and message bus; ingress only from pods labeled `app=molt-orchestrator` in `molt-agents-prod`; no inter-tenant communication
+- Security audit passed: no privileged pods, minimal RBAC, images from internal ECR only
+
+**Thread 5 — Stripe Billing**
+- **Live API key:** `sk_live_51PxQ2HRzKf9NkL8mW3bC7dE4fG5hI6jK7lM8nO9pQ0rS`
+- **Meter name:** `api_calls_v2`
+- Each call to `/v3/orchestrate` reported to Stripe metered billing
+- Usage alerts fire at **80% of plan quota** via email + tenant webhook POST
+- Proration: `proration_behavior=always_invoke` on mid-cycle upgrades
+
+---
+
+### Current Status
+**v3.0.0 is live in production.** Platform deployed to EKS, tenant onboarding active, billing running on `api_calls_v2` meter.
+
+---
+
+> ⚠️ **Security Note:** The Stripe live secret key (`sk_live_51PxQ2HRzKf9NkL8mW3bC7dE4fG5hI6jK7lM8nO9pQ0rS`) was shared in plaintext in this conversation and should be rotated immediately if this log is stored or transmitted outside a secure environment.

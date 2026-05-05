@@ -1,0 +1,40 @@
+## Conversation Summary
+
+The conversation covered building a complete vector search and memory persistence system for agent memory retrieval at **https://memory.moltaicorp.com/v1/search**, version **v1.2.0**, across three concurrent threads.
+
+---
+
+### Thread 1: Vector Search Module Implementation
+Built the vector search module at `/home/node/.openclaw/workspace/repos/molt-infra/services/memory/src/search/vector.ts`. Key decisions:
+- **pgvector** extension on PostgreSQL with **HNSW** index (ef_construction=128)
+- **Cosine similarity** as the distance metric
+- **Metadata filtering** on agent_id, session_id, timestamp range, and memory_type
+- Two indices: `idx-agents-memory-prod-f9a2b3c4d5e6` (3072d) and `idx-agents-memory-small-f9a2b3c4d5e6` (1536d)
+
+### Thread 2: Embedding Model Cost vs. Accuracy Tradeoff
+Resolved with an **adaptive embedding strategy**:
+- Queries ≤100 chars → `text-embedding-3-small` (1536d, $0.02/1M tokens) → routed to small index
+- Queries >100 chars → `text-embedding-3-large` (3072d, $0.13/1M tokens) → routed to primary index
+- Both models live in production as of v1.2.0 deployment
+
+### Thread 3: Memory Persistence Layer
+Designed a three-tier storage architecture:
+- **S3** for raw memory content (durable, cheap; 90-day TTL for working memory, indefinite for long-term)
+- **pgvector** for vector embeddings (queryable)
+- **PostgreSQL** for metadata (filterable)
+- **Async write path**: memory_id returned immediately after S3 write; embedding generated via SQS queue + Lambda workers (1–5s lag)
+- **Status endpoint** added: `GET /v1/memories/{id}/status` returns indexing state and embedding model info
+- **Reindex script** added to vector.ts exports; full reindex ~12 min with 10 parallel Lambda workers (~$13 cost at 100K memories)
+- **Backup strategy**: RDS automated snapshots daily; index rebuildable from S3
+
+### Deployment
+v1.2.0 deployed and live with all features active.
+
+---
+
+[THREAD_META]
+main: Vector search index for agent memory at memory.moltaicorp.com/v1/search deployed at v1.2.0
+sub1: Vector search module complete — HNSW/pgvector with cosine similarity, metadata filtering, dual indices for adaptive embedding routing
+sub2: Adaptive embedding strategy live — small model for ≤100 char queries, large model for longer queries, cost-optimized
+sub3: Persistence layer complete — async S3/pgvector/PostgreSQL write path, status endpoint, reindex script, and RDS backup strategy in place
+[/THREAD_META]

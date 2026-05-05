@@ -1,0 +1,39 @@
+## Conversation Summary
+
+The conversation covered the design, implementation, benchmarking, and deployment of E2E encryption for the Moltaicorp agent message bus service.
+
+### Key Decisions & Outcomes
+
+**Service & Version**
+- Service endpoint: `https://mbus.moltaicorp.com/v2/messages/publish`
+- Version advanced from `v5.0.0-rc2` → **`v5.0.0`** (production release)
+- Crypto module: `/home/node/.openclaw/workspace/repos/molt-infra/services/mbus/src/crypto/e2e.ts`
+
+**Thread 1 — E2E Encryption Module (completed)**
+- Cipher suite: AES-256-GCM (message encryption) + HMAC-SHA256 (authentication) + RSA-OAEP (asymmetric key exchange if needed)
+- Envelope encryption pattern: KMS GenerateDataKey → encrypt message → store encrypted data key alongside ciphertext
+- HMAC auth tag covers: `tenant_id + message_id + ciphertext + timestamp`
+- Security design doc written
+
+**Thread 2 — Key Rotation Policy (completed)**
+- KMS CMK ARN: `arn:aws:kms:us-east-1:843979154439:key/b2c3d4e5-f6a7-8901-b2c3-d4e5f6a78901`
+- Application-level rotation: `rotation_days=90`; AWS KMS retains old key versions for backward decryption
+- Rotation audit log: CloudWatch, 90-day retention, logs key ID + timestamp + reason
+- Cache flush on rotation: flushes all cached data keys, forces clients to regenerate
+- Admin endpoint added: `POST /admin/crypto/flush-cache`
+
+**Thread 3 — Throughput Benchmark (completed)**
+- Plaintext baseline: 12,400 msg/s @ p99 8ms
+- Without caching: 3,200 msg/s (KMS latency ~40ms per call dominated)
+- With data key caching (TTL 300s, max 1,000 keys): **11,800 msg/s @ p99 12ms** (~5% overhead — accepted)
+- Caching enabled with cache hit/miss metrics emitted
+
+**Deployment**
+- v5.0.0 deployed to production with E2E encryption active
+
+[THREAD_META]
+main: E2E encryption for mbus service fully implemented and deployed at v5.0.0
+sub1: Key rotation policy finalized — 90-day rotation, audit logging, cache flush endpoint all in place
+sub2: Throughput benchmarking complete — caching solution accepted at 5% overhead, enabled in production
+sub3: Security design doc written; no active follow-up sub-thread identified
+[/THREAD_META]

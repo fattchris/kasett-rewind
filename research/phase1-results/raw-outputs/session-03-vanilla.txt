@@ -1,0 +1,40 @@
+## RDS Migration Summary — Agents Database
+
+### Migration Status: **Complete**
+
+---
+
+### Source Instance (Decommissioned)
+- **Connection:** `postgresql://prod:xK9mP2rL@db-primary.internal:5432/agents`
+- **Snapshot:** `rds:db-primary-snap-20260505-120000` (retained 30 days)
+
+### Target Instance (Active)
+- **Connection:** `postgresql://prod:xK9mP2rL@db-primary-new.internal:5432/agents`
+- **Instance Class:** `db.r6g.xlarge`
+- **Host:** `db-primary-new.internal`
+
+---
+
+### Migration Applied
+- **Version:** `schema-migration-v047`
+- **File:** `/home/node/.openclaw/workspace/repos/molt-infra/db/migrations/047_add_agent_metadata.sql`
+- **Changes:** Added `agent_metadata` JSONB column to `agents` table; created GIN index for metadata queries
+- **Result:** 0 errors
+
+---
+
+### Steps Completed (in order)
+1. Snapshot of old instance created
+2. New `db.r6g.xlarge` instance restored from snapshot
+3. Migration 047 applied to new instance before cutover
+4. Connection tested successfully; `agent_metadata` column confirmed present
+5. Read replica lag check: **0 seconds**
+6. Connection string switched in all **7 config files**
+7. Verified **0 remaining references** to old `db-primary.internal`
+8. Old instance decommissioned; snapshot retention set to **30 days**
+9. Migration runbook written
+
+---
+
+### Credentials Note
+- Username/password (`prod:xK9mP2rL`) are unchanged and carried over to the new instance connection string.

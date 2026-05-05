@@ -1,0 +1,37 @@
+## Conversation Summary: MoltAIMux v0.7.2 Gateway Build
+
+### Project Overview
+- **Project:** MoltAIMux OpenAI-compatible gateway
+- **Final Version:** v0.7.2 (promoted from v0.7.2-beta)
+- **Gateway URL:** https://mux.moltaicorp.com/v1/chat/completions
+- **Primary Source File:** `/home/node/.openclaw/workspace/repos/moltaimux/src/gateway/router.ts`
+
+### Credentials & Identifiers
+- **Test API Key:** `sk-mux-test-9f3b2e1a4c7d8e5f6a2b3c4d5e6f7a8b`
+- **Production Tenant ID:** `tenant-prod-8b3f9c2a-1e4d-4a7f-9c2b-3e5f8a1d4c7b`
+
+### Thread 1: Gateway Router
+- Streaming and non-streaming response handling (SSE piping when `stream=true`)
+- Request/response logging middleware capturing: `tenant_id`, model, tokens used, latency, response code
+- **Load balancing:** Weighted round-robin across upstream providers (configurable per model per tenant)
+- **Failover:** On upstream 500/503, retries next provider in weighted list; max 2 retries
+
+### Thread 2: Rate Limiting & Quotas
+- **Rate limit:** 100 RPM per tenant, stored in Redis keyed by `tenant_id`
+- **Algorithm:** Sliding window with token bucket for bursting (20 burst tokens above base)
+- **At limit:** Returns `429 Too Many Requests` with `Retry-After` header
+- **Rate limit headers:** `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`
+- **Quota system:** Monthly token quota tracked in Redis; prod tenant has 10M tokens/month
+- **Pre-flight quota check** added to router; returns `429` with `X-Quota-Exceeded: true` when exhausted
+
+### Thread 3: Integration Tests
+All tests passed against v0.7.2-beta before promotion:
+1. **Streaming test** — validates SSE chunk format with test API key
+2. **Rate limit test** — fires 101 requests, verifies 101st gets `429`
+3. **Tenant isolation test** — verifies rate limit counters are separate across tenants
+4. **Failover test** — mocks first upstream as `503`, verifies `200` from second provider
+
+### Final Status
+- All integration tests green
+- Version bumped from v0.7.2-beta → v0.7.2 in `router.ts`
+- Tagged and pushed; v0.7.2 ready for deployment

@@ -1,0 +1,30 @@
+## Conversation Summary
+
+A production auth incident was fully resolved. Here's what happened:
+
+**Incident:** After deploying v3.1.0, 340 users received 401 errors over ~70 minutes when refreshing tokens at `https://auth.moltaicorp.com/v1/tokens/refresh`.
+
+**Root Cause:** A regression in `/opt/services/auth-service/src/middleware/jwt.ts` changed the JWT expiry check to compare `Date.now()` (milliseconds) directly against `token.exp` (seconds), making all tokens appear immediately expired.
+
+**Resolution:**
+- Hotfix built: changed comparison to `Date.now() / 1000 > token.exp`
+- Tagged and deployed as `v3.1.0-hotfix`
+- Verified via session `a3f8c201-9d44-4b7e-8c22-1f0e3b5d9a77` returning HTTP 200
+- Endpoint confirmed stable, error rate back to baseline
+- Affected users can re-authenticate naturally; no manual backfill needed
+
+**Prevention Measures Added:**
+- New unit test: `'should reject tokens with expiry in milliseconds'` in `jwt.test.ts`
+- ESLint rule added to catch direct `Date.now()` vs JWT `exp` comparisons statically
+
+**Documentation Completed:**
+- Incident log updated
+- Postmortem written and sent to team
+- Incident archived
+
+[THREAD_META]
+main: Production auth incident fully resolved — v3.1.0-hotfix deployed, stable, and archived
+sub1: Prevention measures in place — unit test and ESLint rule added to jwt.test.ts
+sub2: Postmortem completed and distributed to team
+sub3: No active sub-thread — incident closed with no outstanding follow-up items
+[/THREAD_META]

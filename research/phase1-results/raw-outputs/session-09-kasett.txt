@@ -1,0 +1,24 @@
+## Compaction Summary
+
+### What Happened
+
+A comprehensive SOC 2 Type II audit preparation session was conducted across five concurrent compliance threads for Moltaicorp.
+
+**Thread 1 — Audit Logging Pipeline:** Established the full pipeline architecture: events ingest at `https://audit.moltaicorp.com/v1/events/ingest` → Kinesis → Lambda → S3 (`arn:aws:s3:::molt-audit-logs-prod-us-east-1`). Defined the required event schema (event_id, tenant_id, user_id, action, resource, result, timestamp_utc, ip_address, trace_id). Added S3 Object Lock in COMPLIANCE mode with 365-day retention and KMS encryption (`arn:aws:kms:us-east-1:843979154439:key/c3d4e5f6-a7b8-9012-c3d4-e5f6a7b89012`). Terraform at `/home/node/.openclaw/workspace/repos/molt-infra/compliance/audit/pipeline.tf` was updated and successfully applied. Pipeline version bumped from v2.1.0 → v2.2.0. Now live and immutable.
+
+**Thread 2 — Pentest Finding PENTEST-2026-042:** High-severity SSRF vulnerability in the agent proxy service. Fix implemented: URL allowlist, RFC 1918 + 169.254.0.0/16 IP blocking, request signing enforced. PR in review. Day 5 of 14-day remediation SLA per SOC2-CC6.1-CC7.2.
+
+**Thread 3 — IAM Access Control Review:** Audited IAM policy v8.3 in AWS account 843979154439. Found: 3 roles with `s3:*` (scoped down to GetObject/PutObject/ListBucket on audit bucket), 2 Lambda functions with unnecessary `ec2:Describe*`, 1 role with unconditioned `iam:PassRole` (fixed with condition restricting to `lambda.amazonaws.com` and `ecs-tasks.amazonaws.com`). Policy bumped to v8.4, pending deployment. Satisfies CC6.1 and CC6.3.
+
+**Thread 4 — Vendor Security Assessment VSA-2026-017:** OpenAI assessed as Medium risk. DPA drafted (no persistent customer data storage, GDPR compliant, SOC 2 Type II certified). Subprocessor list compiled: AWS, Stripe, OpenAI, Twilio. DPA pending signature.
+
+**Thread 5 — Open Compliance Items Tracker:** SOC 2 evidence tracker updated. All four open items logged: pipeline live ✅, PENTEST-2026-042 in progress, IAM v8.4 pending deploy, VSA-2026-017 DPA in review.
+
+---
+
+[THREAD_META]
+main: SOC 2 Type II audit prep across five active compliance threads for Moltaicorp
+sub1: Audit pipeline v2.2.0 live with immutable S3 + KMS; PENTEST-2026-042 SSRF fix in PR review at day 5 of 14
+sub2: IAM policy v8.4 remediated and pending deployment; VSA-2026-017 OpenAI DPA pending signature
+sub3: SOC 2 evidence tracker updated; next actions are IAM v8.4 deploy, DPA signature, and PENTEST-2026-042 closure
+[/THREAD_META]

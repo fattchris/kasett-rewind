@@ -1,0 +1,20 @@
+## Conversation Summary
+
+The conversation covered a complete RDS database migration for the agents database. The user and assistant worked through the full migration lifecycle:
+
+1. **Snapshot**: Created `rds:db-primary-snap-20260505-120000` from the original instance at `db-primary.internal` as a safety baseline.
+2. **New instance provisioned**: Restored to a `db.r6g.xlarge` instance at `db-primary-new.internal`.
+3. **Migration applied**: `schema-migration-v047` (`/home/node/.openclaw/workspace/repos/molt-infra/db/migrations/047_add_agent_metadata.sql`) was run pre-cutover, adding a `agent_metadata` JSONB column and GIN index to the `agents` table. Applied with 0 errors.
+4. **Validation**: Connection tested successfully; replication lag confirmed at 0 seconds.
+5. **Cutover**: Connection string switched from `postgresql://prod:xK9mP2rL@db-primary.internal:5432/agents` to `postgresql://prod:xK9mP2rL@db-primary-new.internal:5432/agents`. All 7 config files updated; 0 old references remain.
+6. **Decommission**: Old `db-primary.internal` instance terminated; snapshot retained for 30 days.
+7. **Runbook**: Migration runbook written documenting the full process.
+
+**Migration is fully complete.** New production connection is `postgresql://prod:xK9mP2rL@db-primary-new.internal:5432/agents`.
+
+[THREAD_META]
+main: RDS migration for agents database is fully complete on db.r6g.xlarge at db-primary-new.internal
+sub1: Snapshot rds:db-primary-snap-20260505-120000 retained with 30-day expiry policy
+sub2: Migration runbook written documenting snapshot, schema-migration-v047, cutover, and decommission steps
+sub3: No active sub-thread — migration lifecycle closed, no pending follow-up tasks identified
+[/THREAD_META]

@@ -1,0 +1,60 @@
+## SOC 2 Type II Audit Prep — Conversation Summary
+
+### Project Context
+- **Goal:** SOC 2 Type II audit preparation for Moltaicorp
+- **Primary SOC 2 Controls:** CC6.1 (logical access controls) and CC7.2 (system monitoring)
+- **AWS Account:** 843979154439
+
+---
+
+### Thread 1: Audit Logging Pipeline
+- **Ingest endpoint:** https://audit.moltaicorp.com/v1/events/ingest
+- **Architecture:** Kinesis → Lambda → S3
+- **S3 bucket:** `arn:aws:s3:::molt-audit-logs-prod-us-east-1`
+- **KMS key:** `arn:aws:kms:us-east-1:843979154439:key/c3d4e5f6-a7b8-9012-c3d4-e5f6a7b89012`
+- **Terraform config:** `/home/node/.openclaw/workspace/repos/molt-infra/compliance/audit/pipeline.tf`
+- **Pipeline version:** Upgraded from `audit-pipeline-v2.1.0` → **`audit-pipeline-v2.2.0`** (live)
+- **Immutability added:** S3 Object Lock in COMPLIANCE mode, 365-day retention, versioning enabled
+- **Terraform apply:** Succeeded and confirmed live
+- **Event schema fields:** `event_id`, `tenant_id`, `user_id`, `action`, `resource`, `result`, `timestamp_utc`, `ip_address`, `trace_id` (all required)
+- **Controls satisfied:** CC6.1, CC7.2
+
+---
+
+### Thread 2: Pentest Finding PENTEST-2026-042
+- **Severity:** High
+- **Vulnerability:** SSRF in the agent proxy service
+- **Remediation:** URL allowlist, RFC 1918 + 169.254.0.0/16 IP blocking, request signing enforced
+- **Status:** PR in review; Day 5 of 14-day SLA
+- **Controls:** CC6.1, CC7.2
+
+---
+
+### Thread 3: IAM Access Control Review
+- **Current version reviewed:** v8.3
+- **Target version:** v8.4 (pending deploy)
+- **Findings and remediations:**
+  - 3 service roles had `s3:*` → replaced with `s3:GetObject`, `s3:PutObject`, `s3:ListBucket` scoped to `arn:aws:s3:::molt-audit-logs-prod-us-east-1/*`
+  - 2 Lambda functions had unnecessary `ec2:Describe*` (noted, not yet detailed)
+  - 1 role had open `iam:PassRole` → fixed with condition restricting to `lambda.amazonaws.com` and `ecs-tasks.amazonaws.com`
+- **Controls satisfied:** CC6.1 (least privilege), CC6.3 (access removal)
+
+---
+
+### Thread 4: Vendor Security Assessment VSA-2026-017
+- **Vendor:** OpenAI (LLM provider)
+- **Risk rating:** Medium (processes prompts potentially containing sensitive data; no persistent customer data storage per DPA; SOC 2 Type II certified)
+- **Status:** DPA pending signature; subprocessor list compiled
+- **Subprocessors documented:** AWS (compute/storage), Stripe (billing), OpenAI (LLM inference), Twilio (notifications)
+- **Cadence:** Annual re-assessment required
+
+---
+
+### Thread 5: Open Compliance Items (as of summary)
+| Item | Status |
+|---|---|
+| PENTEST-2026-042 (SSRF) | In remediation — Day 5/14 |
+| VSA-2026-017 (OpenAI DPA) | Pending signature |
+| IAM policy v8.4 | Pending deploy |
+| Audit pipeline v2.2.0 | **Live** ✅ |
+| SOC 2 evidence tracker | Updated |

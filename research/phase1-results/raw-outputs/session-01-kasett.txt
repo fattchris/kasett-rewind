@@ -1,0 +1,24 @@
+## Conversation Summary
+
+The conversation covered a complete ECS deployment of agent infrastructure version v2.4.1 to staging, including a mid-deployment incident and resolution.
+
+**Deployment Setup:** Target endpoint was `https://api.staging.molt.ai/v2/agents/deploy`, using task definition at `/home/node/.openclaw/workspace/repos/molt-infra/ecs/task-def.json`. Deployment timeout was set to 900 seconds.
+
+**Incident & Resolution:** One ECS task got stuck in PENDING state due to `ImagePullBackoff`. Root cause was a missing `ecr:GetAuthorizationToken` permission on the ECS task execution role. After adding the permission (alongside `ecr:BatchGetImage` and `ecr:GetDownloadUrlForLayer`), a forced new deployment resolved the issue and all 3 tasks reached RUNNING state.
+
+**Post-Deployment Actions Completed:**
+- Smoke test passed against the staging endpoint
+- Task definition updated and committed: `'ecs: bump task definition to v2.4.1 — deployed to staging'`
+- ALB health check path corrected to `/v2/health`
+- Git tag `v2.4.1` created and pushed
+- Deployment runbook documented (IAM prerequisite checks added as key lesson)
+- Deployment summary sent
+
+**Next Step:** Prod promotion of v2.4.1 is scheduled for tomorrow at 9am MT, following the same deployment flow with environment swapped from staging to prod in the task definition.
+
+[THREAD_META]
+main: v2.4.1 agent infrastructure deployed to staging successfully; prod promotion scheduled for tomorrow 9am MT
+sub1: Runbook updated with IAM ECR permission prerequisites and deployment procedure at molt-infra/ecs/task-def.json
+sub2: Prod deployment prep pending — task definition environment swap and prod ALB health check update needed
+sub3: no active sub-thread
+[/THREAD_META]

@@ -1,0 +1,59 @@
+## Conversation Summary: Multi-Region Terraform IaC for Agent Deployment
+
+### Project Overview
+Built and deployed Terraform IaC for multi-region ECS agent clusters across **us-east-1** (primary) and **us-west-2** (secondary).
+
+---
+
+### Key Technical Details
+
+**Tooling & Workspaces**
+- Terraform version: **v1.8.3**
+- Primary workspace: **prod-us-east-1**
+- Secondary workspace: **prod-us-west-2**
+- Module path: `/home/node/.openclaw/workspace/repos/molt-infra/terraform/modules/agent-cluster/main.tf`
+
+**Networking**
+- us-east-1 VPC CIDR: **10.0.0.0/16**
+- us-west-2 VPC CIDR: **10.1.0.0/16**
+- VPC peering configured bidirectionally with route tables updated on both sides
+- DNS resolution enabled across VPCs via Route 53 private hosted zones associated with both VPCs
+- Health endpoint: **https://agents.us-east-1.moltaicorp.com/health** (returning 200, registered in private hosted zone)
+
+**ECS Fargate Configuration**
+- Capacity provider: Fargate with auto-scaling (min 1, max 20 tasks)
+- Scale-up threshold: 70% CPU; scale-down threshold: 30%
+- Task definition: 1 vCPU, 2GB RAM (configurable via module variables)
+- Environment variables pulled from SSM Parameter Store
+- Module inputs: `region`, `vpc_cidr`, `cluster_name`, `instance_count`, `environment`
+- Resources created per cluster: ECS cluster, task definition, service, security groups, IAM roles
+
+---
+
+### Four Work Threads Completed
+1. **Terraform agent-cluster module** — core module at the path above
+2. **VPC peering** — us-east-1 ↔ us-west-2 with DNS cross-resolution
+3. **ECS Fargate task definitions** — container specs and IAM
+4. **Cost optimization** — warm standby pattern selected
+
+---
+
+### Cost Optimization Decision
+| Strategy | Idle Cost | Cold Start |
+|---|---|---|
+| Always-on (10 tasks) | ~$110/month | None |
+| Scale-to-zero | ~$0 idle | ~30 seconds |
+| **Warm standby (chosen)** | **~$22/month** | **Eliminated** |
+
+- **Warm standby**: 1 task kept running per region (min_capacity=1), scale-down floor is 1 (not 0)
+- Saves **$88/month** vs. always-on
+- Scale-to-zero was rejected due to 30-second Fargate cold start (ALB 502 → Lambda → desired_count=1 flow)
+- Cost model documented in module README
+
+---
+
+### Deployment Status
+- **terraform plan**: 14 resources to add, 0 to change, 0 to destroy
+- **terraform apply**: All 14 resources applied in prod-us-east-1
+- us-west-2 applied via prod-us-west-2 workspace; VPC peering accepted from us-east-1
+- Code committed and pushed; both regions live

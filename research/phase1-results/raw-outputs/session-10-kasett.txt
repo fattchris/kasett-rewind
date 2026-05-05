@@ -1,0 +1,63 @@
+## Conversation Summary
+
+### Project Overview
+Building and publishing `@moltai/kasett-rewind v0.1.0`, an OpenClaw plugin for LLM context compaction with thread-aware steering. Plugin ID: `kasett-rewind-f7a3b2c1-9d44-4b7e-8c22-1f0e3b5d9a11`.
+
+---
+
+### Six Active Threads — All Complete
+
+**Thread 1: Plugin Architecture**
+- Entry point: `/home/node/.openclaw/workspace/repos/kasett-rewind/src/index.ts`
+- Exports `register(api: PluginAPI)`, called by OC plugin loader on startup
+- Registered via `openclaw.plugin.json` with before/after_compaction hooks
+- Plugin ID: `kasett-rewind-f7a3b2c1-9d44-4b7e-8c22-1f0e3b5d9a11`
+
+**Thread 2: ThreadMeta Schema**
+- Includes `kaspiett` field, `rolling_window_size=5`
+- `[THREAD_META]` block parsed by `parseCompactionOutput()`
+- If block missing: returns `{summary: raw_output.trim(), meta: null}`, falls back to basic steering
+
+**Thread 3: SessionReader**
+- Reads JSONL from `/home/node/.openclaw/agents/main/sessions/`
+- Error handling added: try/catch returns empty array on missing dir or corrupt JSONL
+- Degrades gracefully to basic steering prompt without thread history
+
+**Thread 4: Benchmark Harness**
+- Model: `anthropic/claude-sonnet-4-6` via `https://openrouter.ai/api/v1/chat/completions`
+- `phase1_fixture_count=10` synthetic sessions, 2 conditions (vanilla vs kasett), 3s delay
+- Fixtures written to `research/phase1-results/fixtures/`
+- Tier 3 fixtures: 5+ threads, 8-12 key state values, 80-100 turns; include values like `https://openrouter.ai/api/v1/chat/completions`, `rolling_window_size=5`
+- **Results**: TRR vanilla=0.62 → kasett=0.89 (d=1.8); KSSR vanilla=0.71 → kasett=0.94 (d=1.6) — large effects across all sessions
+
+**Thread 5: Steering Prompt Builder**
+- `analyzeThreads()` returns `{core:[], fresh:[], fading:[]}`
+- With no previous metas: `buildSteeringPrompt()` produces basic format instructions only, no thread history section
+- LLM still guided to produce `[THREAD_META]` block for future compactions
+
+**Thread 6: THREAD_META Parser**
+- Regex extraction with test cases: happy path, missing sub3, no block, extra whitespace, nested brackets
+- All 47 tests pass; `parseCompactionOutput()` fully validated
+
+---
+
+### Key Technical Values
+- Package: `@moltai/kasett-rewind v0.1.0`
+- Registry: `https://registry.moltaicorp.com/plugins/kasett-rewind/versions`
+- Plugin ID: `kasett-rewind-f7a3b2c1-9d44-4b7e-8c22-1f0e3b5d9a11`
+- Install: `openclaw plugin install @moltai/kasett-rewind`
+- Source: `/home/node/.openclaw/workspace/repos/kasett-rewind/src/index.ts`
+- Sessions: `/home/node/.openclaw/agents/main/sessions/`
+- API: `https://openrouter.ai/api/v1/chat/completions`
+- `storage_path=/home/node/.openclaw/agents/main/sessions/`
+- `openrouter_base=https://openrouter.ai/api/v1/chat/completions`
+
+### Current State
+Build green (tsc + 47 tests pass). Plugin published and live. Phase 1 benchmark complete with strong results confirming kasett steering significantly improves thread retention and key state survival.
+
+[THREAD_META]
+Main: @moltai/kasett-rewind v0.1.0 OpenClaw plugin built, tested, published, and benchmarked with strong Phase 1 results (TRR 0.62→0.89, KSSR 0.71→0.94).
+Sub1: Plugin architecture with register(api: PluginAPI) in /home/node/.openclaw/workspace/repos/kasett-rewind/src/index.ts and before/after_compaction hooks fully wired.
+Sub2: SessionReader and steering prompt builder handle missing/corrupt JSONL gracefully, falling back to basic format instructions when no thread metas exist.
+Sub3: THREAD_META parser (parseCompactionOutput) validated across 6 test cases; benchmark harness uses anthropic/claude-sonnet-4-6 with phase1_fixture_count=10 fixtures at research/phase1-results/fixtures/.
+[/THREAD_META]

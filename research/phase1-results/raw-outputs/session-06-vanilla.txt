@@ -1,0 +1,42 @@
+## Conversation Summary: mbus E2E Encryption Implementation
+
+### Project Overview
+- **Service:** Agent message bus at `https://mbus.moltaicorp.com/v2/messages/publish`
+- **Version:** Progressed from `v5.0.0-rc2` → **`v5.0.0`** (deployed, production-ready)
+- **Primary module:** `/home/node/.openclaw/workspace/repos/molt-infra/services/mbus/src/crypto/e2e.ts`
+
+---
+
+### Three Work Threads
+
+#### Thread 1: E2E Encryption Module
+- **Cipher suite:** AES-256-GCM (message encryption) + HMAC-SHA256 (authentication) + RSA-OAEP (asymmetric key exchange if needed)
+- **Pattern:** Envelope encryption — KMS generates a data key per message; message encrypted with AES-256-GCM; encrypted data key stored alongside ciphertext
+- **Auth tag covers:** `tenant_id + message_id + ciphertext + timestamp` (prevents tampering and replay attacks)
+- **KMS Key ARN:** `arn:aws:kms:us-east-1:843979154439:key/b2c3d4e5-f6a7-8901-b2c3-d4e5f6a78901`
+
+#### Thread 2: Key Rotation Policy
+- **Rotation interval:** 90 days (`rotation_days=90`) at application level; AWS KMS annual rotation also enabled
+- **Old message handling:** KMS retains old key versions, so previously encrypted messages remain decryptable
+- **Audit logging:** Rotation events logged with key ID, timestamp, and reason; stored in CloudWatch with 90-day retention
+- **Cache invalidation on rotation:** Data key cache is flushed for the KMS key ARN on rotation; clients forced to fetch new data keys
+- **Admin endpoint added:** `POST /admin/crypto/flush-cache` — clears all cached data keys for a specified KMS key ARN, logs the event
+
+#### Thread 3: Throughput Benchmarking
+| Scenario | Throughput | p99 Latency |
+|---|---|---|
+| Plaintext baseline | 12,400 msg/s | 8ms |
+| Encrypted, no caching | 3,200 msg/s | ~48ms (KMS dominates) |
+| Encrypted, with caching | **11,800 msg/s** | 12ms |
+
+- **Root cause of slowdown:** KMS `GenerateDataKey` adds ~40ms per call
+- **Solution:** Data key caching — TTL **300 seconds**, max **1,000 cached keys** per tenant; cache hit/miss metrics emitted
+- **Overhead:** ~5% throughput reduction vs. plaintext — **accepted and enabled**
+
+---
+
+### Final State
+- v5.0.0 **deployed** to `https://mbus.moltaicorp.com/v2/messages/publish`
+- E2E encryption active with KMS envelope, data key caching, 90-day rotation policy
+- Security design document written covering full architecture
+- Cache flush admin endpoint operational

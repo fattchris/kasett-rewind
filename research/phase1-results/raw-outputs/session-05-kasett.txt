@@ -1,0 +1,22 @@
+## Conversation Summary
+
+This session covered a complete multi-region Terraform IaC deployment for ECS-based agent clusters across us-east-1 and us-west-2, organized around four explicit threads.
+
+**Setup & Configuration:** Terraform v1.8.3 was established as the toolchain. Primary workspace is `prod-us-east-1`, secondary is `prod-us-west-2`. The module lives at `/home/node/.openclaw/workspace/repos/molt-infra/terraform/modules/agent-cluster/main.tf`.
+
+**Thread 1 — Agent-Cluster Terraform Module:** Built with inputs for region, vpc_cidr, cluster_name, instance_count, and environment. ECS Fargate capacity provider added with auto-scaling (min 1, max 20 tasks; scale up at 70% CPU, scale down to 1 for warm standby).
+
+**Thread 2 — VPC Peering:** us-east-1 (10.0.0.0/16) peered with us-west-2 (10.1.0.0/16). Route tables updated on both sides. DNS resolution enabled across VPCs via Route 53 private hosted zones associated with both VPCs. Health endpoint `https://agents.us-east-1.moltaicorp.com/health` registered in the private zone.
+
+**Thread 3 — ECS Module:** Task definition added with 1 vCPU / 2GB RAM defaults, environment variables pulled from SSM Parameter Store. Security groups and IAM roles included.
+
+**Thread 4 — Cost Optimization:** Evaluated scale-to-zero (30s cold start via ALB 502 → Lambda → desired_count=1) vs. warm standby vs. always-on. Chose **warm standby** (min_capacity=1 per region), costing $22/month vs. $110/month always-on — saving $88/month. Cost model documented in module README.
+
+**Deployment:** `terraform plan` showed 14 resources to add. `terraform apply` completed successfully in both regions. Health endpoint returning 200. Changes committed and pushed.
+
+[THREAD_META]
+main: Multi-region ECS agent cluster IaC fully deployed via Terraform v1.8.3 across us-east-1 and us-west-2
+sub1: VPC peering (10.0.0.0/16 ↔ 10.1.0.0/16) with Route 53 private DNS resolution active across both regions
+sub2: Warm standby cost model ($22/mo) selected and documented in module README, replacing scale-to-zero and always-on options
+sub3: All changes committed and pushed; next likely focus is monitoring/alerting or additional region expansion
+[/THREAD_META]

@@ -1,0 +1,39 @@
+## Conversation Summary
+
+The conversation covered the full build and release cycle for **MoltAIMux v0.7.2**, an OpenAI-compatible API gateway.
+
+### Key Decisions & Artifacts
+
+**Project Context:**
+- Gateway endpoint: `https://mux.moltaicorp.com/v1/chat/completions`
+- Router file: `/home/node/.openclaw/workspace/repos/moltaimux/src/gateway/router.ts`
+- Test API key: `sk-mux-test-9f3b2e1a4c7d8e5f6a2b3c4d5e6f7a8b`
+- Prod tenant ID: `tenant-prod-8b3f9c2a-1e4d-4a7f-9c2b-3e5f8a1d4c7b`
+- Started at v0.7.2-beta, released as v0.7.2
+
+**Thread 1 — Gateway Router:**
+- Streaming (SSE pipe when `stream=true`) and non-streaming response handling
+- Request/response logging middleware (tenant_id, model, tokens, latency, response code)
+- Weighted round-robin load balancing across upstream providers (configurable per model/tenant)
+- Automatic failover: on 500/503, retries next provider; max 2 retries
+- Pre-flight quota check: returns 429 with `X-Quota-Exceeded: true` if tenant over quota
+
+**Thread 2 — Rate Limiting & Quotas:**
+- 100 RPM per tenant, stored in Redis keyed by tenant_id
+- Sliding window + token bucket for burst (20 burst tokens above base)
+- 429 response with `Retry-After` header at limit
+- Rate limit headers: `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`
+- Monthly token quota: prod tenant has 10M tokens/month
+
+**Thread 3 — Integration Tests:**
+- Streaming test, rate limit test (101st request gets 429), tenant isolation test, failover test
+- All tests passed against `https://mux.moltaicorp.com/v1/chat/completions`
+
+**Outcome:** v0.7.2 tagged and pushed. All three threads complete.
+
+[THREAD_META]
+main: MoltAIMux v0.7.2 released — OpenAI-compatible gateway fully built, tested, and tagged
+sub1: All integration tests green; suite covers streaming, rate limiting, tenant isolation, and failover
+sub2: No active sub-thread — next likely focus is deployment/monitoring of v0.7.2 in production
+sub3: No active sub-thread — potential follow-on work on quota dashboards or tenant management APIs
+[/THREAD_META]

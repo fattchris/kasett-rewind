@@ -1,0 +1,45 @@
+## Deployment Session Summary — molt-infra Agent Infrastructure
+
+### Deployment Completed
+- **Version deployed:** v2.4.1
+- **Environment:** Staging
+- **Deployment endpoint:** https://api.staging.molt.ai/v2/agents/deploy
+- **Status:** Stable, all 3 ECS tasks RUNNING
+
+---
+
+### Key Technical Details
+
+**Task Definition:**
+- Path: `/home/node/.openclaw/workspace/repos/molt-infra/ecs/task-def.json`
+- Updated and committed with message: `ecs: bump task definition to v2.4.1 — deployed to staging`
+- Git tag `v2.4.1` created and pushed to remote
+
+**ECS Cluster:**
+- 3 tasks running (0 pending)
+- Deployment timeout: 900 seconds
+- Rolling deployment pattern used
+
+**ALB Health Check:**
+- Path corrected to `/v2/health`
+
+---
+
+### Issue Encountered & Resolved
+- **Problem:** One task stuck in PENDING with `ImagePullBackoff` on v2.4.1
+- **Root cause:** Missing `ecr:GetAuthorizationToken` permission on the ECS task execution role
+- **Fix:** Added `ecr:GetAuthorizationToken` to the IAM policy, then forced a new deployment
+- **Required ECR permissions (now confirmed):** `ecr:GetAuthorizationToken`, `ecr:BatchGetImage`, `ecr:GetDownloadUrlForLayer`
+
+---
+
+### Documentation & Runbook
+- Deployment steps and IAM prerequisite checklist saved to the runbook section of the task definition file
+- Runbook includes: IAM permission verification, force-new-deployment pattern, health check path `/v2/health`
+
+---
+
+### Next Steps — Production Promotion
+- **Scheduled:** Tomorrow at 9am MT
+- **Plan:** Update task definition environment (staging → prod), run same deployment flow, update prod ALB health check to `/v2/health`, smoke test prod endpoint
+- Prod task definition update to be prepared in advance
