@@ -45,6 +45,10 @@ export class SessionReader {
         }
       }
     } catch (err: unknown) {
+      // File doesn't exist yet (new session) — no compactions to read
+      if (err instanceof Error && 'code' in err && (err as NodeJS.ErrnoException).code === 'ENOENT') {
+        return [];
+      }
       const message = err instanceof Error ? err.message : String(err);
       throw new KasettError(
         `Failed to read session file: ${filePath} — ${message}`,

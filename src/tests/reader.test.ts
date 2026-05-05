@@ -68,15 +68,9 @@ describe('SessionReader', () => {
       );
     });
 
-    test('throws KasettError for non-existent file', async () => {
-      await assert.rejects(
-        () => reader.readCompactionEvents('/nonexistent/path.jsonl'),
-        (err: unknown) => {
-          assert.ok(err instanceof KasettError);
-          assert.equal(err.code, 'READ_ERROR');
-          return true;
-        },
-      );
+    test('returns empty array for non-existent file (ENOENT)', async () => {
+      const result = await reader.readCompactionEvents('/nonexistent/path.jsonl');
+      assert.deepStrictEqual(result, []);
     });
   });
 
