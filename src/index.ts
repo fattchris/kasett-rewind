@@ -38,18 +38,33 @@ interface ContextLoadHookContext {
   additionalContext?: string;
 }
 
+/**
+ * Actual OC 4.14+ plugin API shape.
+ * Discovered via runtime introspection — do NOT change without re-verifying.
+ */
 interface PluginAPI {
-  getConfig<T>(pluginId: string): T;
-  hooks: {
-    on(event: 'before_compaction', handler: (ctx: CompactionHookContext) => CompactionHookContext | Promise<CompactionHookContext | void> | void): void;
-    on(event: 'after_compaction', handler: (result: CompactionResult) => CompactionResult | void): void;
-    on(event: 'context_load', handler: (ctx: ContextLoadHookContext) => ContextLoadHookContext | Promise<ContextLoadHookContext | void> | void): void;
-  };
-  log: {
+  id: string;
+  name: string;
+  version: string;
+  description: string;
+  source: string;
+  rootDir: string;
+  pluginConfig: Record<string, unknown>;
+  logger: {
     info(msg: string): void;
     warn(msg: string): void;
+    error(msg: string): void;
     debug(msg: string): void;
   };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  on(hookName: string, handler: (...args: any[]) => any, opts?: unknown): void;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  registerHook(events: string | string[], handler: (...args: any[]) => any, opts?: unknown): void;
+  registerTool(tool: unknown): void;
+  registerHttpRoute(route: unknown): void;
+  resolvePath(p: string): string;
+  runtime: Record<string, unknown>;
+  config: Record<string, unknown>;
 }
 
 // --- Plugin Registration ---
@@ -61,18 +76,18 @@ export function register(api: PluginAPI): void {
   const config = resolveConfig(api);
 
   if (!config.enabled) {
-    api.log.info('[kasett-rewind] Plugin disabled via config — skipping registration');
+    api.logger.info('[kasett-rewind] Plugin disabled via config — skipping registration');
     return;
   }
 
-  api.log.info(
+  api.logger.info(
     `[kasett-rewind] Registering — window=${config.windowSize}, threads=${config.threadTracking}`,
   );
 
   const reader = new SessionReader();
 
   // Hook 1: Before compaction — inject steering prompt
-  api.hooks.on('before_compaction', async (ctx: CompactionHookContext) => {
+  api.on('before_compaction', async (ctx: CompactionHookContext) => {
     if (!config.threadTracking || !ctx.sessionFilePath) {
       return ctx;
     }
@@ -100,7 +115,7 @@ export function register(api: PluginAPI): void {
       // Build steering prompt
       const steering = buildSteeringPrompt(analysis, metas);
 
-      api.log.debug(
+      api.logger.debug(
         `[kasett-rewind] Steering: ${analysis.core.length} core, ${analysis.fresh.length} fresh, ${analysis.fading.length} fading`,
       );
 
@@ -112,19 +127,19 @@ export function register(api: PluginAPI): void {
       return { ...ctx, customInstructions: merged };
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      api.log.warn(`[kasett-rewind] Failed to build steering prompt: ${msg}`);
+      api.logger.warn(`[kasett-rewind] Failed to build steering prompt: ${msg}`);
       return ctx;
     }
   });
 
   // Hook 2: After compaction — parse thread meta from output
-  api.hooks.on('after_compaction', (result: CompactionResult) => {
+  api.on('after_compaction', (result: CompactionResult) => {
     if (!config.threadTracking) return;
 
     const parsed = parseCompactionOutput(result.summary);
 
     if (parsed.meta) {
-      api.log.debug(
+      api.logger.debug(
         `[kasett-rewind] Extracted thread meta: main="${parsed.meta.main}"`,
       );
 
@@ -137,12 +152,12 @@ export function register(api: PluginAPI): void {
 
       return { summary: JSON.stringify(enrichedData) } as CompactionResult;
     } else {
-      api.log.warn('[kasett-rewind] No [THREAD_META] block found in compaction output');
+      api.logger.warn('[kasett-rewind] No [THREAD_META] block found in compaction output');
     }
   });
 
   // Hook 3: Context load — inject orientation string
-  api.hooks.on('context_load', async (ctx: ContextLoadHookContext) => {
+  api.on('context_load', async (ctx: ContextLoadHookContext) => {
     if (!config.threadTracking || !ctx.sessionFilePath) {
       return ctx;
     }
@@ -152,7 +167,7 @@ export function register(api: PluginAPI): void {
 
       if (latestMeta) {
         const orientation = buildOrientationPrompt(latestMeta);
-        api.log.debug(`[kasett-rewind] Injecting orientation: "${latestMeta.main}"`);
+        api.logger.debug(`[kasett-rewind] Injecting orientation: "${latestMeta.main}"`);
 
         const merged = ctx.additionalContext
           ? `${ctx.additionalContext}\n\n${orientation}`
@@ -162,7 +177,7 @@ export function register(api: PluginAPI): void {
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      api.log.warn(`[kasett-rewind] Failed to load orientation: ${msg}`);
+      api.logger.warn(`[kasett-rewind] Failed to load orientation: ${msg}`);
     }
 
     return ctx;
@@ -174,7 +189,7 @@ export function register(api: PluginAPI): void {
  */
 function resolveConfig(api: PluginAPI): KasettConfig & { enabled: boolean } {
   try {
-    const raw = api.getConfig<Partial<KasettConfig> & { enabled?: boolean }>('kasett-rewind');
+    const raw = (api.pluginConfig ?? {}) as Partial<KasettConfig> & { enabled?: boolean };
     return {
       enabled: raw.enabled ?? true,
       windowSize: raw.windowSize ?? DEFAULT_CONFIG.windowSize,

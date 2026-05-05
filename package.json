@@ -8,7 +8,7 @@
     "kasett-rewind": "dist/cli/index.js"
   },
   "openclaw": {
-    "plugin": "openclaw.plugin.json"
+    "extensions": ["./dist/index.js"]
   },
   "scripts": {
     "build": "tsc && cp -r src/tests/fixtures dist/tests/",
