@@ -2,35 +2,56 @@
  * Steering prompt builder.
  *
  * Builds prompts for two hooks:
- * 1. Pre-compaction: instructs the LLM to produce a summary + thread meta,
- *    with previous weighted summaries as context for continuity.
- * 2. Context load: short orientation string derived from the [THREAD_META]
- *    block in the most recent compaction summary.
+ * 1. Orientation (before_prompt_build, runs on EVERY turn): shows agent the current
+ *    thread state and trajectory across recent compactions — light, names only.
+ * 2. Pre-compaction (summarize()): instructs the LLM to produce a new summary
+ *    with weighted context from previous summaries for continuity.
  */
 
+import type { ThreadMeta } from '../types.js';
 import type { WeightedSummary } from './weight.js';
-import { parseCompactionOutput } from './parser.js';
 
 /**
- * Build the short orientation string for context load (after compaction).
- * Parses the [THREAD_META] block from a raw compaction summary string.
- * Injected at session start so the agent knows what it was working on.
+ * Build the orientation string for the before_prompt_build hook.
+ * Runs on every agent turn. Shows current thread state + trajectory over
+ * recent compactions so the agent knows what it was working on.
  *
- * @param rawSummary - A compaction summary string (may include [THREAD_META] block)
- * @returns Orientation string, or null if no parseable thread meta found
+ * Accepts multiple ThreadMeta objects (most recent first) — typically the
+ * last 3 compaction summaries' [THREAD_META] blocks. Shows trajectory:
+ * the most recent is the "current" state, older ones show where things came from.
+ *
+ * @param metas - Thread meta objects, most recent FIRST (up to 3)
+ * @returns Orientation string, or null if no metas provided or all are empty
  */
-export function buildOrientationPrompt(rawSummary: string): string | null {
-  const parsed = parseCompactionOutput(rawSummary);
-  if (!parsed.meta) return null;
+export function buildOrientationPrompt(metas: ThreadMeta[]): string | null {
+  if (metas.length === 0) return null;
 
-  const { meta } = parsed;
-  const activeSubs = meta.sub.filter((s) => s.trim() && s.trim().toLowerCase() !== 'idle');
+  const current = metas[0];
+  if (!current.main?.trim()) return null;
 
-  if (activeSubs.length === 0) {
-    return `You are currently working on: ${meta.main}.`;
+  const lines: string[] = [];
+
+  // Current state (most recent compaction)
+  lines.push(`You are currently working on: ${current.main}.`);
+
+  const activeSubs = current.sub.filter((s) => s.trim() && s.trim().toLowerCase() !== 'idle');
+  if (activeSubs.length > 0) {
+    lines.push(`Active sub-threads: ${activeSubs.join(', ')}`);
   }
 
-  return `You are currently working on: ${meta.main}.\nActive sub-threads: ${activeSubs.join(', ')}`;
+  // Thread trajectory (previous compactions), if any
+  const older = metas.slice(1);
+  if (older.length > 0) {
+    lines.push('');
+    lines.push('Thread trajectory (previous compactions):');
+    older.forEach((meta, i) => {
+      const olderSubs = meta.sub.filter((s) => s.trim() && s.trim().toLowerCase() !== 'idle');
+      const subsStr = olderSubs.length > 0 ? ` | Subs: ${olderSubs.join(', ')}` : '';
+      lines.push(`  -${i + 1}: Main: ${meta.main}${subsStr}`);
+    });
+  }
+
+  return lines.join('\n');
 }
 
 /**

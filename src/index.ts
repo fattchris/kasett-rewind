@@ -20,17 +20,23 @@
  *     e. Returns the full output (including [THREAD_META]) to OC for storage
  *
  * ### before_prompt_build hook (MODIFYING)
- *   Fires on every normal agent turn. Reads the most recent compaction summary
- *   from the session JSONL, parses [THREAD_META] from it, and injects a brief
- *   orientation string via { prependContext }.
+ *   Fires on every normal agent turn. Reads the last N compaction summaries
+ *   (up to windowSize) from the session JSONL, parses [THREAD_META] from each,
+ *   and injects a thread trajectory orientation string via { prependContext }.
+ *   Shows current thread state + historical trajectory (most-recent-first).
+ *   Light — just thread names, no full summaries, no weights.
  *
- *   No sidecar file is used. Thread meta lives inside the compaction summary
- *   itself, stored by OC in the session JSONL.
+ *   No sidecar file is used. Thread meta lives inside the compaction summaries
+ *   themselves, stored by OC in the session JSONL.
  *
  * ## Key principles
- *   - Threads STEER the agent (orientation after compaction)
- *   - Weights govern SUMMARY QUALITY (how much historical context feeds forward)
- *   - These are two separate concerns — no cross-contamination
+ *   - **Steering (every turn):** before_prompt_build reads last N summaries,
+ *     extracts [THREAD_META] from each, shows thread trajectory as orientation.
+ *     Light, constant presence. No weights, no full summaries.
+ *   - **Blending (compaction only):** summarize() reads last N full summaries,
+ *     weights them by recency, feeds them to the LLM for a new summary.
+ *     Heavy, runs only when OC triggers compaction.
+ *   - These are two SEPARATE concerns — no cross-contamination.
  */
 
 import { join } from 'node:path';
@@ -38,7 +44,7 @@ import { SessionReader, KasettError } from './storage/reader.js';
 import { weightSummaries } from './threads/weight.js';
 import { buildSteeringPrompt, buildOrientationPrompt } from './threads/steering.js';
 import { parseCompactionOutput } from './threads/parser.js';
-import type { KasettConfig } from './types.js';
+import type { KasettConfig, ThreadMeta } from './types.js';
 import { DEFAULT_CONFIG } from './types.js';
 
 // ---------------------------------------------------------------------------
@@ -198,9 +204,11 @@ export function register(api: PluginAPI): void {
   // Hook 2: before_prompt_build (MODIFYING — return values ARE merged)
   //
   // Fires on every normal agent turn (not during compaction).
-  // Reads the most recent compaction summary from the session JSONL,
-  // parses [THREAD_META] from it, and injects orientation via prependContext.
-  // No sidecar file — thread meta lives inside the compaction summary itself.
+  // Reads the last N compaction summaries from the session JSONL (up to
+  // windowSize), extracts [THREAD_META] from each, and injects a thread
+  // trajectory orientation string via prependContext. This is LIGHT —
+  // just thread names showing trajectory, no full summaries, no weights.
+  // No sidecar file — thread meta lives inside the compaction summaries.
   // ─────────────────────────────────────────────────────────────────────────
   api.on(
     'before_prompt_build',
@@ -217,12 +225,26 @@ export function register(api: PluginAPI): void {
       try {
         const sessionFile = await resolveSessionFile(api, ctx, agentId, sessionKey, stateDir);
         if (sessionFile) {
-          const latestSummary = await reader.readLatestSummary(sessionFile);
-          if (latestSummary) {
-            const orientation = buildOrientationPrompt(latestSummary);
-            if (orientation) {
-              api.logger.debug(`[kasett-rewind] Injecting orientation from session JSONL`);
-              return { prependContext: orientation };
+          // Read last N summaries (windowSize), oldest first
+          const recentSummaries = await reader.readLastNSummaries(sessionFile, config.windowSize);
+
+          if (recentSummaries.length > 0) {
+            // Parse [THREAD_META] from each, collect valid ones
+            // Reverse so most-recent-first for trajectory display
+            const metas: ThreadMeta[] = recentSummaries
+              .slice()
+              .reverse()
+              .map((s) => parseCompactionOutput(s).meta)
+              .filter((m): m is ThreadMeta => m !== null);
+
+            if (metas.length > 0) {
+              const orientation = buildOrientationPrompt(metas);
+              if (orientation) {
+                api.logger.debug(
+                  `[kasett-rewind] Injecting thread trajectory orientation (${metas.length} compaction(s))`,
+                );
+                return { prependContext: orientation };
+              }
             }
           }
         }

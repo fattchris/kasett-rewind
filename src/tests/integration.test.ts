@@ -7,6 +7,7 @@ import { weightSummaries } from '../threads/weight.js';
 import { buildSteeringPrompt, buildOrientationPrompt } from '../threads/steering.js';
 import { parseCompactionOutput } from '../threads/parser.js';
 import { DEFAULT_CONFIG } from '../types.js';
+import type { ThreadMeta } from '../types.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const fixturesDir = join(__dirname, 'fixtures');
@@ -59,20 +60,31 @@ sub3: planning v2 auth features (PKCE, refresh tokens)
     assert.ok(parsed.summary.includes('GitHub OAuth integration completed'));
   });
 
-  test('orientation prompt from latest summary in session JSONL', async () => {
+  test('orientation prompt from last N summaries in session JSONL (thread trajectory)', async () => {
     const reader = new SessionReader();
     const filePath = join(fixturesDir, 'session-with-kasett-meta.jsonl');
-    const latestSummary = await reader.readLatestSummary(filePath);
+    // Read last 3 summaries (oldest first), reverse to most-recent-first, parse thread metas
+    const recentSummaries = await reader.readLastNSummaries(filePath, DEFAULT_CONFIG.windowSize);
+    const metas: ThreadMeta[] = recentSummaries
+      .slice()
+      .reverse()
+      .map((s) => parseCompactionOutput(s).meta)
+      .filter((m): m is ThreadMeta => m !== null);
 
-    assert.ok(latestSummary !== null);
+    assert.ok(metas.length > 0);
 
-    const orientation = buildOrientationPrompt(latestSummary!);
+    const orientation = buildOrientationPrompt(metas);
 
     assert.ok(orientation !== null);
+    // Current state: most recent compaction's thread meta
     assert.ok(orientation!.includes('building OAuth2 authentication system'));
     assert.ok(orientation!.includes('completing GitHub OAuth integration'));
     assert.ok(orientation!.includes('rate limiting live at 100 req/min'));
     assert.ok(orientation!.includes('monitoring auth system performance'));
+    // Trajectory from older compactions
+    assert.ok(orientation!.includes('Thread trajectory'));
+    assert.ok(orientation!.includes('-1:'));
+    assert.ok(orientation!.includes('-2:'));
   });
 
   test('readLastNSummaries returns all compaction summaries including plain ones', async () => {
@@ -84,14 +96,21 @@ sub3: planning v2 auth features (PKCE, refresh tokens)
     assert.equal(summaries.length, 2);
   });
 
-  test('plain session: readLatestSummary returns summary text, orientation returns null', async () => {
+  test('plain session: summaries have no [THREAD_META], orientation returns null', async () => {
     const reader = new SessionReader();
     const filePath = join(fixturesDir, 'session-plain-compaction.jsonl');
-    const latestSummary = await reader.readLatestSummary(filePath);
+    const recentSummaries = await reader.readLastNSummaries(filePath, DEFAULT_CONFIG.windowSize);
 
-    // Has summaries but no [THREAD_META] blocks
-    assert.ok(latestSummary !== null);
-    const orientation = buildOrientationPrompt(latestSummary!);
+    // Has summaries but no [THREAD_META] blocks — metas will be empty
+    assert.ok(recentSummaries.length > 0);
+    const metas: ThreadMeta[] = recentSummaries
+      .slice()
+      .reverse()
+      .map((s) => parseCompactionOutput(s).meta)
+      .filter((m): m is ThreadMeta => m !== null);
+
+    assert.equal(metas.length, 0);
+    const orientation = buildOrientationPrompt(metas);
     assert.equal(orientation, null);
   });
 
