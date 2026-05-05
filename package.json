@@ -1,7 +1,7 @@
 {
   "name": "kasett-rewind",
   "version": "0.1.0",
-  "description": "OpenClaw compaction plugin — rolling window, structured thread tracking, and ALLM pattern extraction",
+  "description": "OpenClaw compaction plugin — rolling window + structured thread tracking. Prevents goldfish brain.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "bin": {
@@ -24,7 +24,6 @@
   "author": "Chris Fontes",
   "license": "UNLICENSED",
   "type": "module",
-  "private": true,
   "engines": {
     "node": ">=20"
   },
