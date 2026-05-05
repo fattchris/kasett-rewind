@@ -85,6 +85,35 @@ export class SessionReader {
   }
 
   /**
+   * Read the most recent compaction summary string from the session JSONL.
+   * Returns the raw summary text (which may include a [THREAD_META] block)
+   * from the most recent compaction event, regardless of whether it has kaspiett.
+   *
+   * @param filePath - Absolute path to the session .jsonl file
+   * @returns The most recent summary string, or null if no compaction events exist
+   */
+  async readLatestSummary(filePath: string): Promise<string | null> {
+    const all = await this.readCompactionEvents(filePath);
+    if (all.length === 0) return null;
+    return all[all.length - 1].data.summary;
+  }
+
+  /**
+   * Read the last N compaction summary strings from the session JSONL.
+   * Returns raw summary texts (which may include [THREAD_META] blocks),
+   * in chronological order (oldest first), regardless of kaspiett presence.
+   *
+   * @param filePath - Absolute path to the session .jsonl file
+   * @param count - Maximum number of summaries to return
+   * @returns The last N summary strings, oldest first
+   */
+  async readLastNSummaries(filePath: string, count: number): Promise<string[]> {
+    if (count <= 0) return [];
+    const all = await this.readCompactionEvents(filePath);
+    return all.slice(-count).map((e) => e.data.summary);
+  }
+
+  /**
    * Parse a single JSONL line into a CompactionEvent.
    * Returns undefined if the line is not a valid compaction event.
    */

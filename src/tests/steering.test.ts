@@ -1,94 +1,90 @@
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { buildOrientationPrompt, buildSteeringPrompt } from '../threads/steering.js';
-import type { ThreadMeta } from '../types.js';
-import type { WeightedThreadAnalysis } from '../threads/weight.js';
+import type { WeightedSummary } from '../threads/weight.js';
 
 describe('buildOrientationPrompt', () => {
-  test('produces orientation string from thread meta', () => {
-    const meta: ThreadMeta = {
-      main: 'building OAuth2 authentication',
-      sub: ['GitHub OAuth integration', 'rate limiting', 'monitoring setup'],
-    };
+  test('parses [THREAD_META] from a raw summary string', () => {
+    const rawSummary = `Implemented OAuth2 authentication for MoltAI.
+Rate limiting added to token endpoints.
 
-    const result = buildOrientationPrompt(meta);
+[THREAD_META]
+main: building OAuth2 authentication
+sub1: GitHub OAuth integration
+sub2: rate limiting
+sub3: monitoring setup
+[/THREAD_META]`;
 
-    assert.ok(result.includes('building OAuth2 authentication'));
-    assert.ok(result.includes('GitHub OAuth integration'));
-    assert.ok(result.includes('rate limiting'));
-    assert.ok(result.includes('monitoring setup'));
-    assert.ok(result.startsWith('You are currently working on:'));
+    const result = buildOrientationPrompt(rawSummary);
+
+    assert.ok(result !== null);
+    assert.ok(result!.includes('building OAuth2 authentication'));
+    assert.ok(result!.startsWith('You are currently working on:'));
   });
 
-  test('includes all three sub-threads', () => {
-    const meta: ThreadMeta = {
-      main: 'main task',
-      sub: ['sub A', 'sub B', 'sub C'],
-    };
+  test('includes active sub-threads in orientation', () => {
+    const rawSummary = `[THREAD_META]
+main: main task
+sub1: sub A
+sub2: sub B
+sub3: idle
+[/THREAD_META]`;
 
-    const result = buildOrientationPrompt(meta);
+    const result = buildOrientationPrompt(rawSummary);
 
-    assert.ok(result.includes('sub A'));
-    assert.ok(result.includes('sub B'));
-    assert.ok(result.includes('sub C'));
+    assert.ok(result !== null);
+    assert.ok(result!.includes('sub A'));
+    assert.ok(result!.includes('sub B'));
+    // idle subs should be filtered out
+    assert.ok(!result!.includes('idle'));
+  });
+
+  test('returns null when no [THREAD_META] block found', () => {
+    const result = buildOrientationPrompt('A plain summary with no thread meta.');
+    assert.equal(result, null);
+  });
+
+  test('returns just main when all subs are idle', () => {
+    const rawSummary = `[THREAD_META]
+main: only active thread
+sub1: idle
+sub2: idle
+sub3: idle
+[/THREAD_META]`;
+
+    const result = buildOrientationPrompt(rawSummary);
+    assert.ok(result !== null);
+    assert.ok(result!.includes('only active thread'));
+    assert.ok(!result!.includes('Active sub-threads'));
   });
 });
 
 describe('buildSteeringPrompt', () => {
-  test('includes core threads section when present', () => {
-    const analysis: WeightedThreadAnalysis = {
-      core: ['building auth system', 'OAuth setup'],
-      fresh: ['monitoring'],
-      fading: ['database migration'],
-    };
-
-    const metas: ThreadMeta[] = [
-      { main: 'building auth system', sub: ['OAuth setup', 'monitoring', 'testing'] },
+  test('includes weighted previous summaries as context', () => {
+    const weighted: WeightedSummary[] = [
+      {
+        summary: 'OAuth system was built and deployed.',
+        weight: 1.0,
+        label: 'Previous summary (weight 1.0 — most recent)',
+      },
+      {
+        summary: 'Started building the auth system.',
+        weight: 0.6,
+        label: 'Earlier summary (weight 0.6)',
+      },
     ];
 
-    const result = buildSteeringPrompt(analysis, metas);
+    const result = buildSteeringPrompt(weighted);
 
-    assert.ok(result.includes('Core Threads'));
-    assert.ok(result.includes('building auth system'));
-    assert.ok(result.includes('OAuth setup'));
-  });
-
-  test('includes fresh threads section when present', () => {
-    const analysis: WeightedThreadAnalysis = {
-      core: [],
-      fresh: ['new feature X', 'new feature Y'],
-      fading: [],
-    };
-
-    const result = buildSteeringPrompt(analysis, []);
-
-    assert.ok(result.includes('New Threads'));
-    assert.ok(result.includes('new feature X'));
-    assert.ok(result.includes('new feature Y'));
-  });
-
-  test('includes fading threads section when present', () => {
-    const analysis: WeightedThreadAnalysis = {
-      core: [],
-      fresh: [],
-      fading: ['old task A', 'old task B'],
-    };
-
-    const result = buildSteeringPrompt(analysis, []);
-
-    assert.ok(result.includes('Fading Threads'));
-    assert.ok(result.includes('old task A'));
-    assert.ok(result.includes('old task B'));
+    assert.ok(result.includes('Previous Compaction Summaries'));
+    assert.ok(result.includes('OAuth system was built'));
+    assert.ok(result.includes('Started building the auth system'));
+    assert.ok(result.includes('weight 1.0'));
+    assert.ok(result.includes('weight 0.6'));
   });
 
   test('includes THREAD_META output format instructions', () => {
-    const analysis: WeightedThreadAnalysis = {
-      core: [],
-      fresh: [],
-      fading: [],
-    };
-
-    const result = buildSteeringPrompt(analysis, []);
+    const result = buildSteeringPrompt([]);
 
     assert.ok(result.includes('[THREAD_META]'));
     assert.ok(result.includes('[/THREAD_META]'));
@@ -98,51 +94,38 @@ describe('buildSteeringPrompt', () => {
     assert.ok(result.includes('sub3:'));
   });
 
-  test('shows thread history from previous metas', () => {
-    const analysis: WeightedThreadAnalysis = {
-      core: ['auth system'],
-      fresh: [],
-      fading: [],
-    };
+  test('explains weight semantics in the prompt', () => {
+    const result = buildSteeringPrompt([]);
 
-    const metas: ThreadMeta[] = [
-      { main: 'auth system', sub: ['OAuth', 'rate limiting', 'testing'] },
-      { main: 'auth system', sub: ['OAuth', 'database', 'setup'] },
+    assert.ok(result.includes('Thread-Aware Compaction Instructions'));
+  });
+
+  test('explains weight semantics when summaries are present', () => {
+    const weighted: WeightedSummary[] = [
+      { summary: 'Recent work.', weight: 1.0, label: 'Previous summary (weight 1.0 — most recent)' },
     ];
 
-    const result = buildSteeringPrompt(analysis, metas);
+    const result = buildSteeringPrompt(weighted);
 
-    assert.ok(result.includes('Recent Thread History'));
-    assert.ok(result.includes('(most recent)'));
-    assert.ok(result.includes('2 compactions ago'));
+    assert.ok(result.includes('1.0 = most recent'));
   });
 
-  test('includes rules about always outputting 1 main + 3 subs', () => {
-    const analysis: WeightedThreadAnalysis = {
-      core: [],
-      fresh: [],
-      fading: [],
-    };
+  test('works with empty weighted summaries — still produces valid output', () => {
+    const result = buildSteeringPrompt([]);
 
-    const result = buildSteeringPrompt(analysis, []);
-
-    assert.ok(result.includes('exactly 1 main + 3 subs'));
-  });
-
-  test('handles empty analysis gracefully', () => {
-    const analysis: WeightedThreadAnalysis = {
-      core: [],
-      fresh: [],
-      fading: [],
-    };
-
-    const result = buildSteeringPrompt(analysis, []);
-
-    // Should still produce valid output with format instructions
     assert.ok(result.includes('Thread-Aware Compaction Instructions'));
     assert.ok(result.includes('[THREAD_META]'));
-    assert.ok(!result.includes('Core Threads'));
-    assert.ok(!result.includes('New Threads'));
-    assert.ok(!result.includes('Fading Threads'));
+    // No "Previous Compaction Summaries" section without summaries
+    assert.ok(!result.includes('Previous Compaction Summaries'));
+  });
+
+  test('includes rules about 1 main + 3 subs', () => {
+    const result = buildSteeringPrompt([]);
+    assert.ok(result.includes('1 main + 3 subs') || result.includes('Exactly 1 main'));
+  });
+
+  test('explains threads are orientation, not task tracker', () => {
+    const result = buildSteeringPrompt([]);
+    assert.ok(result.includes('orientation') || result.includes('NOT a task tracker'));
   });
 });

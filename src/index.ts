@@ -13,35 +13,32 @@
  *   `summarize()` must return a string (the compaction summary).
  *
  *   The compaction provider:
- *     a. Reads previous thread metas from the sidecar (if any)
- *     b. Builds a thread-aware steering prompt (buildSteeringPrompt)
- *     c. Calls Anthropic claude-haiku-3-5 with the messages + steering
- *     d. Parses [THREAD_META] from the output
- *     e. Stores the parsed meta in a per-session sidecar file
- *     f. Returns the clean summary text to OC
+ *     a. Reads the last N summaries from the session JSONL (oldest→newest)
+ *     b. Pairs them with temporal decay weights (most recent = highest weight)
+ *     c. Builds a weighted steering prompt (buildSteeringPrompt)
+ *     d. Calls the LLM with the messages + steering
+ *     e. Returns the full output (including [THREAD_META]) to OC for storage
  *
  * ### before_prompt_build hook (MODIFYING)
- *   Fires on every normal agent turn. Reads the sidecar and injects
- *   a brief orientation string via { prependContext } so the agent
- *   knows what it was working on after a compaction.
+ *   Fires on every normal agent turn. Reads the most recent compaction summary
+ *   from the session JSONL, parses [THREAD_META] from it, and injects a brief
+ *   orientation string via { prependContext }.
  *
- * ### before_compaction hook (VOID)
- *   Used as a lightweight "session context capture" — stores the
- *   current sessionKey/sessionId into `pendingCompactionCtx` so the
- *   stateless `summarize()` method knows which sidecar to write.
+ *   No sidecar file is used. Thread meta lives inside the compaction summary
+ *   itself, stored by OC in the session JSONL.
  *
- * ## Why not the old after_compaction hook?
- *   summarize() itself now owns the full pipeline, so after_compaction
- *   is unnecessary — we write the sidecar inside summarize() before returning.
+ * ## Key principles
+ *   - Threads STEER the agent (orientation after compaction)
+ *   - Weights govern SUMMARY QUALITY (how much historical context feeds forward)
+ *   - These are two separate concerns — no cross-contamination
  */
 
-import { readFile, writeFile, mkdir } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
+import { join } from 'node:path';
 import { SessionReader, KasettError } from './storage/reader.js';
-import { analyzeThreads } from './threads/weight.js';
+import { weightSummaries } from './threads/weight.js';
 import { buildSteeringPrompt, buildOrientationPrompt } from './threads/steering.js';
 import { parseCompactionOutput } from './threads/parser.js';
-import type { KasettConfig, ThreadMeta } from './types.js';
+import type { KasettConfig } from './types.js';
 import { DEFAULT_CONFIG } from './types.js';
 
 // ---------------------------------------------------------------------------
@@ -143,7 +140,7 @@ interface SummarizeParams {
     identifierPolicy?: string;
     identifierInstructions?: string;
   };
-  /** Previous compaction summary for continuity */
+  /** Previous compaction summary for continuity (provided by OC) */
   previousSummary?: string;
 }
 
@@ -152,10 +149,8 @@ interface SummarizeParams {
 // ---------------------------------------------------------------------------
 
 /**
- * Populated by before_compaction hook so summarize() knows which sidecar to write.
- * before_compaction fires immediately before summarize() is called, in the same
- * event loop tick sequence. We use a simple object to capture the context.
- *
+ * Populated by before_compaction hook so summarize() knows which session to read.
+ * before_compaction fires immediately before summarize() is called.
  * Reset to null after summarize() consumes it.
  */
 let pendingCompactionCtx: {
@@ -186,7 +181,7 @@ export function register(api: PluginAPI): void {
   // Hook 1: before_compaction (VOID)
   //
   // Captures session context into pendingCompactionCtx so summarize() can
-  // find the right sidecar path. Runs just before the compaction starts.
+  // find the right session JSONL. Runs just before the compaction starts.
   // ─────────────────────────────────────────────────────────────────────────
   api.on('before_compaction', async (_event: BeforeCompactionEvent, ctx: HookContext) => {
     if (!config.threadTracking) return;
@@ -203,7 +198,9 @@ export function register(api: PluginAPI): void {
   // Hook 2: before_prompt_build (MODIFYING — return values ARE merged)
   //
   // Fires on every normal agent turn (not during compaction).
-  // Reads the sidecar and injects thread orientation via prependContext.
+  // Reads the most recent compaction summary from the session JSONL,
+  // parses [THREAD_META] from it, and injects orientation via prependContext.
+  // No sidecar file — thread meta lives inside the compaction summary itself.
   // ─────────────────────────────────────────────────────────────────────────
   api.on(
     'before_prompt_build',
@@ -218,22 +215,15 @@ export function register(api: PluginAPI): void {
       const stateDir = api.runtime.state.resolveStateDir();
 
       try {
-        // Fast path: check sidecar first
-        const sidecarMeta = await readSidecarMeta(stateDir, sessionKey);
-        if (sidecarMeta) {
-          const orientation = buildOrientationPrompt(sidecarMeta);
-          api.logger.debug(`[kasett-rewind] Injecting orientation from sidecar: "${sidecarMeta.main}"`);
-          return { prependContext: orientation };
-        }
-
-        // Slow path: scan session JSONL for latest compaction with meta
-        const sessionFile = await resolveSessionFile(api, ctx, agentId, sessionKey);
+        const sessionFile = await resolveSessionFile(api, ctx, agentId, sessionKey, stateDir);
         if (sessionFile) {
-          const latestMeta = await reader.readLatestMeta(sessionFile);
-          if (latestMeta) {
-            const orientation = buildOrientationPrompt(latestMeta);
-            api.logger.debug(`[kasett-rewind] Injecting orientation from session JSONL: "${latestMeta.main}"`);
-            return { prependContext: orientation };
+          const latestSummary = await reader.readLatestSummary(sessionFile);
+          if (latestSummary) {
+            const orientation = buildOrientationPrompt(latestSummary);
+            if (orientation) {
+              api.logger.debug(`[kasett-rewind] Injecting orientation from session JSONL`);
+              return { prependContext: orientation };
+            }
           }
         }
       } catch (err) {
@@ -264,48 +254,61 @@ export function register(api: PluginAPI): void {
       api.logger.info('[kasett-rewind] summarize() called — building thread-aware compaction');
 
       try {
-        // --- 1. Read previous thread metas from sidecar or session JSONL ---
-        let previousMetas: ThreadMeta[] = [];
+        // --- 1. Read previous summaries from session JSONL ---
+        // OC also provides previousSummary directly — use that as the most recent,
+        // then supplement with older ones from the JSONL for the window.
+        let previousSummaries: string[] = [];
 
-        if (capturedCtx) {
+        if (params.previousSummary?.trim()) {
+          // OC already gave us the most recent summary — use it
+          previousSummaries = [params.previousSummary.trim()];
+        }
+
+        if (capturedCtx && previousSummaries.length < config.windowSize) {
           try {
-            // Try sidecar first (fast path)
-            const sidecarMeta = await readSidecarMeta(capturedCtx.stateDir, capturedCtx.sessionKey);
-            if (sidecarMeta) {
-              previousMetas = [sidecarMeta];
-            } else {
-              // Fall back to session JSONL
-              const sessionFile = await resolveSessionFileFromState(
-                api,
-                capturedCtx.stateDir,
-                capturedCtx.agentId,
-                capturedCtx.sessionKey,
-              );
-              if (sessionFile) {
-                const events = await reader.readLastNWithMeta(sessionFile, config.windowSize);
-                previousMetas = events
-                  .filter((e) => e.data.kaspiett != null)
-                  .map((e) => e.data.kaspiett!)
-                  .reverse(); // most recent first
+            const sessionFile = await resolveSessionFileFromState(
+              api,
+              capturedCtx.stateDir,
+              capturedCtx.agentId,
+              capturedCtx.sessionKey,
+            );
+            if (sessionFile) {
+              const needed = config.windowSize - previousSummaries.length;
+              // Read last N+1 to avoid duplication with previousSummary
+              const events = await reader.readLastNSummaries(sessionFile, needed + 1);
+              // events are oldest-first; reverse to most-recent-first
+              const fromJsonl = [...events].reverse();
+
+              // If previousSummary matches the most recent JSONL entry, skip it
+              if (
+                previousSummaries.length > 0 &&
+                fromJsonl.length > 0 &&
+                fromJsonl[0].trim() === previousSummaries[0]
+              ) {
+                previousSummaries = [...previousSummaries, ...fromJsonl.slice(1).slice(0, needed)];
+              } else {
+                // No overlap — just append (most recent first)
+                previousSummaries = [...previousSummaries, ...fromJsonl.slice(0, needed)];
               }
             }
           } catch (err) {
-            api.logger.warn(`[kasett-rewind] Could not load previous metas: ${String(err)}`);
+            api.logger.warn(`[kasett-rewind] Could not load previous summaries: ${String(err)}`);
           }
-        } else {
-          api.logger.warn('[kasett-rewind] No session context captured — summarizing without thread history');
+        } else if (!capturedCtx) {
+          api.logger.warn('[kasett-rewind] No session context captured — summarizing without full history');
         }
 
-        // --- 2. Build thread-aware steering prompt ---
-        const analysis = analyzeThreads(previousMetas, config.weights);
-        const steeringPrompt = buildSteeringPrompt(analysis, previousMetas);
+        // --- 2. Pair summaries with temporal decay weights ---
+        const weighted = weightSummaries(previousSummaries, config.weights);
 
-        // --- 3. Call LLM with steering injection ---
+        // --- 3. Build thread-aware steering prompt ---
+        const steeringPrompt = buildSteeringPrompt(weighted);
+
+        // --- 4. Call LLM with steering injection ---
         const summary = await callLLMForCompaction({
           messages: params.messages,
           signal: params.signal,
           customInstructions: params.customInstructions,
-          previousSummary: params.previousSummary,
           steeringPrompt,
           compactionModel: config.compactionModel,
           logger: api.logger,
@@ -316,33 +319,21 @@ export function register(api: PluginAPI): void {
           return undefined;
         }
 
-        // --- 4. Parse [THREAD_META] from output ---
+        // --- 5. Validate [THREAD_META] was produced ---
         const parsed = parseCompactionOutput(summary);
-
-        if (parsed.meta && capturedCtx) {
+        if (parsed.meta) {
           api.logger.info(`[kasett-rewind] Extracted thread meta: main="${parsed.meta.main}"`);
-          // --- 5. Store meta in sidecar ---
-          try {
-            await writeSidecarMeta(capturedCtx.stateDir, capturedCtx.sessionKey, parsed.meta);
-            api.logger.debug('[kasett-rewind] Sidecar written successfully');
-          } catch (err) {
-            api.logger.warn(`[kasett-rewind] Failed to write sidecar: ${String(err)}`);
-          }
-        } else if (!parsed.meta) {
+        } else {
           api.logger.warn(
             '[kasett-rewind] No [THREAD_META] block found in LLM output. ' +
             'The steering prompt instructs the LLM to include it — check model compliance.',
           );
         }
 
-        // --- 6. Return clean summary text to OC ---
-        // Return the FULL output (with [THREAD_META]) as the summary.
-        // OC stores this as the compaction entry. The [THREAD_META] block is
-        // preserved for future reference and can be re-parsed by before_prompt_build.
-        // We also return parsed.summary (without the block) so OC's context is clean.
-        // Return the FULL output including [THREAD_META] block.
+        // --- 6. Return full output (with [THREAD_META]) to OC ---
         // OC stores this as the compaction entry in the session JSONL.
-        // The meta block persists for future orientation injection.
+        // The [THREAD_META] block is preserved for future orientation injection
+        // via before_prompt_build without any sidecar file.
         return summary;
       } catch (err) {
         if (isAbortError(err)) {
@@ -366,7 +357,6 @@ interface LLMCallParams {
   messages: Array<{ role: string; content: unknown }>;
   signal?: AbortSignal;
   customInstructions?: string;
-  previousSummary?: string;
   steeringPrompt: string;
   /**
    * Model override from plugin config.
@@ -382,23 +372,7 @@ interface LLMCallParams {
 }
 
 /**
- * Calls the LLM (Anthropic claude-haiku-3-5 via direct API, or OpenRouter fallback)
- * to produce a thread-aware compaction summary.
- *
- * The steering prompt is injected as system context so the LLM knows to output
- * [THREAD_META] in addition to the narrative summary.
- */
-/**
  * Resolve the model identifier to use for a given API provider.
- *
- * When `compactionModel` is unset or "default", we fall back to the
- * provider's own default (claude-sonnet-4-20250514 for Anthropic direct,
- * anthropic/claude-sonnet-4-20250514 for OpenRouter) — i.e. the same
- * behaviour as before this option was added.
- *
- * When an explicit model string is provided, it is used as-is for both
- * providers. Users are responsible for ensuring the model string is valid
- * for their chosen provider.
  */
 function resolveModel(
   compactionModel: string | undefined,
@@ -412,23 +386,18 @@ function resolveModel(
 }
 
 async function callLLMForCompaction(params: LLMCallParams): Promise<string | undefined> {
-  const { messages, signal, customInstructions, previousSummary, steeringPrompt, compactionModel, logger } = params;
+  const { messages, signal, customInstructions, steeringPrompt, compactionModel, logger } = params;
 
-  // Build system prompt: steering + OC custom instructions + previous summary context
+  // Build system prompt: steering + OC custom instructions
   const systemParts: string[] = [steeringPrompt];
 
   if (customInstructions?.trim()) {
     systemParts.push('\n\n---\n\n## Additional Instructions from OpenClaw\n\n' + customInstructions.trim());
   }
 
-  if (previousSummary?.trim()) {
-    systemParts.push('\n\n---\n\n## Previous Compaction Summary\n\n' + previousSummary.trim());
-  }
-
   const systemPrompt = systemParts.join('');
 
   // Convert messages to text for summarization
-  // Messages are in OpenAI role/content format; extract text content
   const historyText = messagesToText(messages);
 
   const userPrompt =
@@ -489,7 +458,6 @@ async function callLLMForCompaction(params: LLMCallParams): Promise<string | und
 
 /**
  * Call Anthropic Messages API directly.
- * Uses claude-haiku-3-5 for cost efficiency.
  */
 async function callAnthropic(params: {
   apiKey: string;
@@ -529,7 +497,6 @@ async function callAnthropic(params: {
 
 /**
  * Call OpenRouter API (OpenAI-compat) as fallback.
- * Uses claude-haiku-3-5 via openrouter.
  */
 async function callOpenRouter(params: {
   apiKey: string;
@@ -617,50 +584,6 @@ function extractTextContent(content: unknown): string {
 }
 
 // ---------------------------------------------------------------------------
-// Sidecar state helpers
-// ---------------------------------------------------------------------------
-
-/**
- * Returns the path to the kasett sidecar JSON file for a given session.
- * Stored under <stateDir>/plugins/kasett-rewind/meta/<sessionKey-safe>.json
- */
-function resolveSidecarPath(stateDir: string, sessionKey: string): string {
-  const safeName = sessionKey.replace(/[^a-z0-9_\-:.]/gi, '_');
-  return join(stateDir, 'plugins', 'kasett-rewind', 'meta', `${safeName}.json`);
-}
-
-async function readSidecarMeta(stateDir: string, sessionKey: string): Promise<ThreadMeta | null> {
-  try {
-    const sidecarPath = resolveSidecarPath(stateDir, sessionKey);
-    const raw = await readFile(sidecarPath, 'utf-8');
-    const parsed: unknown = JSON.parse(raw);
-    if (
-      parsed &&
-      typeof parsed === 'object' &&
-      'main' in parsed &&
-      'sub' in parsed &&
-      typeof (parsed as { main: unknown }).main === 'string' &&
-      Array.isArray((parsed as { sub: unknown }).sub)
-    ) {
-      const p = parsed as { main: string; sub: unknown[] };
-      if (p.sub.length === 3 && p.sub.every((s) => typeof s === 'string')) {
-        return { main: p.main, sub: p.sub as [string, string, string] };
-      }
-    }
-    return null;
-  } catch (err: unknown) {
-    if ((err as { code?: string }).code === 'ENOENT') return null;
-    throw err;
-  }
-}
-
-async function writeSidecarMeta(stateDir: string, sessionKey: string, meta: ThreadMeta): Promise<void> {
-  const sidecarPath = resolveSidecarPath(stateDir, sessionKey);
-  await mkdir(dirname(sidecarPath), { recursive: true });
-  await writeFile(sidecarPath, JSON.stringify(meta, null, 2), 'utf-8');
-}
-
-// ---------------------------------------------------------------------------
 // Session file resolution
 // ---------------------------------------------------------------------------
 
@@ -669,6 +592,7 @@ async function resolveSessionFile(
   ctx: HookContext,
   agentId: string,
   sessionKey: string,
+  stateDir: string,
 ): Promise<string | null> {
   // Strategy 1: session store lookup
   try {
@@ -687,7 +611,6 @@ async function resolveSessionFile(
   const sessionId = ctx.sessionId?.trim();
   if (sessionId) {
     try {
-      const stateDir = api.runtime.state.resolveStateDir();
       return join(stateDir, 'agents', agentId, 'sessions', `${sessionId}.jsonl`);
     } catch {
       // Fall through
@@ -717,7 +640,6 @@ async function resolveSessionFileFromState(
   }
 
   // Strategy 2: derive from stateDir
-  // sessionKey might be a full key like "agent:main:telegram:..." — use it as session file name
   const safeName = sessionKey.replace(/[^a-z0-9_\-:.]/gi, '_');
   const candidate = join(stateDir, 'agents', agentId, 'sessions', `${safeName}.jsonl`);
   return candidate;
@@ -770,8 +692,8 @@ function resolveConfig(api: PluginAPI): KasettConfig & { enabled: boolean } {
 // ---------------------------------------------------------------------------
 
 export { SessionReader, KasettError } from './storage/reader.js';
-export { analyzeThreads } from './threads/weight.js';
-export type { WeightedThreadAnalysis } from './threads/weight.js';
+export { weightSummaries } from './threads/weight.js';
+export type { WeightedSummary } from './threads/weight.js';
 export { buildSteeringPrompt, buildOrientationPrompt } from './threads/steering.js';
 export { parseCompactionOutput } from './threads/parser.js';
 export type { ParseResult } from './threads/parser.js';

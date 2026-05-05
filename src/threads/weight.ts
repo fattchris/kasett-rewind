@@ -1,151 +1,47 @@
 /**
- * Weighted thread evaluation.
+ * Temporal decay weighting for compaction summaries.
  *
- * Takes N previous ThreadMeta objects + configured weights and produces
- * a classification of threads as core, new, or fading.
+ * Weights govern how much each previous compaction summary influences
+ * the new summary. Higher weight = more influence. Lower weight = older
+ * context that should only be retained if still relevant.
+ *
+ * Example: weights [1.0, 0.6, 0.3] applied to the last 3 summaries means:
+ *   - Most recent summary: 100% influence (reference heavily)
+ *   - Previous summary: 60% influence (retain still-relevant threads)
+ *   - Oldest summary: 30% influence (background context only)
  */
-
-import type { ThreadMeta } from '../types.js';
 
 /**
- * Result of weighted thread analysis.
+ * A previous compaction summary paired with its temporal weight.
  */
-export interface WeightedThreadAnalysis {
-  /** Threads appearing in 2+ compactions with high combined weight */
-  core: string[];
-  /** Threads only in the most recent compaction */
-  fresh: string[];
-  /** Threads in older compactions but NOT in the most recent */
-  fading: string[];
-}
-
-/**
- * Weighted entry for a single thread string + its accumulated weight.
- */
-interface ThreadWeight {
-  text: string;
+export interface WeightedSummary {
+  /** The full compaction summary text (may include [THREAD_META] block) */
+  summary: string;
+  /** Temporal weight [0,1] — higher = more recent, more influential */
   weight: number;
-  /** Which compaction indices (0=most recent) this thread appeared in */
-  appearances: number[];
+  /** Human-readable label for use in prompts */
+  label: string;
 }
 
 /**
- * Analyze N previous ThreadMeta objects with configured weights.
+ * Pair previous compaction summaries with their temporal decay weights.
  *
- * @param metas - Previous thread metas, most recent FIRST
+ * @param summaries - Previous summaries, most recent FIRST
  * @param weights - Weight per slot, most recent first (e.g. [1.0, 0.6, 0.3])
- * @returns Classification of threads into core/fresh/fading
+ * @returns Array of WeightedSummary objects, most recent first
  */
-export function analyzeThreads(
-  metas: ThreadMeta[],
+export function weightSummaries(
+  summaries: string[],
   weights: number[],
-): WeightedThreadAnalysis {
-  if (metas.length === 0) {
-    return { core: [], fresh: [], fading: [] };
-  }
+): WeightedSummary[] {
+  if (summaries.length === 0) return [];
 
-  // Collect all thread strings with their weights
-  const threadMap = new Map<string, ThreadWeight>();
-
-  for (let i = 0; i < metas.length; i++) {
-    const meta = metas[i];
+  return summaries.slice(0, weights.length).map((summary, i) => {
     const weight = weights[i] ?? 0;
+    const label = i === 0
+      ? `Previous summary (weight ${weight} — most recent)`
+      : `Earlier summary (weight ${weight}${i === summaries.length - 1 && summaries.length > 1 ? ' — oldest context' : ''})`;
 
-    // Collect all threads from this compaction (main + 3 subs)
-    const allThreads = [meta.main, ...meta.sub];
-
-    for (const text of allThreads) {
-      const normalized = normalizeThread(text);
-      if (!normalized) continue;
-
-      const existing = findSimilar(threadMap, normalized);
-      if (existing) {
-        existing.weight += weight;
-        existing.appearances.push(i);
-      } else {
-        threadMap.set(normalized, {
-          text,
-          weight,
-          appearances: [i],
-        });
-      }
-    }
-  }
-
-  // Classify
-  const core: string[] = [];
-  const fresh: string[] = [];
-  const fading: string[] = [];
-
-  for (const entry of threadMap.values()) {
-    const inMostRecent = entry.appearances.includes(0);
-    const multipleAppearances = entry.appearances.length >= 2;
-
-    if (multipleAppearances && inMostRecent) {
-      // Appears in 2+ compactions including the most recent = core
-      core.push(entry.text);
-    } else if (inMostRecent && !multipleAppearances) {
-      // Only in most recent = new/fresh
-      fresh.push(entry.text);
-    } else if (!inMostRecent) {
-      // Not in most recent = fading
-      fading.push(entry.text);
-    }
-  }
-
-  return { core, fresh, fading };
-}
-
-/**
- * Normalize a thread string for comparison (lowercase, trim, collapse whitespace).
- */
-function normalizeThread(text: string): string {
-  return text.trim().toLowerCase().replace(/\s+/g, ' ');
-}
-
-/**
- * Find a similar thread in the map using fuzzy matching.
- * Two threads are "similar" if one contains the other or they share
- * significant overlap (>60% of the shorter string).
- */
-function findSimilar(
-  map: Map<string, ThreadWeight>,
-  normalized: string,
-): ThreadWeight | undefined {
-  // Exact match first
-  const exact = map.get(normalized);
-  if (exact) return exact;
-
-  // Fuzzy: check for substring containment or significant overlap
-  for (const [key, entry] of map.entries()) {
-    if (isSimilar(key, normalized)) {
-      return entry;
-    }
-  }
-
-  return undefined;
-}
-
-/**
- * Check if two normalized thread strings are similar enough to be the same thread.
- */
-function isSimilar(a: string, b: string): boolean {
-  // One contains the other
-  if (a.includes(b) || b.includes(a)) return true;
-
-  // Significant word overlap
-  const wordsA = new Set(a.split(' ').filter((w) => w.length > 3));
-  const wordsB = new Set(b.split(' ').filter((w) => w.length > 3));
-
-  if (wordsA.size === 0 || wordsB.size === 0) return false;
-
-  const smaller = wordsA.size <= wordsB.size ? wordsA : wordsB;
-  const larger = wordsA.size <= wordsB.size ? wordsB : wordsA;
-
-  let overlap = 0;
-  for (const word of smaller) {
-    if (larger.has(word)) overlap++;
-  }
-
-  return overlap / smaller.size >= 0.6;
+    return { summary, weight, label };
+  });
 }
