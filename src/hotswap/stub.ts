@@ -98,21 +98,58 @@ function parseMetaBlock(block: string): ThreadMeta | null {
 }
 
 /**
+ * Returns true if a message text looks like tool/command output rather than
+ * natural language. We filter these out so thread labels don't become garbage
+ * like "total 8 drwxr-xr-x" when an ls/pwd result is the most recent message.
+ */
+function looksLikeToolOutput(text: string): boolean {
+  const t = text.trimStart();
+  // Unix file listing (ls -l)
+  if (/^total \d+/m.test(t)) return true;
+  if (/^[d\-lrwxst]{10}\s+\d+/m.test(t)) return true;
+  // JSON blobs
+  if (t.startsWith('{') || t.startsWith('[')) return true;
+  // Base64-encoded data
+  if (/^[A-Za-z0-9+/]{40,}={0,2}$/.test(t.split('\n')[0] ?? '')) return true;
+  // Hex dumps
+  if (/^[0-9a-f]{8}:\s+[0-9a-f ]{24}/.test(t)) return true;
+  // Very short fragments that can't be meaningful labels
+  if (t.replace(/\s+/g, ' ').trim().length < 4) return true;
+  return false;
+}
+
+/**
  * Build a heuristic thread meta from the last few messages when no previous
  * summary is available. Uses a keyword scan — no LLM call.
+ *
+ * Only considers user and assistant messages (not tool results), and skips
+ * any message whose content looks like raw tool/command output.
  */
 function buildHeuristicThreadMeta(
   messages: Array<{ role: string; content: unknown }>,
 ): ThreadMeta {
   // Take the last 6 messages for context
   const recent = messages.slice(-6);
-  const recentText = recent
-    .map((m) => extractTextContent(m.content))
-    .filter(Boolean)
-    .join(' ');
 
-  // Try to infer a main topic from the content
-  const main = inferMainThread(recentText) || 'Ongoing conversation';
+  // Filter: only human/assistant turns, skip tool output
+  const usableMessages = recent.filter((m) => {
+    const role = m.role?.toLowerCase();
+    if (role !== 'user' && role !== 'assistant') return false;
+    const text = extractTextContent(m.content);
+    if (!text.trim()) return false;
+    if (looksLikeToolOutput(text)) return false;
+    return true;
+  });
+
+  // Prefer the LAST user message as the thread source
+  const lastUserMsg = [...usableMessages].reverse().find((m) => m.role?.toLowerCase() === 'user');
+  const sourceText = lastUserMsg
+    ? extractTextContent(lastUserMsg.content)
+    : usableMessages.length > 0
+      ? extractTextContent(usableMessages[usableMessages.length - 1].content)
+      : '';
+
+  const main = inferMainThread(sourceText) || 'Ongoing work';
 
   return {
     main,
@@ -123,7 +160,7 @@ function buildHeuristicThreadMeta(
 /**
  * Infer a brief main-thread description from raw text.
  * This is intentionally simple — just grabs up to the first sentence of
- * the most recent assistant or user message.
+ * the most recent user message.
  */
 function inferMainThread(text: string): string {
   const cleaned = text.replace(/\s+/g, ' ').trim();

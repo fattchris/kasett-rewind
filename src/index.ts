@@ -47,6 +47,7 @@
  */
 
 import { join } from 'node:path';
+import { readdir } from 'node:fs/promises';
 import { SessionReader, KasettError } from './storage/reader.js';
 import { weightSummaries } from './threads/weight.js';
 import { buildSteeringPrompt, buildOrientationPrompt } from './threads/steering.js';
@@ -199,7 +200,9 @@ export function register(api: PluginAPI): void {
   // find the right session JSONL. Runs just before the compaction starts.
   // ─────────────────────────────────────────────────────────────────────────
   api.on('before_compaction', async (_event: BeforeCompactionEvent, ctx: HookContext) => {
-    if (!config.steering.threadTracking) return;
+    // NOTE: Do NOT guard on config.steering.threadTracking here.
+    // The hot-swap worker needs the ctx regardless of whether steering is enabled —
+    // it requires the session file path to perform the atomic rewrite.
 
     const sessionKey = ctx.sessionKey?.trim() || ctx.sessionId;
     const agentId = ctx.agentId?.trim() || 'main';
@@ -804,7 +807,40 @@ async function resolveSessionFileFromState(
     // Fall through
   }
 
-  // Strategy 2: derive from stateDir
+  // Strategy 2: scan the sessions directory for a file matching the sessionKey
+  // OC session files are named <sessionId>-topic-<topicId>.jsonl or <sessionId>.jsonl
+  // The sessionKey may be the full filename stem or match as a substring.
+  const sessionsDir = join(stateDir, 'agents', agentId, 'sessions');
+  try {
+    const files = await readdir(sessionsDir);
+    const jsonlFiles = files.filter((f) => f.endsWith('.jsonl') && !f.endsWith('.lock'));
+
+    // Exact stem match first
+    const exactMatch = jsonlFiles.find(
+      (f) => f === `${sessionKey}.jsonl` || f.replace(/\.jsonl$/, '') === sessionKey,
+    );
+    if (exactMatch) return join(sessionsDir, exactMatch);
+
+    // Substring match (sessionKey is a prefix or substring of the filename)
+    const safeKey = sessionKey.replace(/[^a-z0-9_\-:.]/gi, '_');
+    const partialMatch = jsonlFiles.find(
+      (f) => f.includes(sessionKey) || f.includes(safeKey),
+    );
+    if (partialMatch) return join(sessionsDir, partialMatch);
+
+    // Strategy 3: find the lock file — the session that triggered compaction holds a write lock.
+    // The lock filename is <sessionFile>.lock, so we can derive the session file from it.
+    const lockFiles = files.filter((f) => f.endsWith('.jsonl.lock'));
+    if (lockFiles.length === 1) {
+      // Only one session locked — that must be our compaction target
+      const sessionFilename = lockFiles[0].replace(/\.lock$/, '');
+      return join(sessionsDir, sessionFilename);
+    }
+  } catch {
+    // Directory doesn't exist or is unreadable — fall through
+  }
+
+  // Strategy 4: derive a candidate path from stateDir (best guess, may not exist yet)
   const safeName = sessionKey.replace(/[^a-z0-9_\-:.]/gi, '_');
   const candidate = join(stateDir, 'agents', agentId, 'sessions', `${safeName}.jsonl`);
   return candidate;
