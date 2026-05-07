@@ -398,6 +398,9 @@ async function summarizeWithHotSwap(p: SummarizeWithHotSwapParams): Promise<stri
     // Step 3: Fire-and-forget the background worker
     // IMPORTANT: do NOT await this. The stub is returned first.
     if (sessionFile) {
+      // NOTE: Do NOT pass params.signal to the worker.
+      // OC aborts that signal once summarize() returns the stub,
+      // which would kill the background LLM call immediately.
       runHotSwapWorker({
         sessionFile,
         stubId,
@@ -405,7 +408,7 @@ async function summarizeWithHotSwap(p: SummarizeWithHotSwapParams): Promise<stri
         previousSummaries,
         steeringPrompt,
         customInstructions: params.customInstructions,
-        signal: params.signal,
+        signal: undefined,
         compactionModel: config.compaction.model,
         hotSwapTimeoutMs: config.compaction.hotSwapTimeoutMs,
         logger: api.logger,

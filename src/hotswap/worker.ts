@@ -21,7 +21,7 @@
  *   JSONL and the background result is silently discarded.
  */
 
-import { readFile, writeFile, rename } from 'node:fs/promises';
+import { readFile, writeFile, rename, appendFile } from 'node:fs/promises';
 import { acquireLock, waitForLockAbsent } from './lock.js';
 import { KASETT_STUB_REGEX } from './constants.js';
 
@@ -79,6 +79,13 @@ export interface CallLLMParams {
  *
  * All errors are caught and logged; they never propagate to the caller.
  */
+const DIAG_LOG = '/home/node/.openclaw/workspace/repos/kasett-rewind/research/hotswap-diag.log';
+
+async function diag(msg: string): Promise<void> {
+  const ts = new Date().toISOString();
+  await appendFile(DIAG_LOG, `[${ts}] ${msg}\n`).catch(() => {});
+}
+
 export async function runHotSwapWorker(params: WorkerParams): Promise<void> {
   const {
     sessionFile,
@@ -96,13 +103,16 @@ export async function runHotSwapWorker(params: WorkerParams): Promise<void> {
 
   try {
     logger.debug(`[kasett-rewind:hotswap] Background worker started for stub ${stubId}`);
+    await diag(`WORKER_START stub=${stubId} sessionFile=${sessionFile} signal_aborted=${signal?.aborted}`);
 
     // Step 1: Call the LLM for the full summary
     if (signal?.aborted) {
       logger.debug('[kasett-rewind:hotswap] Aborted before LLM call');
+      await diag(`ABORT_BEFORE_LLM stub=${stubId}`);
       return;
     }
 
+    await diag(`LLM_CALL_START stub=${stubId} model=${compactionModel}`);
     const fullSummary = await callLLM({
       messages,
       signal,
@@ -116,8 +126,10 @@ export async function runHotSwapWorker(params: WorkerParams): Promise<void> {
       logger.warn(
         `[kasett-rewind:hotswap] LLM returned empty summary for stub ${stubId} — stub remains in place`,
       );
+      await diag(`LLM_EMPTY stub=${stubId}`);
       return;
     }
+    await diag(`LLM_DONE stub=${stubId} summary_len=${fullSummary.length}`);
 
     if (signal?.aborted) {
       logger.debug('[kasett-rewind:hotswap] Aborted after LLM call, before file swap');
@@ -161,12 +173,15 @@ export async function runHotSwapWorker(params: WorkerParams): Promise<void> {
     }
 
     logger.info(`[kasett-rewind:hotswap] Hot-swap complete for stub ${stubId}`);
+    await diag(`SWAP_COMPLETE stub=${stubId}`);
   } catch (err: unknown) {
     if (isAbortError(err)) {
       logger.debug(`[kasett-rewind:hotswap] Worker aborted for stub ${stubId}`);
+      await diag(`ABORT_ERROR stub=${stubId} err=${String(err)}`);
       return;
     }
     logger.error(`[kasett-rewind:hotswap] Worker failed for stub ${stubId}: ${String(err)}`);
+    await diag(`WORKER_ERROR stub=${stubId} err=${String(err)}`);
   }
 }
 
