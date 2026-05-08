@@ -12,7 +12,7 @@
  */
 
 import { randomUUID } from 'node:crypto';
-import { THREAD_META_REGEX } from './constants.js';
+import { THREAD_META_REGEX, KASETT_STUB_PREFIX } from './constants.js';
 import type { ThreadMeta } from '../types.js';
 
 /**
@@ -38,8 +38,14 @@ export function generateStub(
 ): StubResult {
   const stubId = randomUUID();
 
-  // Extract thread meta from the previous summary if available
-  const threadMeta = extractThreadMeta(previousSummary) ?? buildHeuristicThreadMeta(messages);
+  // Extract thread meta from the previous summary if available.
+  // IMPORTANT: if previousSummary is itself a stub (hot-swap failed last time),
+  // don't extract meta from it — that would perpetuate the "Ongoing work" cascade.
+  // Instead fall through to the heuristic.
+  const isPreviousStub = previousSummary ? previousSummary.includes(KASETT_STUB_PREFIX) : false;
+  const threadMeta =
+    (!isPreviousStub && extractThreadMeta(previousSummary)) ||
+    buildHeuristicThreadMeta(messages);
 
   const threadMetaBlock = formatThreadMeta(threadMeta);
 
@@ -56,7 +62,10 @@ export function generateStub(
 
 /**
  * Extract [THREAD_META] from a previous compaction summary string.
- * Returns null if the summary is absent or contains no valid thread meta block.
+ * Returns null if the summary is absent, is a kasett stub, or contains no valid thread meta block.
+ *
+ * NOTE: callers should check `previousSummary.includes(KASETT_STUB_PREFIX)` before calling
+ * this function to avoid cascading stale "Ongoing work" meta from failed hot-swaps.
  */
 function extractThreadMeta(previousSummary: string | undefined): ThreadMeta | null {
   if (!previousSummary?.trim()) return null;

@@ -143,11 +143,13 @@ export async function runHotSwapWorker(params: WorkerParams): Promise<void> {
       logger.warn(
         `[kasett-rewind:hotswap] Timed out waiting for session lock to clear for stub ${stubId} — stub remains`,
       );
+      await diag(`LOCK_WAIT_TIMEOUT stub=${stubId} timeoutMs=${hotSwapTimeoutMs}`);
       return;
     }
 
     if (signal?.aborted) {
       logger.debug('[kasett-rewind:hotswap] Aborted after lock wait');
+      await diag(`ABORT_AFTER_LOCK_WAIT stub=${stubId}`);
       return;
     }
 
@@ -157,6 +159,7 @@ export async function runHotSwapWorker(params: WorkerParams): Promise<void> {
       lockHandle = await acquireLock(sessionFile, { timeoutMs: hotSwapTimeoutMs });
     } catch (err) {
       logger.warn(`[kasett-rewind:hotswap] Could not acquire lock for swap: ${String(err)} — stub remains`);
+      await diag(`LOCK_ACQUIRE_FAIL stub=${stubId} err=${String(err).slice(0, 200)}`);
       return;
     }
 
@@ -167,6 +170,7 @@ export async function runHotSwapWorker(params: WorkerParams): Promise<void> {
         stubId,
         fullSummary,
         logger,
+        diag,
       });
     } finally {
       await lockHandle.release();
@@ -200,8 +204,9 @@ async function performAtomicSwap(params: {
   stubId: string;
   fullSummary: string;
   logger: { debug(msg: string): void; warn(msg: string): void; info(msg: string): void };
+  diag: (msg: string) => Promise<void>;
 }): Promise<void> {
-  const { sessionFile, stubId, fullSummary, logger } = params;
+  const { sessionFile, stubId, fullSummary, logger, diag } = params;
 
   // Read current JSONL
   let rawContent: string;
@@ -251,11 +256,12 @@ async function performAtomicSwap(params: {
 
   if (!found) {
     // The stub entry is gone — another compaction fired and rewrote the file.
-    // Discard the background result silently (it's stale).
+    // Discard the background result (it's stale).
     logger.debug(
       `[kasett-rewind:hotswap] Stub ${stubId} not found in JSONL — ` +
         'another compaction may have fired. Discarding stale result.',
     );
+    await diag(`STUB_NOT_FOUND stub=${stubId} lines_scanned=${lines.length}`);
     return;
   }
 
@@ -263,8 +269,14 @@ async function performAtomicSwap(params: {
   const tmpFile = `${sessionFile}.kasett-swap-tmp`;
   const newContent = newLines.join('\n');
 
-  await writeFile(tmpFile, newContent, 'utf-8');
-  await rename(tmpFile, sessionFile);
+  await diag(`ATOMIC_SWAP_START stub=${stubId} lines=${lines.length}`);
+  try {
+    await writeFile(tmpFile, newContent, 'utf-8');
+    await rename(tmpFile, sessionFile);
+  } catch (err) {
+    await diag(`ATOMIC_SWAP_ERROR stub=${stubId} err=${String(err).slice(0, 200)}`);
+    throw err;
+  }
 
   logger.debug(`[kasett-rewind:hotswap] Atomic swap complete — stub ${stubId} replaced with full summary`);
 }

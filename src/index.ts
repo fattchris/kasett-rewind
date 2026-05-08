@@ -600,7 +600,7 @@ async function callLLMForCompaction(params: LLMCallParams): Promise<string | und
         userPrompt,
         signal,
       });
-      await diagWrite(`openrouter_result length=${result?.length ?? 0} empty=${!result}`);
+      await diagWrite(`openrouter_result length=${result?.length ?? 0} empty=${!result} preview=${JSON.stringify((result ?? '').slice(0, 120))}`);
       if (result) {
         logger.debug('[kasett-rewind] LLM call succeeded via OpenRouter API');
         return result;

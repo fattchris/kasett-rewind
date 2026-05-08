@@ -151,6 +151,65 @@ sub3: idle
     assert.ok(stub.includes('[THREAD_META]'));
     assert.ok(stub.includes('[/THREAD_META]'));
   });
+
+  // -------------------------------------------------------------------------
+  // Stub cascade fix: if previousSummary is itself a stub (hot-swap failed
+  // last time), do NOT extract meta from it. Fall through to the heuristic
+  // so we don't perpetuate "Ongoing work" indefinitely.
+  // -------------------------------------------------------------------------
+  test('does not extract thread meta from a previous stub (stub cascade prevention)', () => {
+    // Simulate a previous summary that is itself a kasett stub with default
+    // "Ongoing work" meta — exactly what the live session had.
+    const previousStub = [
+      '[KASETT_STUB::778d230e-2f62-40f4-8b12-875506ced323]',
+      '',
+      'Session compaction in progress. Thread state:',
+      '',
+      '[THREAD_META]',
+      'main: Ongoing work',
+      'sub1: idle',
+      'sub2: idle',
+      'sub3: idle',
+      '[/THREAD_META]',
+    ].join('\n');
+
+    // Pass messages that contain something more informative
+    const messages = [
+      { role: 'user', content: 'Fix the broken auth pipeline in staging' },
+      { role: 'assistant', content: 'I will patch the OAuth2 configuration now.' },
+    ];
+
+    const { stub } = generateStub(previousStub, messages);
+
+    // The stub should NOT blindly repeat "Ongoing work" from the previous stub.
+    // The heuristic should produce a more informative label from the messages.
+    assert.ok(!stub.includes('Ongoing work'), 'should not cascade the stub\'s fallback meta');
+    // And it should still have a THREAD_META block
+    assert.ok(stub.includes('[THREAD_META]'));
+    assert.ok(stub.includes('[/THREAD_META]'));
+  });
+
+  test('DOES extract thread meta from a real (non-stub) previous summary', () => {
+    // Confirm we didn't break normal extraction — a real compaction summary
+    // (without [KASETT_STUB::] marker) should still yield its thread meta.
+    const realSummary = [
+      '# Session Summary',
+      '',
+      'Deployed auth system. OAuth2 is live.',
+      '',
+      '[THREAD_META]',
+      'main: OAuth2 authentication pipeline complete',
+      'sub1: rate limiting configured',
+      'sub2: staging tests passing',
+      'sub3: idle',
+      '[/THREAD_META]',
+    ].join('\n');
+
+    const { stub } = generateStub(realSummary, []);
+
+    assert.ok(stub.includes('main: OAuth2 authentication pipeline complete'));
+    assert.ok(stub.includes('sub1: rate limiting configured'));
+  });
 });
 
 describe('generateStub: content handles various message formats', () => {
