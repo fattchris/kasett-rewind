@@ -586,39 +586,12 @@ async function callLLMForCompaction(params: LLMCallParams): Promise<string | und
     } catch { /* ignore */ }
   };
 
-  // Try Anthropic direct API first (fast, reliable)
-  const anthropicKey = process.env['ANTHROPIC_API_KEY'];
-  if (anthropicKey) {
-    const model = resolveModel(compactionModel, 'anthropic', 'claude-sonnet-4-20250514');
-    logger.debug(`[kasett-rewind] Using model for Anthropic: ${model}`);
-    await diagWrite(`anthropic_start model=${model} prompt_chars=${systemPrompt.length}+${userPrompt.length}`);
-    try {
-      const result = await callAnthropic({
-        apiKey: anthropicKey,
-        model,
-        systemPrompt,
-        userPrompt,
-        signal,
-      });
-      await diagWrite(`anthropic_result length=${result?.length ?? 0} empty=${!result}`);
-      if (result) {
-        logger.debug('[kasett-rewind] LLM call succeeded via Anthropic API');
-        return result;
-      }
-    } catch (err) {
-      if (isAbortError(err)) throw err;
-      await diagWrite(`anthropic_error ${String(err).slice(0, 500)}`);
-      logger.warn(`[kasett-rewind] Anthropic API call failed: ${String(err)}`);
-    }
-  } else {
-    await diagWrite('anthropic_skip no_api_key');
-  }
-
-  // Fallback: OpenRouter API
+  // Try OpenRouter first (preferred — unified model routing, fallbacks, logging)
   const openrouterKey = process.env['OPENROUTER_API_KEY'];
   if (openrouterKey) {
     const model = resolveModel(compactionModel, 'openrouter', 'anthropic/claude-sonnet-4-20250514');
     logger.debug(`[kasett-rewind] Using model for OpenRouter: ${model}`);
+    await diagWrite(`openrouter_start model=${model} prompt_chars=${systemPrompt.length}+${userPrompt.length}`);
     try {
       const result = await callOpenRouter({
         apiKey: openrouterKey,
@@ -627,17 +600,49 @@ async function callLLMForCompaction(params: LLMCallParams): Promise<string | und
         userPrompt,
         signal,
       });
+      await diagWrite(`openrouter_result length=${result?.length ?? 0} empty=${!result}`);
       if (result) {
         logger.debug('[kasett-rewind] LLM call succeeded via OpenRouter API');
         return result;
       }
     } catch (err) {
       if (isAbortError(err)) throw err;
+      await diagWrite(`openrouter_error ${String(err).slice(0, 500)}`);
       logger.warn(`[kasett-rewind] OpenRouter API call failed: ${String(err)}`);
     }
+  } else {
+    await diagWrite('openrouter_skip no_api_key');
   }
 
-  logger.warn('[kasett-rewind] No LLM API available (no ANTHROPIC_API_KEY or OPENROUTER_API_KEY)');
+  // Fallback: Anthropic direct API
+  const anthropicKey = process.env['ANTHROPIC_API_KEY'];
+  if (anthropicKey) {
+    const model = resolveModel(compactionModel, 'anthropic', 'claude-sonnet-4-20250514');
+    logger.debug(`[kasett-rewind] Using model for Anthropic: ${model}`);
+    await diagWrite(`anthropic_fallback_start model=${model}`);
+    try {
+      const result = await callAnthropic({
+        apiKey: anthropicKey,
+        model,
+        systemPrompt,
+        userPrompt,
+        signal,
+      });
+      await diagWrite(`anthropic_fallback_result length=${result?.length ?? 0} empty=${!result}`);
+      if (result) {
+        logger.debug('[kasett-rewind] LLM call succeeded via Anthropic fallback');
+        return result;
+      }
+    } catch (err) {
+      if (isAbortError(err)) throw err;
+      await diagWrite(`anthropic_fallback_error ${String(err).slice(0, 500)}`);
+      logger.warn(`[kasett-rewind] Anthropic fallback failed: ${String(err)}`);
+    }
+  } else {
+    await diagWrite('anthropic_fallback_skip no_api_key');
+  }
+
+  logger.warn('[kasett-rewind] No LLM API available (no OPENROUTER_API_KEY or ANTHROPIC_API_KEY)');
   return undefined;
 }
 
