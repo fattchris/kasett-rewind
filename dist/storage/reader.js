@@ -1,0 +1,157 @@
+import { createReadStream } from 'node:fs';
+import { createInterface } from 'node:readline';
+/**
+ * Error class for kasett-rewind operations.
+ */
+export class KasettError extends Error {
+    code;
+    constructor(message, code) {
+        super(message);
+        this.name = 'KasettError';
+        this.code = code;
+    }
+}
+/**
+ * Reads session JSONL files and extracts compaction events with kaspiett thread meta.
+ * Uses streaming for memory efficiency on large session files.
+ */
+export class SessionReader {
+    /**
+     * Read all compaction events from a session JSONL file.
+     * Returns events in chronological order (oldest first).
+     *
+     * @param filePath - Absolute path to the session .jsonl file
+     * @returns Array of CompactionEvent objects
+     * @throws KasettError if file cannot be read
+     */
+    async readCompactionEvents(filePath) {
+        const events = [];
+        try {
+            const stream = createReadStream(filePath, { encoding: 'utf-8' });
+            const rl = createInterface({ input: stream, crlfDelay: Infinity });
+            for await (const line of rl) {
+                const trimmed = line.trim();
+                if (!trimmed)
+                    continue;
+                const event = this.parseLine(trimmed);
+                if (event) {
+                    events.push(event);
+                }
+            }
+        }
+        catch (err) {
+            // File doesn't exist yet (new session) — no compactions to read
+            if (err instanceof Error && 'code' in err && err.code === 'ENOENT') {
+                return [];
+            }
+            const message = err instanceof Error ? err.message : String(err);
+            throw new KasettError(`Failed to read session file: ${filePath} — ${message}`, 'READ_ERROR');
+        }
+        return events;
+    }
+    /**
+     * Read the last N compaction events that have kaspiett thread meta.
+     * Falls back to events without kaspiett if fewer than N have it.
+     *
+     * @param filePath - Absolute path to the session .jsonl file
+     * @param count - Maximum number of events to return
+     * @returns The last N CompactionEvent objects with kaspiett (oldest first)
+     */
+    async readLastNWithMeta(filePath, count) {
+        if (count <= 0)
+            return [];
+        const all = await this.readCompactionEvents(filePath);
+        const withMeta = all.filter((e) => e.data.kaspiett != null);
+        return withMeta.slice(-count);
+    }
+    /**
+     * Read the most recent thread meta from the session JSONL.
+     * Returns null if no compaction with kaspiett meta exists.
+     */
+    async readLatestMeta(filePath) {
+        const all = await this.readCompactionEvents(filePath);
+        for (let i = all.length - 1; i >= 0; i--) {
+            if (all[i].data.kaspiett) {
+                return all[i].data.kaspiett;
+            }
+        }
+        return null;
+    }
+    /**
+     * Read the most recent compaction summary string from the session JSONL.
+     * Returns the raw summary text (which may include a [THREAD_META] block)
+     * from the most recent compaction event, regardless of whether it has kaspiett.
+     *
+     * @param filePath - Absolute path to the session .jsonl file
+     * @returns The most recent summary string, or null if no compaction events exist
+     */
+    async readLatestSummary(filePath) {
+        const all = await this.readCompactionEvents(filePath);
+        if (all.length === 0)
+            return null;
+        return all[all.length - 1].data.summary;
+    }
+    /**
+     * Read the last N compaction summary strings from the session JSONL.
+     * Returns raw summary texts (which may include [THREAD_META] blocks),
+     * in chronological order (oldest first), regardless of kaspiett presence.
+     *
+     * @param filePath - Absolute path to the session .jsonl file
+     * @param count - Maximum number of summaries to return
+     * @returns The last N summary strings, oldest first
+     */
+    async readLastNSummaries(filePath, count) {
+        if (count <= 0)
+            return [];
+        const all = await this.readCompactionEvents(filePath);
+        return all.slice(-count).map((e) => e.data.summary);
+    }
+    /**
+     * Parse a single JSONL line into a CompactionEvent.
+     * Returns undefined if the line is not a valid compaction event.
+     */
+    parseLine(line) {
+        try {
+            const parsed = JSON.parse(line);
+            if (typeof parsed === 'object' &&
+                parsed !== null &&
+                'type' in parsed &&
+                parsed.type === 'compaction' &&
+                'data' in parsed) {
+                const obj = parsed;
+                const data = obj.data;
+                if (typeof data?.summary !== 'string')
+                    return undefined;
+                // Extract kaspiett if present
+                let kaspiett;
+                if (data.kaspiett && typeof data.kaspiett === 'object') {
+                    const k = data.kaspiett;
+                    if (typeof k.main === 'string' &&
+                        Array.isArray(k.sub) &&
+                        k.sub.length === 3 &&
+                        k.sub.every((s) => typeof s === 'string')) {
+                        kaspiett = {
+                            main: k.main,
+                            sub: k.sub,
+                        };
+                    }
+                }
+                return {
+                    type: 'compaction',
+                    id: typeof obj.id === 'string' ? obj.id : undefined,
+                    timestamp: typeof obj.timestamp === 'string' ? obj.timestamp : undefined,
+                    data: {
+                        summary: data.summary,
+                        kaspiett,
+                    },
+                };
+            }
+            return undefined;
+        }
+        catch {
+            // Skip unparseable lines
+            return undefined;
+        }
+    }
+}
+//# sourceMappingURL=reader.js.map

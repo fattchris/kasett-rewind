@@ -1,0 +1,69 @@
+/**
+ * OpenClaw plugin interface types for kasett-rewind.
+ * Simple thread meta model: 1 main thread + 3 sub-threads as plain strings.
+ */
+export interface KasettCompactionConfig {
+    /**
+     * Model to use for compaction LLM calls.
+     * - "default" (or unset): use whatever model OC provides (the agent's primary model via env vars)
+     * - Any other string: treated as a model identifier and passed directly to the API
+     *   e.g. "claude-haiku-3-5-20241022" or "anthropic/claude-haiku-3-5"
+     */
+    model?: string;
+    /**
+     * Enable hot-swap compaction (zero-delay stub return with background rewrite).
+     * When true, summarize() returns a stub immediately and the full LLM summary
+     * is written to the JSONL between turns via an atomic hot-swap.
+     * Default: true
+     */
+    hotSwap: boolean;
+    /**
+     * Maximum time (ms) to wait for the session write lock to clear before
+     * the background hot-swap worker gives up.
+     * Default: 30000
+     */
+    hotSwapTimeoutMs: number;
+    /** Number of previous compaction thread metas to evaluate (default: 3) */
+    windowSize: number;
+    /** Weight per compaction slot, most recent first (default: [1.0, 0.6, 0.3]) */
+    weights: number[];
+}
+export interface KasettSteeringConfig {
+    /** Enable thread tracking and injection on every agent turn (default: true) */
+    threadTracking: boolean;
+}
+export interface KasettConfig {
+    /** Compaction provider and rolling window settings */
+    compaction: KasettCompactionConfig;
+    /** Per-turn orientation/steering hook settings */
+    steering: KasettSteeringConfig;
+}
+export declare const DEFAULT_CONFIG: KasettConfig;
+/**
+ * A compaction event as stored in the session JSONL.
+ */
+export interface CompactionEvent {
+    type: 'compaction';
+    id?: string;
+    timestamp?: string;
+    data: {
+        summary: string;
+        kaspiett?: ThreadMeta;
+    };
+}
+/**
+ * Thread meta — always exactly 1 main + 3 subs.
+ */
+export interface ThreadMeta {
+    main: string;
+    sub: [string, string, string];
+}
+/**
+ * A single conversation turn (for context in hooks).
+ */
+export interface ConversationTurn {
+    role: 'user' | 'assistant' | 'system' | 'tool';
+    content: string;
+    timestamp?: string;
+}
+//# sourceMappingURL=types.d.ts.map
