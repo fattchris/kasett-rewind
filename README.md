@@ -27,7 +27,7 @@
   │   ▏ SIDE A: ROLLING WINDOW    ▕▏ SIDE B: THREAD TRACKING  ▕   │
   │   ▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔   │
   │                                                                 │
-  │  TYPE: C-120 CHROME HIGH BIAS  ▸ DOLBY NR: ON  ▸ v0.2.1       │
+  │  TYPE: C-120 CHROME HIGH BIAS  ▸ DOLBY NR: ON  ▸ v0.2.2       │
   └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -155,9 +155,19 @@ Before Kasett can call the LLM during compaction, it needs to find the record bu
 
 If neither key is set, Kasett gracefully steps aside and returns `undefined` — OC falls back to its built-in summarizer. Nothing breaks. But you won't get the structured thread tracking. The tape still rolls, it just won't be labeled.
 
+> ⚠️ **OC 5.x users — read this:** Kasett calls the LLM provider **directly** using the raw API key. It does **NOT** go through OpenClaw's internal model router.
+>
+> This means:
+> - `OPENROUTER_API_KEY` must be a **raw provider key** — e.g. `sk-or-v1-xxxxxxxx` for OpenRouter, or `sk-ant-xxxxxxxx` for Anthropic
+> - **NOT** an OC model reference like `openrouter-zero/model` or `openrouter-clyde/model` — those are internal OC aliases and Kasett cannot resolve them
+> - The key goes in `openclaw.json` → `env` block (not in a plugin config or agent entry)
+>
+> If you set an OC model alias instead of a raw key, Kasett will fail silently and fall back to OC's built-in summarizer — you'll lose thread tracking without any obvious error.
+
 ### ► Set via CLI (recommended)
 
 ```bash
+# Use your raw provider API key — NOT an OC model reference
 openclaw config set env.OPENROUTER_API_KEY "sk-or-v1-..."
 openclaw config set env.ANTHROPIC_API_KEY "sk-ant-..."
 openclaw gateway restart
@@ -170,6 +180,37 @@ openclaw gateway restart
   "env": {
     "OPENROUTER_API_KEY": "sk-or-v1-...",
     "ANTHROPIC_API_KEY": "sk-ant-..."
+  }
+}
+```
+
+**Correct vs. incorrect:**
+
+```jsonc
+// ✅ CORRECT — raw provider key in env block
+{
+  "env": {
+    "OPENROUTER_API_KEY": "sk-or-v1-abc123..."
+  }
+}
+
+// ❌ WRONG — OC internal model alias (OC 5.x style)
+{
+  "env": {
+    "OPENROUTER_API_KEY": "openrouter-zero/model"  // This will NOT work
+  }
+}
+
+// ❌ WRONG — key in plugin config instead of env
+{
+  "plugins": {
+    "entries": {
+      "kasett-rewind": {
+        "config": {
+          "OPENROUTER_API_KEY": "sk-or-v1-..."  // Wrong location
+        }
+      }
+    }
   }
 }
 ```

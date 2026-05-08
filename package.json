@@ -1,6 +1,6 @@
 {
   "name": "kasett-rewind",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "OpenClaw compaction plugin — rolling window + structured thread tracking. Prevents goldfish brain.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -29,10 +29,10 @@
     }
   },
   "scripts": {
-    "build": "node /usr/lib/node_modules/@tobilu/qmd/node_modules/typescript/bin/tsc && cp -r src/tests/fixtures dist/tests/",
-    "dev": "node /usr/lib/node_modules/@tobilu/qmd/node_modules/typescript/bin/tsc --watch",
+    "build": "npx tsc && cp -r src/tests/fixtures dist/tests/",
+    "dev": "npx tsc --watch",
     "test": "node --test dist/tests/window.test.js dist/tests/weight.test.js dist/tests/parser.test.js dist/tests/steering.test.js dist/tests/reader.test.js dist/tests/config.test.js dist/tests/integration.test.js dist/tests/hotswap.test.js",
-    "lint": "node /usr/lib/node_modules/@tobilu/qmd/node_modules/typescript/bin/tsc --noEmit"
+    "lint": "npx tsc --noEmit"
   },
   "keywords": [
     "openclaw",
