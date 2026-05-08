@@ -43,3 +43,10 @@
 [2026-05-08T08:05:07.892Z] LLM_CALL_START stub=fbc7d619-50bd-4206-a527-a4cb1f1302fd model=undefined
 [2026-05-08T08:05:07.892Z] LLM_DONE stub=fbc7d619-50bd-4206-a527-a4cb1f1302fd summary_len=188
 [2026-05-08T08:05:07.892Z] SWAP_COMPLETE stub=fbc7d619-50bd-4206-a527-a4cb1f1302fd
+[2026-05-08T08:47:02.120Z] WORKER_START stub=9b39ce26-aa6c-4176-829f-ce71ca833b6b sessionFile=/tmp/kasett-live-test-3ca83de1-76c0-4231-a5eb-d5889c63a5d4.jsonl signal_aborted=undefined
+[2026-05-08T08:47:02.120Z] LLM_CALL_START stub=9b39ce26-aa6c-4176-829f-ce71ca833b6b model=anthropic/claude-sonnet-4-20250514
+[2026-05-08T08:47:02.586Z] LLM_EMPTY stub=9b39ce26-aa6c-4176-829f-ce71ca833b6b
+[2026-05-08T08:47:44.563Z] WORKER_START stub=bf170d7b-98f9-4439-ae12-0ca5483ac1aa sessionFile=/tmp/kasett-live-test-bc374a71-1b58-4b86-a1cb-6aad8d666633.jsonl signal_aborted=undefined
+[2026-05-08T08:47:44.564Z] LLM_CALL_START stub=bf170d7b-98f9-4439-ae12-0ca5483ac1aa model=anthropic/claude-sonnet-4-5
+[2026-05-08T08:48:00.311Z] LLM_DONE stub=bf170d7b-98f9-4439-ae12-0ca5483ac1aa summary_len=673
+[2026-05-08T08:48:00.313Z] SWAP_COMPLETE stub=bf170d7b-98f9-4439-ae12-0ca5483ac1aa

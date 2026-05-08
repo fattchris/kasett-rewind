@@ -589,7 +589,7 @@ async function callLLMForCompaction(params: LLMCallParams): Promise<string | und
   // Try OpenRouter first (preferred — unified model routing, fallbacks, logging)
   const openrouterKey = process.env['OPENROUTER_API_KEY'];
   if (openrouterKey) {
-    const model = resolveModel(compactionModel, 'openrouter', 'anthropic/claude-sonnet-4-20250514');
+    const model = resolveModel(compactionModel, 'openrouter', 'anthropic/claude-sonnet-4-5');
     logger.debug(`[kasett-rewind] Using model for OpenRouter: ${model}`);
     await diagWrite(`openrouter_start model=${model} prompt_chars=${systemPrompt.length}+${userPrompt.length}`);
     try {
@@ -617,7 +617,7 @@ async function callLLMForCompaction(params: LLMCallParams): Promise<string | und
   // Fallback: Anthropic direct API
   const anthropicKey = process.env['ANTHROPIC_API_KEY'];
   if (anthropicKey) {
-    const model = resolveModel(compactionModel, 'anthropic', 'claude-sonnet-4-20250514');
+    const model = resolveModel(compactionModel, 'anthropic', 'claude-sonnet-4-5');
     logger.debug(`[kasett-rewind] Using model for Anthropic: ${model}`);
     await diagWrite(`anthropic_fallback_start model=${model}`);
     try {
