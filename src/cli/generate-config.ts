@@ -31,7 +31,7 @@ export function generateConfig(options: GenerateConfigOptions): string {
   output.push('✓ Generated kasett-rewind configuration:');
   output.push('');
   output.push('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-  output.push('Add to your openclaw.json → "plugins.entries" section:');
+  output.push('Step 1 — Add to "plugins.entries" in openclaw.json:');
   output.push('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   output.push('');
 
@@ -54,7 +54,29 @@ export function generateConfig(options: GenerateConfigOptions): string {
   output.push(JSON.stringify(pluginBlock, null, 2));
   output.push('');
   output.push('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-  output.push(`Window size: ${config.compaction.windowSize} | Thread tracking: ${config.steering.threadTracking ? 'ON' : 'OFF'} | Weights: [${config.compaction.weights.join(', ')}]`)
+  output.push('Step 2 — Activate the provider (MERGE into "agents.defaults"):');
+  output.push('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  output.push('');
+
+  const providerBlock = {
+    compaction: {
+      provider: 'kasett-rewind',
+      mode: 'safeguard',
+    },
+  };
+
+  output.push(JSON.stringify(providerBlock, null, 2));
+  output.push('');
+  output.push('  ⚠️  Do NOT put compaction on a specific agent entry (agents.list[].compaction).');
+  output.push('      That\'s not a valid schema slot — OC will reject the config and the gateway');
+  output.push('      will enter a respawn loop. Always use agents.defaults.compaction.');
+  output.push('');
+  output.push('  Or via CLI (recommended):');
+  output.push('    openclaw config set agents.defaults.compaction.provider "kasett-rewind"');
+  output.push('    openclaw config set agents.defaults.compaction.mode "safeguard"');
+  output.push('');
+  output.push('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  output.push(`Window size: ${config.compaction.windowSize} | Thread tracking: ${config.steering.threadTracking ? 'ON' : 'OFF'} | Weights: [${config.compaction.weights.join(', ')}]`);
   output.push('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
   return output.join('\n');

@@ -27,7 +27,7 @@
   │   ▏ SIDE A: ROLLING WINDOW    ▕▏ SIDE B: THREAD TRACKING  ▕   │
   │   ▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔   │
   │                                                                 │
-  │  TYPE: C-120 CHROME HIGH BIAS  ▸ DOLBY NR: ON  ▸ v0.1.0       │
+  │  TYPE: C-120 CHROME HIGH BIAS  ▸ DOLBY NR: ON  ▸ v0.2.1       │
   └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -105,7 +105,36 @@ Generate your config:
 npx kasett-rewind generate-config
 ```
 
-Paste the output into `openclaw.json`. Restart:
+Paste the **Step 1** block into `openclaw.json` under `plugins.entries`.
+
+**Then activate the provider** — this is the step most people miss. The plugin won't route compaction unless you explicitly tell OpenClaw to use it:
+
+```bash
+# CLI (recommended)
+openclaw config set agents.defaults.compaction.provider "kasett-rewind"
+openclaw config set agents.defaults.compaction.mode "safeguard"
+```
+
+Or manually in `openclaw.json`:
+
+```json
+{
+  "agents": {
+    "defaults": {
+      "compaction": {
+        "provider": "kasett-rewind",
+        "mode": "safeguard"
+      }
+    }
+  }
+}
+```
+
+> ⚠️ **Critical:** Set compaction on `agents.defaults.compaction` — NOT on a specific agent entry.
+> `agents.list[].compaction` is **not a valid schema slot**. If you put it there, OpenClaw will reject
+> the entire config and your gateway will enter a respawn loop. Always use `agents.defaults.compaction`.
+
+Restart:
 
 ```bash
 openclaw gateway restart
