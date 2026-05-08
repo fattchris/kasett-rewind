@@ -577,11 +577,21 @@ async function callLLMForCompaction(params: LLMCallParams): Promise<string | und
     '---\n\n' +
     historyText;
 
+  // Diagnostic log file
+  const diagLog = '/home/node/.openclaw/workspace/repos/kasett-rewind/research/hotswap-diag.log';
+  const diagWrite = async (msg: string) => {
+    try {
+      const { appendFile } = await import('node:fs/promises');
+      await appendFile(diagLog, `[${new Date().toISOString()}] LLM_DIAG ${msg}\n`);
+    } catch { /* ignore */ }
+  };
+
   // Try Anthropic direct API first (fast, reliable)
   const anthropicKey = process.env['ANTHROPIC_API_KEY'];
   if (anthropicKey) {
     const model = resolveModel(compactionModel, 'anthropic', 'claude-sonnet-4-20250514');
     logger.debug(`[kasett-rewind] Using model for Anthropic: ${model}`);
+    await diagWrite(`anthropic_start model=${model} prompt_chars=${systemPrompt.length}+${userPrompt.length}`);
     try {
       const result = await callAnthropic({
         apiKey: anthropicKey,
@@ -590,14 +600,18 @@ async function callLLMForCompaction(params: LLMCallParams): Promise<string | und
         userPrompt,
         signal,
       });
+      await diagWrite(`anthropic_result length=${result?.length ?? 0} empty=${!result}`);
       if (result) {
         logger.debug('[kasett-rewind] LLM call succeeded via Anthropic API');
         return result;
       }
     } catch (err) {
       if (isAbortError(err)) throw err;
+      await diagWrite(`anthropic_error ${String(err).slice(0, 500)}`);
       logger.warn(`[kasett-rewind] Anthropic API call failed: ${String(err)}`);
     }
+  } else {
+    await diagWrite('anthropic_skip no_api_key');
   }
 
   // Fallback: OpenRouter API
