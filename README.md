@@ -115,6 +115,52 @@ openclaw gateway restart
 
 ---
 
+## ◈ Load the Tape (Configuration Requirements)
+
+Before Kasett can call the LLM during compaction, it needs to find the record button. You need **at least one** of these API keys wired into your OpenClaw environment:
+
+| Key | Role | Notes |
+|-----|------|-------|
+| `OPENROUTER_API_KEY` | **Preferred** — unified model routing | Used first if present |
+| `ANTHROPIC_API_KEY` | Fallback — direct Anthropic access | Used if OpenRouter is unavailable or fails |
+
+If neither key is set, Kasett gracefully steps aside and returns `undefined` — OC falls back to its built-in summarizer. Nothing breaks. But you won't get the structured thread tracking. The tape still rolls, it just won't be labeled.
+
+### ► Set via CLI (recommended)
+
+```bash
+openclaw config set env.OPENROUTER_API_KEY "sk-or-v1-..."
+openclaw config set env.ANTHROPIC_API_KEY "sk-ant-..."
+openclaw gateway restart
+```
+
+### ► Set manually in `openclaw.json`
+
+```json
+{
+  "env": {
+    "OPENROUTER_API_KEY": "sk-or-v1-...",
+    "ANTHROPIC_API_KEY": "sk-ant-..."
+  }
+}
+```
+
+### ► Model selection
+
+Default: `anthropic/claude-sonnet-4-5` via OpenRouter, or `claude-sonnet-4-5` direct. Override in plugin config if you want a different deck:
+
+```json
+{
+  "compaction": {
+    "model": "anthropic/claude-haiku-4-5"
+  }
+}
+```
+
+Haiku runs faster and cheaper. Sonnet writes better track listings. Your call.
+
+---
+
 ## ◈ How It Works
 
 ```
