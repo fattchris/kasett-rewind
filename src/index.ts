@@ -108,6 +108,19 @@ interface PluginAPI {
   source: string;
   rootDir: string;
   pluginConfig: Record<string, unknown>;
+  /**
+   * Plugin registration mode. OC calls register() in multiple modes:
+   *   - "full"           — real activation; install hooks and register providers
+   *   - "cli-metadata"   — periodic CLI/metadata discovery; OC rolls back any
+   *                         registry mutations afterwards. Plugins should NOT
+   *                         install hooks or providers in this mode.
+   *   - "tool-discovery" — tool inventory pass; same caveats as cli-metadata.
+   *   - "discovery"      — channel/contract discovery pass.
+   *
+   * Plugins that ignore this and always register cause noisy log churn
+   * (and can confuse operators trying to debug provider lifecycle).
+   */
+  registrationMode?: 'full' | 'cli-metadata' | 'tool-discovery' | 'discovery' | string;
   logger: {
     info(msg: string): void;
     warn(msg: string): void;
@@ -180,6 +193,17 @@ let pendingCompactionCtx: {
 // ---------------------------------------------------------------------------
 
 export function register(api: PluginAPI): void {
+  // Short-circuit non-full registration modes. OC calls register() in
+  // "cli-metadata" / "tool-discovery" / "discovery" passes for plugin
+  // inventory, then rolls back any registry mutations. Doing real work in
+  // those modes is wasted (and creates noisy duplicate "Registering..." log
+  // lines that look like the plugin is re-initializing in a loop).
+  const mode = api.registrationMode ?? 'full';
+  if (mode !== 'full') {
+    api.logger.debug(`[kasett-rewind] register(mode=${mode}) — skipping (metadata-only pass)`);
+    return;
+  }
+
   const config = resolveConfig(api);
 
   if (!config.enabled) {

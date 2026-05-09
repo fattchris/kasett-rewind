@@ -59,6 +59,19 @@ interface PluginAPI {
     source: string;
     rootDir: string;
     pluginConfig: Record<string, unknown>;
+    /**
+     * Plugin registration mode. OC calls register() in multiple modes:
+     *   - "full"           — real activation; install hooks and register providers
+     *   - "cli-metadata"   — periodic CLI/metadata discovery; OC rolls back any
+     *                         registry mutations afterwards. Plugins should NOT
+     *                         install hooks or providers in this mode.
+     *   - "tool-discovery" — tool inventory pass; same caveats as cli-metadata.
+     *   - "discovery"      — channel/contract discovery pass.
+     *
+     * Plugins that ignore this and always register cause noisy log churn
+     * (and can confuse operators trying to debug provider lifecycle).
+     */
+    registrationMode?: 'full' | 'cli-metadata' | 'tool-discovery' | 'discovery' | string;
     logger: {
         info(msg: string): void;
         warn(msg: string): void;

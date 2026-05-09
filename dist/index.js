@@ -67,6 +67,16 @@ let pendingCompactionCtx = null;
 // Plugin Registration
 // ---------------------------------------------------------------------------
 export function register(api) {
+    // Short-circuit non-full registration modes. OC calls register() in
+    // "cli-metadata" / "tool-discovery" / "discovery" passes for plugin
+    // inventory, then rolls back any registry mutations. Doing real work in
+    // those modes is wasted (and creates noisy duplicate "Registering..." log
+    // lines that look like the plugin is re-initializing in a loop).
+    const mode = api.registrationMode ?? 'full';
+    if (mode !== 'full') {
+        api.logger.debug(`[kasett-rewind] register(mode=${mode}) — skipping (metadata-only pass)`);
+        return;
+    }
     const config = resolveConfig(api);
     if (!config.enabled) {
         api.logger.info('[kasett-rewind] Plugin disabled via config — skipping registration');
