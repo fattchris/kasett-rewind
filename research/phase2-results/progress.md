@@ -1,52 +1,45 @@
+# Phase 2 — Validator Lenient-Truncate Fix + Tier-4 Rerun + Paper Draft
 
-[2026-05-12T17:37:10.173Z] Loading fixtures
-[2026-05-12T17:37:10.180Z] Loaded 15 fixtures
-[2026-05-12T17:37:10.180Z] [1/15] Processing session-01 (Tier 1, 60 turns, 1 threads, 3 key state)
-[2026-05-12T17:37:19.358Z]   vanilla: TRR=1.000 KSSR=1.000 (9178ms, 1883 chars)
-[2026-05-12T17:37:32.585Z]   kasett: TRR=1.000 KSSR=1.000 SY=12 status=PARSE_OK (11221ms, 2860 chars)
-[2026-05-12T17:37:34.587Z] [2/15] Processing session-02 (Tier 1, 44 turns, 2 threads, 4 key state)
-[2026-05-12T17:37:43.097Z]   vanilla: TRR=0.500 KSSR=1.000 (8510ms, 1660 chars)
-[2026-05-12T17:37:58.809Z]   kasett: TRR=0.500 KSSR=1.000 SY=13 status=PARSE_OK (13709ms, 3170 chars)
-[2026-05-12T17:38:00.811Z] [3/15] Processing session-03 (Tier 1, 40 turns, 2 threads, 4 key state)
-[2026-05-12T17:38:09.520Z]   vanilla: TRR=0.500 KSSR=1.000 (8709ms, 1866 chars)
-[2026-05-12T17:38:23.383Z]   kasett: TRR=0.000 KSSR=1.000 SY=13 status=PARSE_OK (11861ms, 2977 chars)
-[2026-05-12T17:38:25.385Z] [4/15] Processing session-04 (Tier 2, 44 turns, 3 threads, 5 key state)
-[2026-05-12T17:38:36.122Z]   vanilla: TRR=1.000 KSSR=1.000 (10737ms, 2256 chars)
-[2026-05-12T17:38:52.271Z]   kasett: TRR=1.000 KSSR=1.000 SY=13 status=PARSE_OK (14147ms, 3394 chars)
-[2026-05-12T17:38:54.273Z] [5/15] Processing session-05 (Tier 2, 46 turns, 4 threads, 6 key state)
-[2026-05-12T17:39:04.501Z]   vanilla: TRR=1.000 KSSR=1.000 (10228ms, 1834 chars)
-[2026-05-12T17:39:21.069Z]   kasett: TRR=1.000 KSSR=0.833 SY=13 status=PARSE_OK (14566ms, 3496 chars)
-[2026-05-12T17:39:23.071Z] [6/15] Processing session-06 (Tier 2, 40 turns, 3 threads, 5 key state)
-[2026-05-12T17:39:33.846Z]   vanilla: TRR=1.000 KSSR=1.000 (10775ms, 2352 chars)
-[2026-05-12T17:39:51.677Z]   kasett: TRR=1.000 KSSR=1.000 SY=15 status=PARSE_OK (15829ms, 3662 chars)
-[2026-05-12T17:39:53.679Z] [7/15] Processing session-07 (Tier 2, 40 turns, 3 threads, 6 key state)
-[2026-05-12T17:40:07.749Z]   vanilla: TRR=0.667 KSSR=1.000 (14070ms, 3123 chars)
-[2026-05-12T17:40:27.124Z]   kasett: TRR=1.000 KSSR=1.000 SY=17 status=PARSE_OK (17371ms, 4889 chars)
-[2026-05-12T17:40:29.126Z] [8/15] Processing session-08 (Tier 3, 62 turns, 5 threads, 10 key state)
-[2026-05-12T17:40:42.839Z]   vanilla: TRR=0.800 KSSR=1.000 (13712ms, 3249 chars)
-[2026-05-12T17:41:02.199Z]   kasett: TRR=0.800 KSSR=1.000 SY=20 status=PARSE_OK (17358ms, 4533 chars)
-[2026-05-12T17:41:04.202Z] [9/15] Processing session-09 (Tier 3, 52 turns, 5 threads, 9 key state)
-[2026-05-12T17:41:21.082Z]   vanilla: TRR=0.800 KSSR=0.889 (16880ms, 3469 chars)
-[2026-05-12T17:41:45.710Z]   kasett: TRR=1.000 KSSR=0.889 SY=22 status=PARSE_OK (22626ms, 5681 chars)
-[2026-05-12T17:41:47.712Z] [10/15] Processing session-10 (Tier 3, 54 turns, 6 threads, 11 key state)
-[2026-05-12T17:42:03.885Z]   vanilla: TRR=0.667 KSSR=1.000 (16172ms, 4070 chars)
-[2026-05-12T17:42:25.731Z]   kasett: TRR=0.667 KSSR=1.000 SY=19 status=PARSE_OK (19844ms, 4885 chars)
-[2026-05-12T17:42:27.732Z] [11/15] Processing session-11 (Tier 4, 120 turns, 8 threads, 25 key state)
-[2026-05-12T17:42:46.328Z]   vanilla: TRR=0.500 KSSR=0.920 (18596ms, 3805 chars)
-[2026-05-12T17:43:15.114Z]   kasett: TRR=0.375 KSSR=0.840 SY=0 status=PARSE_FALLBACK (26783ms, 6990 chars)
-[2026-05-12T17:43:17.115Z] [12/15] Processing session-12 (Tier 4, 100 turns, 6 threads, 20 key state)
-[2026-05-12T17:43:27.641Z]   vanilla: TRR=0.833 KSSR=0.950 (10526ms, 2478 chars)
-[2026-05-12T17:43:47.897Z]   kasett: TRR=0.833 KSSR=0.950 SY=0 status=PARSE_FALLBACK (18252ms, 5177 chars)
-[2026-05-12T17:43:49.899Z] [13/15] Processing session-13 (Tier 4, 150 turns, 10 threads, 30 key state)
-[2026-05-12T17:44:02.927Z]   vanilla: TRR=0.600 KSSR=0.967 (13026ms, 3156 chars)
-[2026-05-12T17:44:24.852Z]   kasett: TRR=0.700 KSSR=0.867 SY=25 status=PARSE_OK (19923ms, 4987 chars)
-[2026-05-12T17:44:26.853Z] [14/15] Processing session-14 (Tier 4, 80 turns, 5 threads, 15 key state)
-[2026-05-12T17:44:38.439Z]   vanilla: TRR=0.600 KSSR=1.000 (11586ms, 2559 chars)
-[2026-05-12T17:44:58.159Z]   kasett: TRR=0.600 KSSR=1.000 SY=20 status=PARSE_OK (17716ms, 4726 chars)
-[2026-05-12T17:45:00.160Z] [15/15] Processing session-15 (Tier 4, 110 turns, 7 threads, 22 key state)
-[2026-05-12T17:45:12.124Z]   vanilla: TRR=0.571 KSSR=0.909 (11962ms, 2247 chars)
-[2026-05-12T17:45:34.376Z]   kasett: TRR=0.857 KSSR=0.818 SY=0 status=PARSE_FALLBACK (20251ms, 5448 chars)
-[2026-05-12T17:45:34.377Z] Wrote results.json
-[2026-05-12T17:45:34.377Z] Wrote summary.md
-[2026-05-12T17:45:34.378Z] Wrote compliance-report.md
-[2026-05-12T17:45:34.378Z] === BENCHMARK COMPLETE ===
+Subagent kicked off 2026-05-12 19:15 UTC.
+
+## ITEM 1 — Validator lenient-truncate fix ✅
+- Refactored `src/threads/schema.ts`:
+  - `validateThreadMetaV2` accepts `{ mode: 'strict' | 'lenient' }` option, defaults to **strict** (preserves all 411 existing tests).
+  - `validateThreadMetaV2Strict` / `validateThreadMetaV2Lenient` aliases for explicit call sites.
+  - `validateThreadMetaV3` now defaults to **lenient** — oversized arrays truncated to cap, `_truncated_<field>: true` flag set instead of rejecting.
+  - `validateThreadMetaV3Strict` available for ingestion tests / compliance reporting.
+  - Type errors (wrong type, missing required, invalid status enum) STILL hard-fail in both modes.
+- New test file: `src/tests/schema-truncate.test.ts` — 23 tests covering V2 lenient/strict, V3 lenient/strict, key_state truncation, multi-flag stacking, type-error hard-fail, and a realistic Tier-4 LLM payload regression.
+- Total tests: **434/434 pass** (411 existing + 23 new). `tsc --noEmit` clean.
+- Commit: `4a42da9` pushed to main.
+
+## ITEM 2 — Re-run Tier 4 after fix ✅
+- Built `research/phase2-results/run-benchmark-tier4-rerun.mjs` (same harness shape as `run-benchmark-v2.mjs`).
+- Re-ran 5 Tier-4 sessions with lenient validator (~7 minutes, 10 LLM calls).
+- Headline: **Tier 4 compliance 40% → 100%**, **Tier 4 SY 9.00 → 23.20**, **overall SY 13.47 → 18.20**.
+- Mechanism: 3/5 Tier-4 sessions (11, 12, 15) had `sub[]` truncated. Sessions 11/12/15 went from PARSE_FALLBACK SY=0 to PARSE_OK SY=20-29.
+- Outputs: `tier4-rerun-results.json`, `tier4-rerun-summary.md`.
+- Commit: `45af114` pushed to main.
+
+## ITEM 3 — Paper-ready writeup
+- [ ] In progress: drafting `PAPER-1-DRAFT.md`
+[2026-05-12T19:22:40.226Z] [tier4-rerun] Loading original results.json for Tier 1-3 carryover
+[2026-05-12T19:22:40.230Z] [tier4-rerun] Re-running 5 Tier-4 fixtures with lenient validator
+[2026-05-12T19:22:40.231Z] [tier4-rerun] [1/5] session-11 (Tier 4, 120 turns, 8 threads, 25 key state)
+[2026-05-12T19:22:58.642Z] [tier4-rerun]   session-11 vanilla: TRR=0.500 KSSR=0.920 (18411ms)
+[2026-05-12T19:23:31.252Z] [tier4-rerun]   session-11 kasett: TRR=0.625 KSSR=0.880 SY=29 status=PARSE_OK truncated={"sub":true,"key_state":false,"decisions":false,"open_questions":false} (30605ms)
+[2026-05-12T19:23:33.253Z] [tier4-rerun] [2/5] session-12 (Tier 4, 100 turns, 6 threads, 20 key state)
+[2026-05-12T19:23:44.438Z] [tier4-rerun]   session-12 vanilla: TRR=0.833 KSSR=1.000 (11184ms)
+[2026-05-12T19:24:04.746Z] [tier4-rerun]   session-12 kasett: TRR=0.833 KSSR=0.900 SY=20 status=PARSE_OK truncated={"sub":true,"key_state":false,"decisions":false,"open_questions":false} (18305ms)
+[2026-05-12T19:24:06.748Z] [tier4-rerun] [3/5] session-13 (Tier 4, 150 turns, 10 threads, 30 key state)
+[2026-05-12T19:24:20.219Z] [tier4-rerun]   session-13 vanilla: TRR=0.700 KSSR=0.967 (13470ms)
+[2026-05-12T19:24:43.085Z] [tier4-rerun]   session-13 kasett: TRR=0.600 KSSR=0.900 SY=24 status=PARSE_OK truncated={"sub":false,"key_state":false,"decisions":false,"open_questions":false} (20863ms)
+[2026-05-12T19:24:45.086Z] [tier4-rerun] [4/5] session-14 (Tier 4, 80 turns, 5 threads, 15 key state)
+[2026-05-12T19:24:54.539Z] [tier4-rerun]   session-14 vanilla: TRR=0.600 KSSR=1.000 (9452ms)
+[2026-05-12T19:25:13.860Z] [tier4-rerun]   session-14 kasett: TRR=0.600 KSSR=1.000 SY=20 status=PARSE_OK truncated={"sub":false,"key_state":false,"decisions":false,"open_questions":false} (17320ms)
+[2026-05-12T19:25:15.862Z] [tier4-rerun] [5/5] session-15 (Tier 4, 110 turns, 7 threads, 22 key state)
+[2026-05-12T19:25:28.186Z] [tier4-rerun]   session-15 vanilla: TRR=0.571 KSSR=0.909 (12323ms)
+[2026-05-12T19:25:49.891Z] [tier4-rerun]   session-15 kasett: TRR=0.857 KSSR=0.864 SY=23 status=PARSE_OK truncated={"sub":true,"key_state":false,"decisions":false,"open_questions":false} (19702ms)
+[2026-05-12T19:25:49.898Z] [tier4-rerun] Wrote tier4-rerun-results.json
+[2026-05-12T19:25:49.899Z] [tier4-rerun] Wrote tier4-rerun-summary.md
+[2026-05-12T19:25:49.899Z] [tier4-rerun] === TIER 4 RERUN COMPLETE ===
