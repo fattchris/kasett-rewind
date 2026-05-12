@@ -75,6 +75,10 @@ export interface ThreadSubV2 {
  * beyond as a signal to consolidate.
  *
  * Optional but encouraged: `decisions` (max 5) and `open_questions` (max 5).
+ *
+ * Lenient-truncate flags (`_truncated_*`) are set by the lenient validator
+ * when an array exceeded its cap and was kept-first-N. They are advisory —
+ * downstream code can log/alert without losing the structured content.
  */
 export interface ThreadMetaV2 {
   /**
@@ -91,6 +95,12 @@ export interface ThreadMetaV2 {
   decisions?: string[];
   /** Up to 5 open questions / blockers. Free-form sentences. */
   open_questions?: string[];
+  /** Set by lenient validator if `sub[]` was truncated from N>5 to 5. */
+  _truncated_sub?: true;
+  /** Set by lenient validator if `decisions[]` was truncated from N>5 to 5. */
+  _truncated_decisions?: true;
+  /** Set by lenient validator if `open_questions[]` was truncated from N>5 to 5. */
+  _truncated_open_questions?: true;
 }
 
 /**
@@ -159,6 +169,8 @@ export interface KeyStateEntry {
 export interface ThreadMetaV3 extends ThreadMetaV2 {
   /** Up to 20 key state values to preserve verbatim across compactions. */
   key_state?: KeyStateEntry[];
+  /** Set by lenient validator if `key_state[]` was truncated from N>20 to 20. */
+  _truncated_key_state?: true;
 }
 
 /**
@@ -322,6 +334,27 @@ const MAX_DECISIONS = 5;
 const MAX_QUESTIONS = 5;
 
 /**
+ * Validation mode for the V2/V3 validators.
+ *
+ *  - `strict` (default for `validateThreadMetaV2` to preserve backward
+ *    compatibility): array overflow is a hard failure; the entire output
+ *    is rejected. Use when you want to surface schema violations loudly
+ *    (tests, ingestion checks, prompt-engineering work).
+ *
+ *  - `lenient` (default for `validateThreadMetaV3`): array overflow is
+ *    treated as truncate-to-cap with an advisory `_truncated_<field>`
+ *    flag set on the returned object. The structured content survives;
+ *    only the items beyond the cap are dropped. Use when you would rather
+ *    keep partial structured output than fall back to prose.
+ *
+ * Type errors (wrong type, missing required, invalid status enum) remain
+ * hard failures in BOTH modes — lenient is about caps, not about safety.
+ */
+export interface ValidateOptions {
+  mode?: 'strict' | 'lenient';
+}
+
+/**
  * Validate an unknown value against the v2 schema and return either a
  * fully-typed `ThreadMetaV2` or a list of error strings.
  *
@@ -331,9 +364,17 @@ const MAX_QUESTIONS = 5;
  *   - extra unknown properties are silently dropped (we project to V2 shape)
  *   - if `decisions`/`open_questions` are non-array we treat as missing,
  *     not as a hard failure (LLMs sometimes emit `null`)
+ *
+ * Default mode is `strict` — array overflow rejects. Pass
+ * `{ mode: 'lenient' }` to truncate-and-warn instead. See `ValidateOptions`.
  */
-export function validateThreadMetaV2(raw: unknown): ValidateResult {
+export function validateThreadMetaV2(
+  raw: unknown,
+  options: ValidateOptions = {},
+): ValidateResult {
+  const lenient = options.mode === 'lenient';
   const errors: string[] = [];
+  const truncatedFlags: Partial<Pick<ThreadMetaV2, '_truncated_sub' | '_truncated_decisions' | '_truncated_open_questions'>> = {};
 
   if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) {
     return { ok: false, errors: ['root must be a non-array object'] };
@@ -353,11 +394,16 @@ export function validateThreadMetaV2(raw: unknown): ValidateResult {
   // sub
   const subRaw = obj['sub'];
   let sub: ThreadSubV2[] = [];
+  let subOverflowed = false;
   if (!Array.isArray(subRaw)) {
     errors.push('sub: required array');
   } else {
     if (subRaw.length > MAX_SUB) {
-      errors.push(`sub: at most ${MAX_SUB} items (got ${subRaw.length})`);
+      if (lenient) {
+        subOverflowed = true;
+      } else {
+        errors.push(`sub: at most ${MAX_SUB} items (got ${subRaw.length})`);
+      }
     }
     for (let i = 0; i < subRaw.length; i++) {
       const item = subRaw[i];
@@ -394,8 +440,9 @@ export function validateThreadMetaV2(raw: unknown): ValidateResult {
         status: status as ThreadStatus,
       });
     }
-    // Truncate if over max (defensive — we already errored if so)
+    // Truncate if over max (defensive — also the lenient-mode trim point).
     if (sub.length > MAX_SUB) sub = sub.slice(0, MAX_SUB);
+    if (subOverflowed) truncatedFlags._truncated_sub = true;
   }
 
   // decisions (optional)
@@ -417,9 +464,13 @@ export function validateThreadMetaV2(raw: unknown): ValidateResult {
         items.push(d);
       }
       if (items.length > MAX_DECISIONS) {
-        errors.push(
-          `decisions: at most ${MAX_DECISIONS} items (got ${items.length})`,
-        );
+        if (lenient) {
+          truncatedFlags._truncated_decisions = true;
+        } else {
+          errors.push(
+            `decisions: at most ${MAX_DECISIONS} items (got ${items.length})`,
+          );
+        }
       }
       decisions = items.slice(0, MAX_DECISIONS);
     }
@@ -442,9 +493,13 @@ export function validateThreadMetaV2(raw: unknown): ValidateResult {
         items.push(q);
       }
       if (items.length > MAX_QUESTIONS) {
-        errors.push(
-          `open_questions: at most ${MAX_QUESTIONS} items (got ${items.length})`,
-        );
+        if (lenient) {
+          truncatedFlags._truncated_open_questions = true;
+        } else {
+          errors.push(
+            `open_questions: at most ${MAX_QUESTIONS} items (got ${items.length})`,
+          );
+        }
       }
       openQuestions = items.slice(0, MAX_QUESTIONS);
     }
@@ -457,7 +512,29 @@ export function validateThreadMetaV2(raw: unknown): ValidateResult {
   const value: ThreadMetaV2 = { main, sub };
   if (decisions !== undefined) value.decisions = decisions;
   if (openQuestions !== undefined) value.open_questions = openQuestions;
+  if (truncatedFlags._truncated_sub) value._truncated_sub = true;
+  if (truncatedFlags._truncated_decisions) value._truncated_decisions = true;
+  if (truncatedFlags._truncated_open_questions)
+    value._truncated_open_questions = true;
   return { ok: true, value };
+}
+
+/**
+ * Strict alias for `validateThreadMetaV2` — explicit name for callers that
+ * want to assert no overflow has occurred. Equivalent to calling
+ * `validateThreadMetaV2(raw, { mode: 'strict' })` (which is also the default).
+ */
+export function validateThreadMetaV2Strict(raw: unknown): ValidateResult {
+  return validateThreadMetaV2(raw, { mode: 'strict' });
+}
+
+/**
+ * Lenient alias for `validateThreadMetaV2` — truncates oversized arrays
+ * (`sub`, `decisions`, `open_questions`) to their cap and sets a
+ * `_truncated_<field>` flag instead of rejecting.
+ */
+export function validateThreadMetaV2Lenient(raw: unknown): ValidateResult {
+  return validateThreadMetaV2(raw, { mode: 'lenient' });
 }
 
 /**
@@ -558,15 +635,31 @@ export function isValidKeyStateEntry(
 }
 
 /**
- * Validate an unknown value as ThreadMetaV3. Reuses the V2 validator for
- * the common fields; on top, validates `key_state[]` entry-by-entry.
+ * Validate an unknown value as ThreadMetaV3.
  *
- * Lenient on key_state: invalid entries are dropped (with errors recorded)
- * rather than rejecting the whole meta object — the upstream parser
- * decides whether to surface or swallow the warnings.
+ * Default mode is **lenient** (different from `validateThreadMetaV2`!):
+ *   - Oversized `sub`/`decisions`/`open_questions` arrays are truncated to
+ *     cap with `_truncated_<field>: true` set instead of rejecting.
+ *   - Oversized `key_state[]` (>20) is truncated to first 20 with
+ *     `_truncated_key_state: true` set.
+ *   - Invalid `key_state` entries are dropped one-by-one.
+ *
+ * Why lenient by default: production traffic shows the LLM correctly
+ * identifying 6-10 concurrent threads on complex sessions and emitting
+ * valid JSON. Strict rejection drops the entire structured payload — the
+ * agent loses ALL thread context for the next compaction. Lenient keeps
+ * the first N items per cap, which is significantly better than zero
+ * structured output.
+ *
+ * For callers that want strict semantics (e.g. ingestion tests,
+ * compliance reporting), use `validateThreadMetaV3Strict`.
  */
-export function validateThreadMetaV3(raw: unknown): ValidateResultV3 {
-  const v2 = validateThreadMetaV2(raw);
+export function validateThreadMetaV3(
+  raw: unknown,
+  options: ValidateOptions = {},
+): ValidateResultV3 {
+  const mode = options.mode ?? 'lenient';
+  const v2 = validateThreadMetaV2(raw, { mode });
   if (!v2.ok) return { ok: false, errors: v2.errors };
 
   const obj = raw as Record<string, unknown>;
@@ -578,16 +671,50 @@ export function validateThreadMetaV3(raw: unknown): ValidateResultV3 {
       // Tolerate non-array as missing
       return { ok: true, value: out };
     }
+    // Strict mode: hard-fail on overflow before truncating entries.
+    if (mode === 'strict' && ksRaw.length > MAX_KEY_STATE) {
+      return {
+        ok: false,
+        errors: [
+          `key_state: at most ${MAX_KEY_STATE} items (got ${ksRaw.length})`,
+        ],
+      };
+    }
     const entries: KeyStateEntry[] = [];
-    for (let i = 0; i < ksRaw.length && entries.length < MAX_KEY_STATE; i++) {
+    let validCount = 0;
+    for (let i = 0; i < ksRaw.length; i++) {
       const r = isValidKeyStateEntry(ksRaw[i]);
-      if (r.ok) entries.push(r.value);
+      if (r.ok) {
+        validCount++;
+        if (entries.length < MAX_KEY_STATE) entries.push(r.value);
+      }
       // invalid entries silently dropped — advisory layer
     }
     if (entries.length > 0) out.key_state = entries;
+    // Lenient: flag truncation when more VALID entries existed than cap.
+    if (validCount > MAX_KEY_STATE) out._truncated_key_state = true;
   }
 
   return { ok: true, value: out };
+}
+
+/**
+ * Strict V3 validator — hard-rejects on cap overflow on `sub`,
+ * `decisions`, `open_questions`, and `key_state`. Use for ingestion tests,
+ * benchmark compliance reports, or anywhere you want to know the LLM
+ * exceeded the contract.
+ */
+export function validateThreadMetaV3Strict(raw: unknown): ValidateResultV3 {
+  return validateThreadMetaV3(raw, { mode: 'strict' });
+}
+
+/**
+ * Explicit lenient V3 validator — equivalent to `validateThreadMetaV3()`
+ * with no options (lenient is the default). Provided for symmetry with
+ * `validateThreadMetaV3Strict` and for self-documenting call sites.
+ */
+export function validateThreadMetaV3Lenient(raw: unknown): ValidateResultV3 {
+  return validateThreadMetaV3(raw, { mode: 'lenient' });
 }
 
 /**
