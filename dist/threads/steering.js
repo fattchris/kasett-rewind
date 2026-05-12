@@ -269,7 +269,7 @@ export function buildSteeringPrompt(weightedSummaries, options = {}) {
     else {
         // 'json' or 'tool' — the prompt is the same; the call site decides
         // whether to also pass response_format / tool_choice to the provider.
-        sections.push(buildJsonInstructions(options.previousSubIds, options.candidateKeyState, options.previousKeyState, options.recentLifecycle));
+        sections.push(buildJsonInstructions(options.previousSubIds, options.candidateKeyState, options.previousKeyState, options.recentLifecycle, options.coreSubIds));
     }
     return sections.join('\n');
 }
@@ -298,7 +298,7 @@ function buildMarkdownInstructions() {
 // ---------------------------------------------------------------------------
 // V2 JSON-mode instructions (default)
 // ---------------------------------------------------------------------------
-function buildJsonInstructions(previousSubIds, candidateKeyState, previousKeyState, recentLifecycle) {
+function buildJsonInstructions(previousSubIds, candidateKeyState, previousKeyState, recentLifecycle, coreSubIds) {
     const lines = [];
     lines.push('Your response MUST contain TWO things, in this order:');
     lines.push('');
@@ -329,6 +329,11 @@ function buildJsonInstructions(previousSubIds, candidateKeyState, previousKeySta
         lines.push(`- Previous sub-thread IDs (REUSE when threads continue): ${previousSubIds
             .map((id) => `"${id}"`)
             .join(', ')}`);
+        if (coreSubIds && coreSubIds.length > 0) {
+            lines.push(`- CORE sub-thread IDs — these have appeared in MULTIPLE previous compactions ` +
+                `and represent durable threads. Strongly prefer reusing them when they remain ` +
+                `relevant: ${coreSubIds.map((id) => `"${id}"`).join(', ')}`);
+        }
     }
     if (recentLifecycle && recentLifecycle.length > 0) {
         const renames = recentLifecycle.filter((e) => e.kind === 'renamed');

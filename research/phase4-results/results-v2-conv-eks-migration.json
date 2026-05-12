@@ -1,0 +1,1090 @@
+{
+  "config": {
+    "compactionModel": "anthropic/claude-sonnet-4-5",
+    "probeModel": "anthropic/claude-sonnet-4-5",
+    "judgeModel": "anthropic/claude-sonnet-4-6",
+    "weights": [
+      1,
+      0.6,
+      0.3
+    ],
+    "windowSize": 3,
+    "phaseG": true
+  },
+  "timestamp": "2026-05-12T21:31:09.397Z",
+  "vanilla": {
+    "conv-eks-migration": {
+      "summaries": [
+        "The team is planning a comprehensive EKS migration from us-east-1 to us-west-2. The current production environment runs on the molt-prod-east cluster in us-east-1, serving the application at https://app-prod-v1.us-east-1.example.com, where the v1 prefix denotes API version rather than environment. Deployments are managed through ArgoCD with a 3-minute sync interval. The production workload uses a Postgres 14 database on RDS running on a db.r6g.large instance, and a critical decision was made to maintain this configuration rather than migrating to Aurora Serverless v2 due to unacceptable Lambda cold-start latency of 3.2s at p99, which would severely impact the authentication path.\n\nThe target region us-west-2 was selected over us-west-1 for two key reasons: it offers four availability zones compared to three, and it provides access to Bedrock, which will be required for an upcoming RAG service. The new cluster will be deployed directly on EKS version 1.29, skipping the interim upgrade path and gaining support through 2027. Infrastructure will be provisioned using CDK, leveraging existing modules in lib/eks-stack.ts with the new region configured via stage variables.\n\nThe current IAM configuration uses pod role arn:aws:iam::492372116065:role/eks-pod-prod-east, which grants RDS connectivity, S3 read/write access to the molt-prod-data bucket, and SecretsManager read permissions for resources under molt-prod/*. The API Gateway (ID a1b2c3d4e5) serves traffic through the custom domain api.example.com with WAF rules at version 3. IRSA configuration will function identically in the new region, requiring only the one-time addition of an OIDC provider in the target account.\n\nCross-region connectivity has been designed to avoid VPC peering complexity, instead relying on public S3 endpoints with bucket policies. Cross-region replication operates asynchronously with a p95 replication lag of approximately 200ms. Secrets Manager replication is enabled for the project namespace with propagation times under 60 seconds. DNS management uses a global Route53 hosted zone with weighted routing for the api.example.com record and attached health checks. Existing Lambda functions will continue invoking the API Gateway endpoint transparently during the transition, with timeouts increased to 30s on cold-start sensitive paths.\n\nA decommissioning thread labeled old-cluster-decom has been established to coordinate the shutdown of the us-east-1 infrastructure. The plan includes draining workloads, snapshotting RDS, exporting ArgoCD configurations, and tearing down the VPC. As a precautionary measure, daily RDS snapshots will be taken for 14 days before any teardown activities begin. Cost projections show a temporary spike of approximately $1200 per month during the dual-running window, followed by savings of $3400 per month below baseline once the eastern cluster is fully decommissioned. Integration testing is running against a smaller replica environment in the dev account, achieving approximately 85% line coverage on migration scripts. An open discussion in the #infra Slack channel is addressing shared NAT gateway costs, with Thomson tagged for review. URL conventions have been documented in repo/docs/url-conventions.md to ensure consistency across environments.",
+        "This conversation documents a comprehensive cross-region migration from an existing east region deployment to a new us-west-2 infrastructure. The team has established a new EKS cluster named molt-prod-west running version 1.29, deliberately skipping version 1.28. The cluster uses IAM role arn:aws:iam::492372116065:role/eks-pod-prod-west with the same permission scope as the east region but targeting us-west-2 resources. A new S3 bucket molt-prod-data-west-2 has been created with active Cross-Region Replication from the existing molt-prod-data bucket, showing p95 replication lag around 200ms. The infrastructure leverages public S3 endpoints with bucket policies rather than VPC peering for cross-region traffic.\n\nThe migration includes several key services and configurations. Bedrock has been enabled in us-west-2 with anthropic.claude-sonnet-4-v1:0 as the default model for the RAG service, with appropriate IAM permissions added to the pod role. A new API Gateway identified as w8x9y0z1q2 has been deployed, which will eventually serve api.example.com once the cutover completes. The team has also initiated a new RAG service deployment tracked under the thread rag-service-deploy, configured with 3 replicas, bge-large as the embedded model, and pgvector on the new west RDS instance as the vector store. DNS management uses Route53's global hosted zone with weighted routing and health checks attached to the api.example.com record.\n\nThe migration follows a phased cutover plan spanning six weeks. Phase 1 begins next week with 5% shadow traffic routed through API Gateway weighted routing. Phase 2 occurs 14 days later with 50/50 traffic distribution, and Phase 3 at 30 days from start moves 100% of traffic to west and decommissions the east region. The rollback strategy is straightforward: reset weighted routing to 100% east while keeping ArgoCD running in west but receiving zero traffic, with the RDS replica maintaining synchronization. Existing Lambda functions remain unaffected by the transition as they continue invoking the API Gateway endpoint transparently, though timeouts have been increased to 30s on cold-start sensitive paths.\n\nThe team renamed the decommissioning thread from old-cluster-decom to east-region-decom to better reflect its scope, which includes draining, snapshotting, ArgoCD export, and VPC teardown. Infrastructure is managed through CDK using existing modules in lib/eks-stack.ts, with the new region configuration picked up via stage variable. Integration tests run against a smaller copy of west in the dev account, achieving approximately 85% line coverage on migration scripts. Secrets Manager replication is enabled for the project namespace with new writes propagating within 60s. IRSA configuration works identically in west after adding the OIDC provider in the new account. Cost projections show a brief spike of approximately $1200 per month during the dual-running window, followed by savings of $3400 per month below baseline once east is decommissioned. An open Slack thread in the #infra channel discusses shared NAT gateway costs, with Thomson tagged for review.",
+        "The team is executing a phased regional migration from east to west, currently in Phase 1 with traffic split at 5% west and 95% east. The deployment has been active for 36 hours and is performing well, with west showing slightly better P99 latency at 87ms compared to east's 92ms, and no SLO violations recorded. The decision criterion for advancing to Phase 2 is seven consecutive days without SLO violations on west, at which point traffic will escalate to a 50/50 split. As of this conversation, the deployment is on day 4 of 7 and remains on track for the Phase 2 transition.\n\nThe west region infrastructure is fully operational using AWS resources in us-west-2. Database credentials are managed through arn:aws:secretsmanager:us-west-2:492372116065:secret:molt-prod-west/db-credentials-AbCdEf with daily rotation handled by Lambda. Observability is provided through Datadog APM with custom request path traces, alerts routing to the #infra-alerts Slack channel, and SLO dashboards available at app.datadoghq.com/dashboard/molt-prod-west. The RAG service is running internally at https://rag-internal.molt-prod-west.cluster.local:8080 with three healthy replicas and 240k documents indexed from S3. The service is currently in internal beta with the /v2/search API gateway path wired but not yet exposed externally.\n\nThe infrastructure is built using CDK with existing modules in lib/eks-stack.ts, where the new region is configured via stage variables. Integration tests achieve approximately 85% line coverage on migration scripts and run against a smaller copy of west in the dev account. DNS is handled through a global Route53 hosted zone with the api.example.com record using weighted routing and attached health checks. Secrets Manager replication is enabled for the project namespace with propagation occurring within 60 seconds. IRSA configuration works identically in west after adding the OIDC provider to the new account.\n\nCross-region architecture avoids VPC peering by using public S3 endpoints with bucket policies, with asynchronous cross-region replication showing p95 lag around 200ms. Existing Lambda functions continue invoking the API Gateway endpoint transparently, though timeouts were increased to 30 seconds on cold-start sensitive paths. Cost projections show a temporary spike of approximately $1200 per month during the dual-running window, followed by savings of $3400 per month below baseline once east is decommissioned. Active threads include molt-prod-west for cluster operations, east-region-decom awaiting cutover completion, and rag-service-deploy in active development. An open discussion in the #infra Slack channel addresses shared NAT gateway costs with Thomson tagged for review.",
+        "The team has successfully completed Phase 3 of a major infrastructure migration, with 100% of production traffic now running on us-west-2. The production URL has been updated to https://app-prod-v2.us-west-2.example.com, reflecting an API version bump that was previously tested during shadow traffic. The east region has been fully drained and has had zero traffic for six days. A formal decision was made to tear down the east VPC on Friday, contingent on maintaining zero rollback events for a full week from the decision point.\n\nIn parallel with wrapping up the migration, the team has launched a new RAG (Retrieval-Augmented Generation) feature that is now generally available on the /v2/search endpoint. This is protected by a WAF rate limit of 1000 requests per minute and is accessible to public users, with P95 latency running at 340ms. The team is also initiating SOC 2 compliance work, having selected Schellman as their auditor with a kickoff scheduled for next month. The evidence collection window has already begun at T-30, covering access controls, encryption, change management, and business continuity/disaster recovery.\n\nThe technical implementation uses CDK for infrastructure as code, with existing modules in lib/eks-stack.ts that pick up new regions via stage variables. Integration tests run against a smaller copy of the west environment in the dev account, achieving approximately 85% line coverage on migration scripts. The architecture avoids VPC peering by using public S3 endpoints with bucket policies, and cross-region replication is asynchronous with a P95 lag of around 200ms. Secrets Manager replication is enabled for the project namespace with new writes propagating within 60 seconds.\n\nDNS is handled through a global Route53 hosted zone with the api.example.com record using weighted routing and attached health checks. Existing Lambda functions continue to work transparently through the API Gateway endpoint, though timeouts were increased to 30 seconds on cold-start sensitive paths. IRSA configuration required only adding the OIDC provider in the new account. Cost projections show a brief spike of approximately $1200 per month during the dual-running window, followed by savings of $3400 per month below baseline once the east region is decommissioned. There's an active Slack thread in the #infra channel discussing shared NAT gateway costs, with Thomson tagged for review."
+      ]
+    }
+  },
+  "kasett": {
+    "conv-eks-migration": {
+      "summaries": [
+        "The session focused on planning a cross-region EKS migration from us-east-1 to us-west-2. The current production environment runs on the `molt-prod-east` cluster with Postgres 14 on RDS (db.r6g.large), deployed via ArgoCD with a 3-minute sync interval. A key early decision was made to retain Postgres 14 rather than migrate to Aurora Serverless v2, due to unacceptable Lambda cold-start latency of 3.2s at p99 on the auth path.\n\nThe target region was confirmed as us-west-2, chosen for its four availability zones and Bedrock availability needed for an upcoming RAG service. The new cluster will run EKS 1.29, skipping the interim 1.27 upgrade to land directly on the latest stable version with support through 2027. Infrastructure will be deployed using CDK, leveraging existing modules in `lib/eks-stack.ts` with stage variables to handle the new region.\n\nA decommissioning thread was established for the old us-east-1 cluster, with the first step being daily RDS snapshots for 14 days before any teardown begins. The migration architecture avoids VPC peering by using public S3 endpoints with bucket policies; cross-region replication runs asynchronously with p95 lag around 200ms. DNS will use Route53 weighted routing on the existing global hosted zone, with health checks attached. Secrets Manager replication is enabled for the project namespace with 60-second propagation time.\n\nCost projections show a temporary spike of approximately $1,200/month during the dual-running window, followed by a net reduction of $3,400/month once the east cluster is decommissioned. Integration tests are running against a smaller west-region copy in the dev account, achieving roughly 85% line coverage on migration scripts. An open Slack thread in #infra is tracking shared NAT gateway costs, with Thomson tagged for review.\n\n```json\n{\n  \"main\": \"Planning cross-region EKS migration from us-east-1 to us-west-2\",\n  \"sub\": [\n    {\n      \"id\": \"old-cluster-decom\",\n      \"label\": \"Decommission us-east-1 cluster after migration\",\n      \"status\": \"active\"\n    },\n    {\n      \"id\": \"west-cluster-standup\",\n      \"label\": \"Stand up new EKS 1.29 cluster in us-west-2\",\n      \"status\": \"active\"\n    },\n    {\n      \"id\": \"nat-gateway-costs\",\n      \"label\": \"Review shared NAT gateway cost implications\",\n      \"status\": \"blocked\"\n    }\n  ],\n  \"decisions\": [\n    \"Retain Postgres 14 on RDS rather than migrate to Aurora Serverless v2 due to 3.2s p99 cold-start latency\",\n    \"Target region is us-west-2 for 4 AZs and Bedrock availability\",\n    \"Deploy EKS 1.29 directly, skipping interim 1.27 upgrade\",\n    \"Use CDK for infrastructure deployment via existing modules\",\n    \"Daily RDS snapshots for 14 days before decommissioning us-east-1\"\n  ],\n  \"open_questions\": [\n    \"Thomson review needed on shared NAT gateway costs in #infra Slack thread\"\n  ],\n  \"key_state\": [\n    {\n      \"kind\": \"id\",\n      \"value\": \"molt-prod-east\",\n      \"label\": \"current production EKS cluster name\",\n      \"context\": \"us-east-1\"\n    },\n    {\n      \"kind\": \"url\",\n      \"value\": \"https://app-prod-v1.us-east-1.example.com\",\n      \"label\": \"current production app URL\",\n      \"context\": \"v1 is API version, not env marker\"\n    },\n    {\n      \"kind\": \"id\",\n      \"value\": \"arn:aws:iam::492372116065:role/eks-pod-prod-east\",\n      \"label\": \"current pod IAM role ARN\",\n      \"context\": \"grants RDS connect, S3 molt-prod-data, SecretsManager molt-prod/*\"\n    },\n    {\n      \"kind\": \"id\",\n      \"value\": \"a1b2c3d4e5\",\n      \"label\": \"API Gateway ID\",\n      \"context\": \"custom domain api.example.com\"\n    },\n    {\n      \"kind\": \"url\",\n      \"value\": \"api.example.com\",\n      \"label\": \"API Gateway custom domain\",\n      \"context\": \"uses Route53 weighted routing with health checks\"\n    },\n    {\n      \"kind\": \"id\",\n      \"value\": \"molt-prod-data\",\n      \"label\": \"S3 bucket for production data\",\n      \"context\": \"cross-region replication enabled, p95 lag ~200ms\"\n    },\n    {\n      \"kind\": \"path\",\n      \"value\": \"lib/eks-stack.ts\",\n      \"label\": \"CDK EKS stack module path\"\n    },\n    {\n      \"kind\": \"path\",\n      \"value\": \"repo/docs/url-conventions.md\",\n      \"label\": \"URL pattern documentation\"\n    },\n    {\n      \"kind\": \"version\",\n      \"value\": \"1.29\",\n      \"label\": \"target EKS version for us-west-2\",\n      \"context\": \"supported until 2027\",\n      \"thread_id\": \"west-cluster-standup\"\n    },\n    {\n      \"kind\": \"version\",\n      \"value\": \"14\",\n      \"label\": \"Postgres version on RDS\",\n      \"context\": \"db.r6g.large instance\"\n    },\n    {\n      \"kind\": \"config\",\n      \"value\": \"WAF=v3\",\n      \"label\": \"WAF rules version\"\n    }\n  ]\n}\n```",
+        "The session focused on standing up the new us-west-2 EKS cluster and finalizing the migration plan. The new cluster `molt-prod-west` is now live with EKS 1.29, confirming the decision to skip the interim 1.28 upgrade. The pod IAM role `arn:aws:iam::492372116065:role/eks-pod-prod-west` mirrors the east permissions but targets west-region resources. A new S3 bucket `molt-prod-data-west-2` was created with cross-region replication from the existing `molt-prod-data` bucket, maintaining the same ~200ms p95 replication lag. A new API Gateway `w8x9y0z1q2` was provisioned to eventually replace the east gateway once DNS cutover occurs.\n\nBedrock was enabled in us-west-2 with the default model `anthropic.claude-sonnet-4-v1:0` for the upcoming RAG service. A new sub-thread `rag-service-deploy` was established to track the RAG service deployment, which will run 3 replicas using the bge-large embedding model and pgvector on the new west RDS instance. The existing Lambda functions will continue invoking the API Gateway endpoint transparently during the transition, with timeouts bumped to 30s on cold-start sensitive paths.\n\nThe cutover plan was formalized into three phases: Phase 1 shadows 5% of traffic to west via API Gateway weighted routing (starting next week), Phase 2 moves to 50/50 split (+14 days), and Phase 3 completes the migration at 100% west (+30 days from start), totaling a 6-week migration window. Rollback strategy is straightforward: reset weighted routing to 100% east while keeping the west ArgoCD deployment running but receiving zero traffic. The decommissioning thread was renamed from `old-cluster-decom` to `east-region-decom` for clarity.\n\nInfrastructure details were confirmed: CDK deployment via existing modules in `lib/eks-stack.ts`, no VPC peering needed (public S3 endpoints with bucket policies), Secrets Manager replication enabled with 60s propagation, IRSA working identically in west after adding the OIDC provider, and Route53 weighted routing on the global hosted zone with health checks. Integration tests are running against a smaller west copy in the dev account with ~85% line coverage. Cost projections remain unchanged: temporary $1,200/month spike during dual-running, then $3,400/month reduction post-decommission. The open Slack thread in #infra regarding shared NAT gateway costs remains tagged for Thomson's review.\n\n```json\n{\n  \"main\": \"Standing up us-west-2 EKS cluster and finalizing three-phase migration plan\",\n  \"sub\": [\n    {\n      \"id\": \"west-cluster-standup\",\n      \"label\": \"Stand up new EKS 1.29 cluster in us-west-2\",\n      \"status\": \"completed\"\n    },\n    {\n      \"id\": \"east-region-decom\",\n      \"label\": \"Decommission us-east-1 cluster after migration\",\n      \"status\": \"active\"\n    },\n    {\n      \"id\": \"rag-service-deploy\",\n      \"label\": \"Deploy new RAG service on west cluster\",\n      \"status\": \"active\"\n    },\n    {\n      \"id\": \"nat-gateway-costs\",\n      \"label\": \"Review shared NAT gateway cost implications\",\n      \"status\": \"blocked\"\n    }\n  ],\n  \"decisions\": [\n    \"Renamed decommissioning thread from old-cluster-decom to east-region-decom\",\n    \"Three-phase cutover: 5% shadow traffic (week 1), 50/50 split (+14d), 100% west (+30d)\",\n    \"Rollback strategy: reset weighted routing to 100% east, keep west ArgoCD running with zero traffic\",\n    \"Bedrock default model: anthropic.claude-sonnet-4-v1:0\",\n    \"RAG service: 3 replicas, bge-large embeddings, pgvector on west RDS\"\n  ],\n  \"open_questions\": [\n    \"Thomson review needed on shared NAT gateway costs in #infra Slack thread\"\n  ],\n  \"key_state\": [\n    {\n      \"kind\": \"id\",\n      \"value\": \"molt-prod-east\",\n      \"label\": \"current production EKS cluster name\",\n      \"context\": \"us-east-1\"\n    },\n    {\n      \"kind\": \"id\",\n      \"value\": \"molt-prod-west\",\n      \"label\": \"new production EKS cluster name\",\n      \"context\": \"us-west-2\",\n      \"thread_id\": \"west-cluster-standup\"\n    },\n    {\n      \"kind\": \"url\",\n      \"value\": \"https://app-prod-v1.us-east-1.example.com\",\n      \"label\": \"current production app URL\",\n      \"context\": \"v1 is API version, not env marker\"\n    },\n    {\n      \"kind\": \"id\",\n      \"value\": \"arn:aws:iam::492372116065:role/eks-pod-prod-east\",\n      \"label\": \"current pod IAM role ARN\",\n      \"context\": \"grants RDS connect, S3 molt-prod-data, SecretsManager molt-prod/*\"\n    },\n    {\n      \"kind\": \"id\",\n      \"value\": \"arn:aws:iam::492372116065:role/eks-pod-prod-west\",\n      \"label\": \"new west pod IAM role ARN\",\n      \"context\": \"same permissions as east, targets us-west-2 resources\",\n      \"thread_id\": \"west-cluster-standup\"\n    },\n    {\n      \"kind\": \"id\",\n      \"value\": \"a1b2c3d4e5\",\n      \"label\": \"API Gateway ID\",\n      \"context\": \"us-east-1, custom domain api.example.com\"\n    },\n    {\n      \"kind\": \"id\",\n      \"value\": \"w8x9y0z1q2\",\n      \"label\": \"new API Gateway ID\",\n      \"context\": \"us-west-2, will replace east gateway at cutover\",\n      \"thread_id\": \"west-cluster-standup\"\n    },\n    {\n      \"kind\": \"url\",\n      \"value\": \"api.example.com\",\n      \"label\": \"API Gateway custom domain\",\n      \"context\": \"uses Route53 weighted routing with health checks\"\n    },\n    {\n      \"kind\": \"id\",\n      \"value\": \"molt-prod-data\",\n      \"label\": \"S3 bucket for production data\",\n      \"context\": \"us-east-1, cross-region replication to west enabled\"\n    },\n    {\n      \"kind\": \"id\",\n      \"value\": \"molt-prod-data-west-2\",\n      \"label\": \"S3 bucket for west production data\",\n      \"context\": \"replication target, p95 lag ~200ms\",\n      \"thread_id\": \"west-cluster-standup\"\n    },\n    {\n      \"kind\": \"path\",\n      \"value\": \"lib/eks-stack.ts\",\n      \"label\": \"CDK EKS stack module path\"\n    },\n    {\n      \"kind\": \"path\",\n      \"value\": \"repo/docs/url-conventions.md\",\n      \"label\": \"URL pattern documentation\"\n    },\n    {\n      \"kind\": \"version\",\n      \"value\": \"1.29\",\n      \"label\": \"target EKS version for us-west-2\",\n      \"context\": \"supported until 2027, skipped 1.28\",\n      \"thread_id\": \"west-cluster-standup\"\n    },\n    {\n      \"kind\": \"version\",\n      \"value\": \"14\",\n      \"label\": \"Postgres version on RDS\",\n      \"context\": \"db.r6g.large instance\"\n    },\n    {\n      \"kind\": \"id\",\n      \"value\": \"anthropic.claude-sonnet-4-v1:0\",\n      \"label\": \"Bedrock model for RAG service\",\n      \"context\": \"us-west-2\",\n      \"thread_id\": \"rag-service-deploy\"\n    },\n    {\n      \"kind\": \"config\",\n      \"value\": \"WAF=v3\",\n      \"label\": \"WAF rules version\"\n    }\n  ]\n}\n```",
+        "Phase 1 of the three-phase migration cutover is now live and performing well. The weighted routing split is currently 5% to us-west-2 and 95% to us-east-1, active for 36 hours with no SLO violations. West is showing slightly better p99 latency (87ms vs 92ms on east). The formal decision criterion for escalating to Phase 2 (50/50 split) is 7 consecutive days with zero SLO violations on west; we are currently on day 4 of 7 and on track to escalate as planned.\n\nThe RAG service is now running internally at `https://rag-internal.molt-prod-west.cluster.local:8080` with 3 healthy replicas and 240k documents indexed from S3. The service is in internal beta only; the API Gateway path `/v2/search` is wired but not yet exposed externally. Observability is handled via Datadog APM with custom traces on the request path, alerts routing to #infra-alerts on Slack, and SLO dashboards available at `app.datadoghq.com/dashboard/molt-prod-west`.\n\nThe west cluster is using the database secret `arn:aws:secretsmanager:us-west-2:492372116065:secret:molt-prod-west/db-credentials-AbCdEf`, which is rotated daily by Lambda. Secrets Manager replication is enabled for the project namespace with 60-second propagation. IRSA configuration works identically in west after adding the OIDC provider in the new account. All previously confirmed infrastructure details remain unchanged: CDK deployment via `lib/eks-stack.ts`, no VPC peering needed, Route53 weighted routing with health checks, and integration tests running at ~85% line coverage. The open Slack thread in #infra regarding shared NAT gateway costs remains tagged for Thomson's review.\n\n```json\n{\n  \"main\": \"Phase 1 cutover live with 5% west traffic, tracking toward Phase 2 escalation\",\n  \"sub\": [\n    {\n      \"id\": \"west-cluster-standup\",\n      \"label\": \"Operate us-west-2 EKS cluster during phased cutover\",\n      \"status\": \"active\"\n    },\n    {\n      \"id\": \"east-region-decom\",\n      \"label\": \"Decommission us-east-1 cluster after migration completes\",\n      \"status\": \"active\"\n    },\n    {\n      \"id\": \"rag-service-deploy\",\n      \"label\": \"RAG service internal beta on west cluster\",\n      \"status\": \"active\"\n    },\n    {\n      \"id\": \"nat-gateway-costs\",\n      \"label\": \"Review shared NAT gateway cost implications\",\n      \"status\": \"blocked\"\n    }\n  ],\n  \"decisions\": [\n    \"Phase 2 escalation criterion: 7 consecutive days with zero SLO violations on west, then move to 50/50 split\"\n  ],\n  \"open_questions\": [\n    \"Thomson review needed on shared NAT gateway costs in #infra Slack thread\"\n  ],\n  \"key_state\": [\n    {\n      \"kind\": \"id\",\n      \"value\": \"molt-prod-east\",\n      \"label\": \"current production EKS cluster name\",\n      \"context\": \"us-east-1\"\n    },\n    {\n      \"kind\": \"id\",\n      \"value\": \"molt-prod-west\",\n      \"label\": \"new production EKS cluster name\",\n      \"context\": \"us-west-2\",\n      \"thread_id\": \"west-cluster-standup\"\n    },\n    {\n      \"kind\": \"url\",\n      \"value\": \"https://app-prod-v1.us-east-1.example.com\",\n      \"label\": \"current production app URL\",\n      \"context\": \"v1 is API version, not env marker\"\n    },\n    {\n      \"kind\": \"id\",\n      \"value\": \"arn:aws:iam::492372116065:role/eks-pod-prod-east\",\n      \"label\": \"current pod IAM role ARN\",\n      \"context\": \"grants RDS connect, S3 molt-prod-data, SecretsManager molt-prod/*\"\n    },\n    {\n      \"kind\": \"id\",\n      \"value\": \"arn:aws:iam::492372116065:role/eks-pod-prod-west\",\n      \"label\": \"new west pod IAM role ARN\",\n      \"context\": \"same permissions as east, targets us-west-2 resources\",\n      \"thread_id\": \"west-cluster-standup\"\n    },\n    {\n      \"kind\": \"id\",\n      \"value\": \"a1b2c3d4e5\",\n      \"label\": \"API Gateway ID\",\n      \"context\": \"us-east-1, custom domain api.example.com\"\n    },\n    {\n      \"kind\": \"id\",\n      \"value\": \"w8x9y0z1q2\",\n      \"label\": \"new API Gateway ID\",\n      \"context\": \"us-west-2, will replace east gateway at cutover\",\n      \"thread_id\": \"west-cluster-standup\"\n    },\n    {\n      \"kind\": \"url\",\n      \"value\": \"api.example.com\",\n      \"label\": \"API Gateway custom domain\",\n      \"context\": \"uses Route53 weighted routing with health checks\"\n    },\n    {\n      \"kind\": \"id\",\n      \"value\": \"molt-prod-data\",\n      \"label\": \"S3 bucket for production data\",\n      \"context\": \"us-east-1, cross-region replication to west enabled\"\n    },\n    {\n      \"kind\": \"id\",\n      \"value\": \"molt-prod-data-west-2\",\n      \"label\": \"S3 bucket for west production data\",\n      \"context\": \"replication target, p95 lag ~200ms\",\n      \"thread_id\": \"west-cluster-standup\"\n    },\n    {\n      \"kind\": \"path\",\n      \"value\": \"lib/eks-stack.ts\",\n      \"label\": \"CDK EKS stack module path\"\n    },\n    {\n      \"kind\": \"path\",\n      \"value\": \"repo/docs/url-conventions.md\",\n      \"label\": \"URL pattern documentation\"\n    },\n    {\n      \"kind\": \"version\",\n      \"value\": \"1.29\",\n      \"label\": \"target EKS version for us-west-2\",\n      \"context\": \"supported until 2027, skipped 1.28\",\n      \"thread_id\": \"west-cluster-standup\"\n    },\n    {\n      \"kind\": \"version\",\n      \"value\": \"14\",\n      \"label\": \"Postgres version on RDS\",\n      \"context\": \"db.r6g.large instance\"\n    },\n    {\n      \"kind\": \"id\",\n      \"value\": \"anthropic.claude-sonnet-4-v1:0\",\n      \"label\": \"Bedrock model for RAG service\",\n      \"context\": \"us-west-2\",\n      \"thread_id\": \"rag-service-deploy\"\n    },\n    {\n      \"kind\": \"config\",\n      \"value\": \"WAF=v3\",\n      \"label\": \"WAF rules version\"\n    },\n    {\n      \"kind\": \"id\",\n      \"value\": \"arn:aws:secretsmanager:us-west-2:492372116065:secret:molt-prod-west/db-credentials-AbCdEf\",\n      \"label\": \"west database credentials secret ARN\",\n      \"context\": \"rotated daily by Lambda\",\n      \"thread_id\": \"west-cluster-standup\"\n    },\n    {\n      \"kind\": \"url\",\n      \"value\": \"https://rag-internal.molt-prod-west.cluster.local:8080\",\n      \"label\": \"RAG service internal endpoint\",\n      \"context\": \"3 replicas, 240k docs indexed\",\n      \"thread_id\": \"rag-service-deploy\"\n    },\n    {\n      \"kind\": \"url\",\n      \"value\": \"app.datadoghq.com/dashboard/molt-prod-west\",\n      \"label\": \"Datadog SLO dashboard for west cluster\",\n      \"thread_id\": \"west-cluster-standup\"\n    }\n  ]\n}\n```",
+        "Phase 3 of the migration cutover is now complete with 100% of production traffic running on us-west-2. The production URL has shifted to `https://app-prod-v2.us-west-2.example.com` (v2 reflects the API version bump that landed during shadow traffic). The us-east-1 cluster has been fully drained with zero traffic for 6 days and is awaiting teardown. A formal decision was made to tear down the east VPC on Friday, conditional on zero rollback events for one week from now.\n\nThe RAG service has reached general availability on the `/v2/search` endpoint, protected by WAF rate-limiting at 1000 rpm. Public users can now query the service, which is showing p95 latency of 340ms. A new sub-thread was established for SOC 2 evidence collection, with Schellman selected as the auditor and a kickoff scheduled for next month. The evidence collection window starts now (T-30 days before kickoff), with initial scope covering access controls, encryption, change management, and BCP/DR.\n\nAll previously confirmed infrastructure details remain unchanged: CDK deployment via `lib/eks-stack.ts`, no VPC peering needed, Route53 weighted routing with health checks, Secrets Manager replication with 60-second propagation, IRSA working identically in west after adding the OIDC provider, and integration tests running at ~85% line coverage. The open Slack thread in #infra regarding shared NAT gateway costs remains tagged for Thomson's review. Cost projections remain on track with the temporary spike during dual-running now behind us and the anticipated $3,400/month reduction pending east decommission.\n\n```json\n{\n  \"main\": \"Completing Phase 3 migration cutover and initiating SOC 2 evidence collection\",\n  \"sub\": [\n    {\n      \"id\": \"west-cluster-standup\",\n      \"label\": \"Operate us-west-2 EKS cluster at 100% production traffic\",\n      \"status\": \"active\"\n    },\n    {\n      \"id\": \"east-region-decom\",\n      \"label\": \"Tear down us-east-1 VPC on Friday pending zero rollback events\",\n      \"status\": \"active\"\n    },\n    {\n      \"id\": \"rag-service-deploy\",\n      \"label\": \"RAG service GA on /v2/search with public access\",\n      \"status\": \"completed\"\n    },\n    {\n      \"id\": \"soc2-evidence-collection\",\n      \"label\": \"Collect SOC 2 evidence for Schellman audit (T-30 window)\",\n      \"status\": \"active\"\n    },\n    {\n      \"id\": \"nat-gateway-costs\",\n      \"label\": \"Review shared NAT gateway cost implications\",\n      \"status\": \"blocked\"\n    }\n  ],\n  \"decisions\": [\n    \"East VPC teardown scheduled for Friday, conditional on zero rollback events for one week\",\n    \"RAG service moved to GA on /v2/search with WAF rate-limit 1000 rpm\",\n    \"Selected Schellman as SOC 2 auditor with kickoff next month\",\n    \"SOC 2 evidence scope: access controls, encryption, change management, BCP/DR\"\n  ],\n  \"open_questions\": [\n    \"Thomson review needed on shared NAT gateway costs in #infra Slack thread\"\n  ],\n  \"key_state\": [\n    {\n      \"kind\": \"id\",\n      \"value\": \"molt-prod-east\",\n      \"label\": \"former production EKS cluster name\",\n      \"context\": \"us-east-1, drained for 6 days\",\n      \"thread_id\": \"east-region-decom\"\n    },\n    {\n      \"kind\": \"id\",\n      \"value\": \"molt-prod-west\",\n      \"label\": \"current production EKS cluster name\",\n      \"context\": \"us-west-2, 100% traffic\",\n      \"thread_id\": \"west-cluster-standup\"\n    },\n    {\n      \"kind\": \"url\",\n      \"value\": \"https://app-prod-v2.us-west-2.example.com\",\n      \"label\": \"current production app URL\",\n      \"context\": \"v2 is API version bump from shadow traffic\",\n      \"thread_id\": \"west-cluster-standup\"\n    },\n    {\n      \"kind\": \"id\",\n      \"value\": \"arn:aws:iam::492372116065:role/eks-pod-prod-east\",\n      \"label\": \"former pod IAM role ARN\",\n      \"context\": \"us-east-1, pending decommission\",\n      \"thread_id\": \"east-region-decom\"\n    },\n    {\n      \"kind\": \"id\",\n      \"value\": \"arn:aws:iam::492372116065:role/eks-pod-prod-west\",\n      \"label\": \"current pod IAM role ARN\",\n      \"context\": \"us-west-2, grants RDS connect, S3 molt-prod-data-west-2, SecretsManager molt-prod-west/*\",\n      \"thread_id\": \"west-cluster-standup\"\n    },\n    {\n      \"kind\": \"id\",\n      \"value\": \"a1b2c3d4e5\",\n      \"label\": \"former API Gateway ID\",\n      \"context\": \"us-east-1, pending decommission\",\n      \"thread_id\": \"east-region-decom\"\n    },\n    {\n      \"kind\": \"id\",\n      \"value\": \"w8x9y0z1q2\",\n      \"label\": \"current API Gateway ID\",\n      \"context\": \"us-west-2, 100% traffic\",\n      \"thread_id\": \"west-cluster-standup\"\n    },\n    {\n      \"kind\": \"url\",\n      \"value\": \"api.example.com\",\n      \"label\": \"API Gateway custom domain\",\n      \"context\": \"uses Route53 weighted routing with health checks\"\n    },\n    {\n      \"kind\": \"id\",\n      \"value\": \"molt-prod-data\",\n      \"label\": \"S3 bucket for former production data\",\n      \"context\": \"us-east-1, pending decommission\",\n      \"thread_id\": \"east-region-decom\"\n    },\n    {\n      \"kind\": \"id\",\n      \"value\": \"molt-prod-data-west-2\",\n      \"label\": \"S3 bucket for current production data\",\n      \"context\": \"us-west-2, primary bucket\",\n      \"thread_id\": \"west-cluster-standup\"\n    },\n    {\n      \"kind\": \"path\",\n      \"value\": \"lib/eks-stack.ts\",\n      \"label\": \"CDK EKS stack module path\"\n    },\n    {\n      \"kind\": \"path\",\n      \"value\": \"repo/docs/url-conventions.md\",\n      \"label\": \"URL pattern documentation\"\n    },\n    {\n      \"kind\": \"version\",\n      \"value\": \"1.29\",\n      \"label\": \"EKS version on us-west-2\",\n      \"context\": \"supported until 2027\",\n      \"thread_id\": \"west-cluster-standup\"\n    },\n    {\n      \"kind\": \"version\",\n      \"value\": \"14\",\n      \"label\": \"Postgres version on RDS\",\n      \"context\": \"db.r6g.large instance\"\n    },\n    {\n      \"kind\": \"id\",\n      \"value\": \"anthropic.claude-sonnet-4-v1:0\",\n      \"label\": \"Bedrock model for RAG service\",\n      \"context\": \"us-west-2\",\n      \"thread_id\": \"rag-service-deploy\"\n    },\n    {\n      \"kind\": \"config\",\n      \"value\": \"WAF=v3\",\n      \"label\": \"WAF rules version\"\n    },\n    {\n      \"kind\": \"id\",\n      \"value\": \"arn:aws:secretsmanager:us-west-2:492372116065:secret:molt-prod-west/db-credentials-AbCdEf\",\n      \"label\": \"west database credentials secret ARN\",\n      \"context\": \"rotated daily by Lambda\",\n      \"thread_id\": \"west-cluster-standup\"\n    },\n    {\n      \"kind\": \"url\",\n      \"value\": \"https://rag-internal.molt-prod-west.cluster.local:8080\",\n      \"label\": \"RAG service internal endpoint\",\n      \"context\": \"3 replicas, 240k docs indexed\",\n      \"thread_id\": \"rag-service-deploy\"\n    },\n    {\n      \"kind\": \"config\",\n      \"value\": \"rate-limit=1000rpm\",\n      \"label\": \"WAF rate-limit for /v2/search\",\n      \"thread_id\": \"rag-service-deploy\"\n    },\n    {\n      \"kind\": \"id\",\n      \"value\": \"Schellman\",\n      \"label\": \"SOC 2 auditor\",\n      \"context\": \"kickoff next month, T-30 evidence window\",\n      \"thread_id\": \"soc2-evidence-collection\"\n    }\n  ]\n}\n```"
+      ],
+      "metas": [
+        {
+          "version": "v3",
+          "summary": "The session focused on planning a cross-region EKS migration from us-east-1 to us-west-2. The current production environment runs on the `molt-prod-east` cluster with Postgres 14 on RDS (db.r6g.large), deployed via ArgoCD with a 3-minute sync interval. A key early decision was made to retain Postgres 14 rather than migrate to Aurora Serverless v2, due to unacceptable Lambda cold-start latency of 3.2s at p99 on the auth path.\n\nThe target region was confirmed as us-west-2, chosen for its four availability zones and Bedrock availability needed for an upcoming RAG service. The new cluster will run EKS 1.29, skipping the interim 1.27 upgrade to land directly on the latest stable version with support through 2027. Infrastructure will be deployed using CDK, leveraging existing modules in `lib/eks-stack.ts` with stage variables to handle the new region.\n\nA decommissioning thread was established for the old us-east-1 cluster, with the first step being daily RDS snapshots for 14 days before any teardown begins. The migration architecture avoids VPC peering by using public S3 endpoints with bucket policies; cross-region replication runs asynchronously with p95 lag around 200ms. DNS will use Route53 weighted routing on the existing global hosted zone, with health checks attached. Secrets Manager replication is enabled for the project namespace with 60-second propagation time.\n\nCost projections show a temporary spike of approximately $1,200/month during the dual-running window, followed by a net reduction of $3,400/month once the east cluster is decommissioned. Integration tests are running against a smaller west-region copy in the dev account, achieving roughly 85% line coverage on migration scripts. An open Slack thread in #infra is tracking shared NAT gateway costs, with Thomson tagged for review.",
+          "metaV1": {
+            "main": "Planning cross-region EKS migration from us-east-1 to us-west-2",
+            "sub": [
+              "Decommission us-east-1 cluster after migration",
+              "Stand up new EKS 1.29 cluster in us-west-2",
+              "Review shared NAT gateway cost implications"
+            ]
+          },
+          "metaV2": {
+            "main": "Planning cross-region EKS migration from us-east-1 to us-west-2",
+            "sub": [
+              {
+                "id": "old-cluster-decom",
+                "label": "Decommission us-east-1 cluster after migration",
+                "status": "active"
+              },
+              {
+                "id": "west-cluster-standup",
+                "label": "Stand up new EKS 1.29 cluster in us-west-2",
+                "status": "active"
+              },
+              {
+                "id": "nat-gateway-costs",
+                "label": "Review shared NAT gateway cost implications",
+                "status": "blocked"
+              }
+            ],
+            "decisions": [
+              "Retain Postgres 14 on RDS rather than migrate to Aurora Serverless v2 due to 3.2s p99 cold-start latency",
+              "Target region is us-west-2 for 4 AZs and Bedrock availability",
+              "Deploy EKS 1.29 directly, skipping interim 1.27 upgrade",
+              "Use CDK for infrastructure deployment via existing modules",
+              "Daily RDS snapshots for 14 days before decommissioning us-east-1"
+            ],
+            "open_questions": [
+              "Thomson review needed on shared NAT gateway costs in #infra Slack thread"
+            ]
+          },
+          "metaV3": {
+            "main": "Planning cross-region EKS migration from us-east-1 to us-west-2",
+            "sub": [
+              {
+                "id": "old-cluster-decom",
+                "label": "Decommission us-east-1 cluster after migration",
+                "status": "active"
+              },
+              {
+                "id": "west-cluster-standup",
+                "label": "Stand up new EKS 1.29 cluster in us-west-2",
+                "status": "active"
+              },
+              {
+                "id": "nat-gateway-costs",
+                "label": "Review shared NAT gateway cost implications",
+                "status": "blocked"
+              }
+            ],
+            "decisions": [
+              "Retain Postgres 14 on RDS rather than migrate to Aurora Serverless v2 due to 3.2s p99 cold-start latency",
+              "Target region is us-west-2 for 4 AZs and Bedrock availability",
+              "Deploy EKS 1.29 directly, skipping interim 1.27 upgrade",
+              "Use CDK for infrastructure deployment via existing modules",
+              "Daily RDS snapshots for 14 days before decommissioning us-east-1"
+            ],
+            "open_questions": [
+              "Thomson review needed on shared NAT gateway costs in #infra Slack thread"
+            ],
+            "key_state": [
+              {
+                "kind": "id",
+                "value": "molt-prod-east",
+                "label": "current production EKS cluster name",
+                "context": "us-east-1"
+              },
+              {
+                "kind": "url",
+                "value": "https://app-prod-v1.us-east-1.example.com",
+                "label": "current production app URL",
+                "context": "v1 is API version, not env marker"
+              },
+              {
+                "kind": "id",
+                "value": "arn:aws:iam::492372116065:role/eks-pod-prod-east",
+                "label": "current pod IAM role ARN",
+                "context": "grants RDS connect, S3 molt-prod-data, SecretsManager molt-prod/*"
+              },
+              {
+                "kind": "id",
+                "value": "a1b2c3d4e5",
+                "label": "API Gateway ID",
+                "context": "custom domain api.example.com"
+              },
+              {
+                "kind": "url",
+                "value": "api.example.com",
+                "label": "API Gateway custom domain",
+                "context": "uses Route53 weighted routing with health checks"
+              },
+              {
+                "kind": "id",
+                "value": "molt-prod-data",
+                "label": "S3 bucket for production data",
+                "context": "cross-region replication enabled, p95 lag ~200ms"
+              },
+              {
+                "kind": "path",
+                "value": "lib/eks-stack.ts",
+                "label": "CDK EKS stack module path"
+              },
+              {
+                "kind": "path",
+                "value": "repo/docs/url-conventions.md",
+                "label": "URL pattern documentation"
+              },
+              {
+                "kind": "version",
+                "value": "1.29",
+                "label": "target EKS version for us-west-2",
+                "context": "supported until 2027",
+                "thread_id": "west-cluster-standup"
+              },
+              {
+                "kind": "version",
+                "value": "14",
+                "label": "Postgres version on RDS",
+                "context": "db.r6g.large instance"
+              },
+              {
+                "kind": "config",
+                "value": "WAF=v3",
+                "label": "WAF rules version"
+              }
+            ]
+          },
+          "errors": []
+        },
+        {
+          "version": "v3",
+          "summary": "The session focused on standing up the new us-west-2 EKS cluster and finalizing the migration plan. The new cluster `molt-prod-west` is now live with EKS 1.29, confirming the decision to skip the interim 1.28 upgrade. The pod IAM role `arn:aws:iam::492372116065:role/eks-pod-prod-west` mirrors the east permissions but targets west-region resources. A new S3 bucket `molt-prod-data-west-2` was created with cross-region replication from the existing `molt-prod-data` bucket, maintaining the same ~200ms p95 replication lag. A new API Gateway `w8x9y0z1q2` was provisioned to eventually replace the east gateway once DNS cutover occurs.\n\nBedrock was enabled in us-west-2 with the default model `anthropic.claude-sonnet-4-v1:0` for the upcoming RAG service. A new sub-thread `rag-service-deploy` was established to track the RAG service deployment, which will run 3 replicas using the bge-large embedding model and pgvector on the new west RDS instance. The existing Lambda functions will continue invoking the API Gateway endpoint transparently during the transition, with timeouts bumped to 30s on cold-start sensitive paths.\n\nThe cutover plan was formalized into three phases: Phase 1 shadows 5% of traffic to west via API Gateway weighted routing (starting next week), Phase 2 moves to 50/50 split (+14 days), and Phase 3 completes the migration at 100% west (+30 days from start), totaling a 6-week migration window. Rollback strategy is straightforward: reset weighted routing to 100% east while keeping the west ArgoCD deployment running but receiving zero traffic. The decommissioning thread was renamed from `old-cluster-decom` to `east-region-decom` for clarity.\n\nInfrastructure details were confirmed: CDK deployment via existing modules in `lib/eks-stack.ts`, no VPC peering needed (public S3 endpoints with bucket policies), Secrets Manager replication enabled with 60s propagation, IRSA working identically in west after adding the OIDC provider, and Route53 weighted routing on the global hosted zone with health checks. Integration tests are running against a smaller west copy in the dev account with ~85% line coverage. Cost projections remain unchanged: temporary $1,200/month spike during dual-running, then $3,400/month reduction post-decommission. The open Slack thread in #infra regarding shared NAT gateway costs remains tagged for Thomson's review.",
+          "metaV1": {
+            "main": "Standing up us-west-2 EKS cluster and finalizing three-phase migration plan",
+            "sub": [
+              "Stand up new EKS 1.29 cluster in us-west-2",
+              "Decommission us-east-1 cluster after migration",
+              "Deploy new RAG service on west cluster"
+            ]
+          },
+          "metaV2": {
+            "main": "Standing up us-west-2 EKS cluster and finalizing three-phase migration plan",
+            "sub": [
+              {
+                "id": "west-cluster-standup",
+                "label": "Stand up new EKS 1.29 cluster in us-west-2",
+                "status": "completed"
+              },
+              {
+                "id": "east-region-decom",
+                "label": "Decommission us-east-1 cluster after migration",
+                "status": "active"
+              },
+              {
+                "id": "rag-service-deploy",
+                "label": "Deploy new RAG service on west cluster",
+                "status": "active"
+              },
+              {
+                "id": "nat-gateway-costs",
+                "label": "Review shared NAT gateway cost implications",
+                "status": "blocked"
+              }
+            ],
+            "decisions": [
+              "Renamed decommissioning thread from old-cluster-decom to east-region-decom",
+              "Three-phase cutover: 5% shadow traffic (week 1), 50/50 split (+14d), 100% west (+30d)",
+              "Rollback strategy: reset weighted routing to 100% east, keep west ArgoCD running with zero traffic",
+              "Bedrock default model: anthropic.claude-sonnet-4-v1:0",
+              "RAG service: 3 replicas, bge-large embeddings, pgvector on west RDS"
+            ],
+            "open_questions": [
+              "Thomson review needed on shared NAT gateway costs in #infra Slack thread"
+            ]
+          },
+          "metaV3": {
+            "main": "Standing up us-west-2 EKS cluster and finalizing three-phase migration plan",
+            "sub": [
+              {
+                "id": "west-cluster-standup",
+                "label": "Stand up new EKS 1.29 cluster in us-west-2",
+                "status": "completed"
+              },
+              {
+                "id": "east-region-decom",
+                "label": "Decommission us-east-1 cluster after migration",
+                "status": "active"
+              },
+              {
+                "id": "rag-service-deploy",
+                "label": "Deploy new RAG service on west cluster",
+                "status": "active"
+              },
+              {
+                "id": "nat-gateway-costs",
+                "label": "Review shared NAT gateway cost implications",
+                "status": "blocked"
+              }
+            ],
+            "decisions": [
+              "Renamed decommissioning thread from old-cluster-decom to east-region-decom",
+              "Three-phase cutover: 5% shadow traffic (week 1), 50/50 split (+14d), 100% west (+30d)",
+              "Rollback strategy: reset weighted routing to 100% east, keep west ArgoCD running with zero traffic",
+              "Bedrock default model: anthropic.claude-sonnet-4-v1:0",
+              "RAG service: 3 replicas, bge-large embeddings, pgvector on west RDS"
+            ],
+            "open_questions": [
+              "Thomson review needed on shared NAT gateway costs in #infra Slack thread"
+            ],
+            "key_state": [
+              {
+                "kind": "id",
+                "value": "molt-prod-east",
+                "label": "current production EKS cluster name",
+                "context": "us-east-1"
+              },
+              {
+                "kind": "id",
+                "value": "molt-prod-west",
+                "label": "new production EKS cluster name",
+                "context": "us-west-2",
+                "thread_id": "west-cluster-standup"
+              },
+              {
+                "kind": "url",
+                "value": "https://app-prod-v1.us-east-1.example.com",
+                "label": "current production app URL",
+                "context": "v1 is API version, not env marker"
+              },
+              {
+                "kind": "id",
+                "value": "arn:aws:iam::492372116065:role/eks-pod-prod-east",
+                "label": "current pod IAM role ARN",
+                "context": "grants RDS connect, S3 molt-prod-data, SecretsManager molt-prod/*"
+              },
+              {
+                "kind": "id",
+                "value": "arn:aws:iam::492372116065:role/eks-pod-prod-west",
+                "label": "new west pod IAM role ARN",
+                "context": "same permissions as east, targets us-west-2 resources",
+                "thread_id": "west-cluster-standup"
+              },
+              {
+                "kind": "id",
+                "value": "a1b2c3d4e5",
+                "label": "API Gateway ID",
+                "context": "us-east-1, custom domain api.example.com"
+              },
+              {
+                "kind": "id",
+                "value": "w8x9y0z1q2",
+                "label": "new API Gateway ID",
+                "context": "us-west-2, will replace east gateway at cutover",
+                "thread_id": "west-cluster-standup"
+              },
+              {
+                "kind": "url",
+                "value": "api.example.com",
+                "label": "API Gateway custom domain",
+                "context": "uses Route53 weighted routing with health checks"
+              },
+              {
+                "kind": "id",
+                "value": "molt-prod-data",
+                "label": "S3 bucket for production data",
+                "context": "us-east-1, cross-region replication to west enabled"
+              },
+              {
+                "kind": "id",
+                "value": "molt-prod-data-west-2",
+                "label": "S3 bucket for west production data",
+                "context": "replication target, p95 lag ~200ms",
+                "thread_id": "west-cluster-standup"
+              },
+              {
+                "kind": "path",
+                "value": "lib/eks-stack.ts",
+                "label": "CDK EKS stack module path"
+              },
+              {
+                "kind": "path",
+                "value": "repo/docs/url-conventions.md",
+                "label": "URL pattern documentation"
+              },
+              {
+                "kind": "version",
+                "value": "1.29",
+                "label": "target EKS version for us-west-2",
+                "context": "supported until 2027, skipped 1.28",
+                "thread_id": "west-cluster-standup"
+              },
+              {
+                "kind": "version",
+                "value": "14",
+                "label": "Postgres version on RDS",
+                "context": "db.r6g.large instance"
+              },
+              {
+                "kind": "id",
+                "value": "anthropic.claude-sonnet-4-v1:0",
+                "label": "Bedrock model for RAG service",
+                "context": "us-west-2",
+                "thread_id": "rag-service-deploy"
+              },
+              {
+                "kind": "config",
+                "value": "WAF=v3",
+                "label": "WAF rules version"
+              }
+            ]
+          },
+          "errors": []
+        },
+        {
+          "version": "v3",
+          "summary": "Phase 1 of the three-phase migration cutover is now live and performing well. The weighted routing split is currently 5% to us-west-2 and 95% to us-east-1, active for 36 hours with no SLO violations. West is showing slightly better p99 latency (87ms vs 92ms on east). The formal decision criterion for escalating to Phase 2 (50/50 split) is 7 consecutive days with zero SLO violations on west; we are currently on day 4 of 7 and on track to escalate as planned.\n\nThe RAG service is now running internally at `https://rag-internal.molt-prod-west.cluster.local:8080` with 3 healthy replicas and 240k documents indexed from S3. The service is in internal beta only; the API Gateway path `/v2/search` is wired but not yet exposed externally. Observability is handled via Datadog APM with custom traces on the request path, alerts routing to #infra-alerts on Slack, and SLO dashboards available at `app.datadoghq.com/dashboard/molt-prod-west`.\n\nThe west cluster is using the database secret `arn:aws:secretsmanager:us-west-2:492372116065:secret:molt-prod-west/db-credentials-AbCdEf`, which is rotated daily by Lambda. Secrets Manager replication is enabled for the project namespace with 60-second propagation. IRSA configuration works identically in west after adding the OIDC provider in the new account. All previously confirmed infrastructure details remain unchanged: CDK deployment via `lib/eks-stack.ts`, no VPC peering needed, Route53 weighted routing with health checks, and integration tests running at ~85% line coverage. The open Slack thread in #infra regarding shared NAT gateway costs remains tagged for Thomson's review.",
+          "metaV1": {
+            "main": "Phase 1 cutover live with 5% west traffic, tracking toward Phase 2 escalation",
+            "sub": [
+              "Operate us-west-2 EKS cluster during phased cutover",
+              "Decommission us-east-1 cluster after migration completes",
+              "RAG service internal beta on west cluster"
+            ]
+          },
+          "metaV2": {
+            "main": "Phase 1 cutover live with 5% west traffic, tracking toward Phase 2 escalation",
+            "sub": [
+              {
+                "id": "west-cluster-standup",
+                "label": "Operate us-west-2 EKS cluster during phased cutover",
+                "status": "active"
+              },
+              {
+                "id": "east-region-decom",
+                "label": "Decommission us-east-1 cluster after migration completes",
+                "status": "active"
+              },
+              {
+                "id": "rag-service-deploy",
+                "label": "RAG service internal beta on west cluster",
+                "status": "active"
+              },
+              {
+                "id": "nat-gateway-costs",
+                "label": "Review shared NAT gateway cost implications",
+                "status": "blocked"
+              }
+            ],
+            "decisions": [
+              "Phase 2 escalation criterion: 7 consecutive days with zero SLO violations on west, then move to 50/50 split"
+            ],
+            "open_questions": [
+              "Thomson review needed on shared NAT gateway costs in #infra Slack thread"
+            ]
+          },
+          "metaV3": {
+            "main": "Phase 1 cutover live with 5% west traffic, tracking toward Phase 2 escalation",
+            "sub": [
+              {
+                "id": "west-cluster-standup",
+                "label": "Operate us-west-2 EKS cluster during phased cutover",
+                "status": "active"
+              },
+              {
+                "id": "east-region-decom",
+                "label": "Decommission us-east-1 cluster after migration completes",
+                "status": "active"
+              },
+              {
+                "id": "rag-service-deploy",
+                "label": "RAG service internal beta on west cluster",
+                "status": "active"
+              },
+              {
+                "id": "nat-gateway-costs",
+                "label": "Review shared NAT gateway cost implications",
+                "status": "blocked"
+              }
+            ],
+            "decisions": [
+              "Phase 2 escalation criterion: 7 consecutive days with zero SLO violations on west, then move to 50/50 split"
+            ],
+            "open_questions": [
+              "Thomson review needed on shared NAT gateway costs in #infra Slack thread"
+            ],
+            "key_state": [
+              {
+                "kind": "id",
+                "value": "molt-prod-east",
+                "label": "current production EKS cluster name",
+                "context": "us-east-1"
+              },
+              {
+                "kind": "id",
+                "value": "molt-prod-west",
+                "label": "new production EKS cluster name",
+                "context": "us-west-2",
+                "thread_id": "west-cluster-standup"
+              },
+              {
+                "kind": "url",
+                "value": "https://app-prod-v1.us-east-1.example.com",
+                "label": "current production app URL",
+                "context": "v1 is API version, not env marker"
+              },
+              {
+                "kind": "id",
+                "value": "arn:aws:iam::492372116065:role/eks-pod-prod-east",
+                "label": "current pod IAM role ARN",
+                "context": "grants RDS connect, S3 molt-prod-data, SecretsManager molt-prod/*"
+              },
+              {
+                "kind": "id",
+                "value": "arn:aws:iam::492372116065:role/eks-pod-prod-west",
+                "label": "new west pod IAM role ARN",
+                "context": "same permissions as east, targets us-west-2 resources",
+                "thread_id": "west-cluster-standup"
+              },
+              {
+                "kind": "id",
+                "value": "a1b2c3d4e5",
+                "label": "API Gateway ID",
+                "context": "us-east-1, custom domain api.example.com"
+              },
+              {
+                "kind": "id",
+                "value": "w8x9y0z1q2",
+                "label": "new API Gateway ID",
+                "context": "us-west-2, will replace east gateway at cutover",
+                "thread_id": "west-cluster-standup"
+              },
+              {
+                "kind": "url",
+                "value": "api.example.com",
+                "label": "API Gateway custom domain",
+                "context": "uses Route53 weighted routing with health checks"
+              },
+              {
+                "kind": "id",
+                "value": "molt-prod-data",
+                "label": "S3 bucket for production data",
+                "context": "us-east-1, cross-region replication to west enabled"
+              },
+              {
+                "kind": "id",
+                "value": "molt-prod-data-west-2",
+                "label": "S3 bucket for west production data",
+                "context": "replication target, p95 lag ~200ms",
+                "thread_id": "west-cluster-standup"
+              },
+              {
+                "kind": "path",
+                "value": "lib/eks-stack.ts",
+                "label": "CDK EKS stack module path"
+              },
+              {
+                "kind": "path",
+                "value": "repo/docs/url-conventions.md",
+                "label": "URL pattern documentation"
+              },
+              {
+                "kind": "version",
+                "value": "1.29",
+                "label": "target EKS version for us-west-2",
+                "context": "supported until 2027, skipped 1.28",
+                "thread_id": "west-cluster-standup"
+              },
+              {
+                "kind": "version",
+                "value": "14",
+                "label": "Postgres version on RDS",
+                "context": "db.r6g.large instance"
+              },
+              {
+                "kind": "id",
+                "value": "anthropic.claude-sonnet-4-v1:0",
+                "label": "Bedrock model for RAG service",
+                "context": "us-west-2",
+                "thread_id": "rag-service-deploy"
+              },
+              {
+                "kind": "config",
+                "value": "WAF=v3",
+                "label": "WAF rules version"
+              },
+              {
+                "kind": "id",
+                "value": "arn:aws:secretsmanager:us-west-2:492372116065:secret:molt-prod-west/db-credentials-AbCdEf",
+                "label": "west database credentials secret ARN",
+                "context": "rotated daily by Lambda",
+                "thread_id": "west-cluster-standup"
+              },
+              {
+                "kind": "url",
+                "value": "https://rag-internal.molt-prod-west.cluster.local:8080",
+                "label": "RAG service internal endpoint",
+                "context": "3 replicas, 240k docs indexed",
+                "thread_id": "rag-service-deploy"
+              },
+              {
+                "kind": "url",
+                "value": "app.datadoghq.com/dashboard/molt-prod-west",
+                "label": "Datadog SLO dashboard for west cluster",
+                "thread_id": "west-cluster-standup"
+              }
+            ]
+          },
+          "errors": []
+        },
+        {
+          "version": "v3",
+          "summary": "Phase 3 of the migration cutover is now complete with 100% of production traffic running on us-west-2. The production URL has shifted to `https://app-prod-v2.us-west-2.example.com` (v2 reflects the API version bump that landed during shadow traffic). The us-east-1 cluster has been fully drained with zero traffic for 6 days and is awaiting teardown. A formal decision was made to tear down the east VPC on Friday, conditional on zero rollback events for one week from now.\n\nThe RAG service has reached general availability on the `/v2/search` endpoint, protected by WAF rate-limiting at 1000 rpm. Public users can now query the service, which is showing p95 latency of 340ms. A new sub-thread was established for SOC 2 evidence collection, with Schellman selected as the auditor and a kickoff scheduled for next month. The evidence collection window starts now (T-30 days before kickoff), with initial scope covering access controls, encryption, change management, and BCP/DR.\n\nAll previously confirmed infrastructure details remain unchanged: CDK deployment via `lib/eks-stack.ts`, no VPC peering needed, Route53 weighted routing with health checks, Secrets Manager replication with 60-second propagation, IRSA working identically in west after adding the OIDC provider, and integration tests running at ~85% line coverage. The open Slack thread in #infra regarding shared NAT gateway costs remains tagged for Thomson's review. Cost projections remain on track with the temporary spike during dual-running now behind us and the anticipated $3,400/month reduction pending east decommission.",
+          "metaV1": {
+            "main": "Completing Phase 3 migration cutover and initiating SOC 2 evidence collection",
+            "sub": [
+              "Operate us-west-2 EKS cluster at 100% production traffic",
+              "Tear down us-east-1 VPC on Friday pending zero rollback events",
+              "RAG service GA on /v2/search with public access"
+            ]
+          },
+          "metaV2": {
+            "main": "Completing Phase 3 migration cutover and initiating SOC 2 evidence collection",
+            "sub": [
+              {
+                "id": "west-cluster-standup",
+                "label": "Operate us-west-2 EKS cluster at 100% production traffic",
+                "status": "active"
+              },
+              {
+                "id": "east-region-decom",
+                "label": "Tear down us-east-1 VPC on Friday pending zero rollback events",
+                "status": "active"
+              },
+              {
+                "id": "rag-service-deploy",
+                "label": "RAG service GA on /v2/search with public access",
+                "status": "completed"
+              },
+              {
+                "id": "soc2-evidence-collection",
+                "label": "Collect SOC 2 evidence for Schellman audit (T-30 window)",
+                "status": "active"
+              },
+              {
+                "id": "nat-gateway-costs",
+                "label": "Review shared NAT gateway cost implications",
+                "status": "blocked"
+              }
+            ],
+            "decisions": [
+              "East VPC teardown scheduled for Friday, conditional on zero rollback events for one week",
+              "RAG service moved to GA on /v2/search with WAF rate-limit 1000 rpm",
+              "Selected Schellman as SOC 2 auditor with kickoff next month",
+              "SOC 2 evidence scope: access controls, encryption, change management, BCP/DR"
+            ],
+            "open_questions": [
+              "Thomson review needed on shared NAT gateway costs in #infra Slack thread"
+            ]
+          },
+          "metaV3": {
+            "main": "Completing Phase 3 migration cutover and initiating SOC 2 evidence collection",
+            "sub": [
+              {
+                "id": "west-cluster-standup",
+                "label": "Operate us-west-2 EKS cluster at 100% production traffic",
+                "status": "active"
+              },
+              {
+                "id": "east-region-decom",
+                "label": "Tear down us-east-1 VPC on Friday pending zero rollback events",
+                "status": "active"
+              },
+              {
+                "id": "rag-service-deploy",
+                "label": "RAG service GA on /v2/search with public access",
+                "status": "completed"
+              },
+              {
+                "id": "soc2-evidence-collection",
+                "label": "Collect SOC 2 evidence for Schellman audit (T-30 window)",
+                "status": "active"
+              },
+              {
+                "id": "nat-gateway-costs",
+                "label": "Review shared NAT gateway cost implications",
+                "status": "blocked"
+              }
+            ],
+            "decisions": [
+              "East VPC teardown scheduled for Friday, conditional on zero rollback events for one week",
+              "RAG service moved to GA on /v2/search with WAF rate-limit 1000 rpm",
+              "Selected Schellman as SOC 2 auditor with kickoff next month",
+              "SOC 2 evidence scope: access controls, encryption, change management, BCP/DR"
+            ],
+            "open_questions": [
+              "Thomson review needed on shared NAT gateway costs in #infra Slack thread"
+            ],
+            "key_state": [
+              {
+                "kind": "id",
+                "value": "molt-prod-east",
+                "label": "former production EKS cluster name",
+                "context": "us-east-1, drained for 6 days",
+                "thread_id": "east-region-decom"
+              },
+              {
+                "kind": "id",
+                "value": "molt-prod-west",
+                "label": "current production EKS cluster name",
+                "context": "us-west-2, 100% traffic",
+                "thread_id": "west-cluster-standup"
+              },
+              {
+                "kind": "url",
+                "value": "https://app-prod-v2.us-west-2.example.com",
+                "label": "current production app URL",
+                "context": "v2 is API version bump from shadow traffic",
+                "thread_id": "west-cluster-standup"
+              },
+              {
+                "kind": "id",
+                "value": "arn:aws:iam::492372116065:role/eks-pod-prod-east",
+                "label": "former pod IAM role ARN",
+                "context": "us-east-1, pending decommission",
+                "thread_id": "east-region-decom"
+              },
+              {
+                "kind": "id",
+                "value": "arn:aws:iam::492372116065:role/eks-pod-prod-west",
+                "label": "current pod IAM role ARN",
+                "context": "us-west-2, grants RDS connect, S3 molt-prod-data-west-2, SecretsManager molt-prod-west/*",
+                "thread_id": "west-cluster-standup"
+              },
+              {
+                "kind": "id",
+                "value": "a1b2c3d4e5",
+                "label": "former API Gateway ID",
+                "context": "us-east-1, pending decommission",
+                "thread_id": "east-region-decom"
+              },
+              {
+                "kind": "id",
+                "value": "w8x9y0z1q2",
+                "label": "current API Gateway ID",
+                "context": "us-west-2, 100% traffic",
+                "thread_id": "west-cluster-standup"
+              },
+              {
+                "kind": "url",
+                "value": "api.example.com",
+                "label": "API Gateway custom domain",
+                "context": "uses Route53 weighted routing with health checks"
+              },
+              {
+                "kind": "id",
+                "value": "molt-prod-data",
+                "label": "S3 bucket for former production data",
+                "context": "us-east-1, pending decommission",
+                "thread_id": "east-region-decom"
+              },
+              {
+                "kind": "id",
+                "value": "molt-prod-data-west-2",
+                "label": "S3 bucket for current production data",
+                "context": "us-west-2, primary bucket",
+                "thread_id": "west-cluster-standup"
+              },
+              {
+                "kind": "path",
+                "value": "lib/eks-stack.ts",
+                "label": "CDK EKS stack module path"
+              },
+              {
+                "kind": "path",
+                "value": "repo/docs/url-conventions.md",
+                "label": "URL pattern documentation"
+              },
+              {
+                "kind": "version",
+                "value": "1.29",
+                "label": "EKS version on us-west-2",
+                "context": "supported until 2027",
+                "thread_id": "west-cluster-standup"
+              },
+              {
+                "kind": "version",
+                "value": "14",
+                "label": "Postgres version on RDS",
+                "context": "db.r6g.large instance"
+              },
+              {
+                "kind": "id",
+                "value": "anthropic.claude-sonnet-4-v1:0",
+                "label": "Bedrock model for RAG service",
+                "context": "us-west-2",
+                "thread_id": "rag-service-deploy"
+              },
+              {
+                "kind": "config",
+                "value": "WAF=v3",
+                "label": "WAF rules version"
+              },
+              {
+                "kind": "id",
+                "value": "arn:aws:secretsmanager:us-west-2:492372116065:secret:molt-prod-west/db-credentials-AbCdEf",
+                "label": "west database credentials secret ARN",
+                "context": "rotated daily by Lambda",
+                "thread_id": "west-cluster-standup"
+              },
+              {
+                "kind": "url",
+                "value": "https://rag-internal.molt-prod-west.cluster.local:8080",
+                "label": "RAG service internal endpoint",
+                "context": "3 replicas, 240k docs indexed",
+                "thread_id": "rag-service-deploy"
+              },
+              {
+                "kind": "config",
+                "value": "rate-limit=1000rpm",
+                "label": "WAF rate-limit for /v2/search",
+                "thread_id": "rag-service-deploy"
+              },
+              {
+                "kind": "id",
+                "value": "Schellman",
+                "label": "SOC 2 auditor",
+                "context": "kickoff next month, T-30 evidence window",
+                "thread_id": "soc2-evidence-collection"
+              }
+            ]
+          },
+          "errors": []
+        }
+      ],
+      "feedbackLog": [
+        {
+          "depth": 1,
+          "prevCount": 0,
+          "fired": true,
+          "steeringChars": 6579,
+          "previousSubIds": [],
+          "coreSubIds": [],
+          "previousKeyStateCount": 0,
+          "recentLifecycleCount": 0,
+          "schema": "v3",
+          "subCount": 3,
+          "keyStateCount": 11
+        },
+        {
+          "depth": 2,
+          "prevCount": 2,
+          "fired": true,
+          "steeringChars": 12435,
+          "previousSubIds": [
+            "old-cluster-decom",
+            "west-cluster-standup",
+            "nat-gateway-costs"
+          ],
+          "coreSubIds": [],
+          "previousKeyStateCount": 11,
+          "recentLifecycleCount": 0,
+          "schema": "v3",
+          "subCount": 4,
+          "keyStateCount": 16
+        },
+        {
+          "depth": 3,
+          "prevCount": 3,
+          "fired": true,
+          "steeringChars": 19840,
+          "previousSubIds": [
+            "west-cluster-standup",
+            "nat-gateway-costs",
+            "east-region-decom",
+            "rag-service-deploy",
+            "old-cluster-decom"
+          ],
+          "coreSubIds": [
+            "west-cluster-standup",
+            "nat-gateway-costs"
+          ],
+          "previousKeyStateCount": 16,
+          "recentLifecycleCount": 3,
+          "schema": "v3",
+          "subCount": 4,
+          "keyStateCount": 19
+        },
+        {
+          "depth": 4,
+          "prevCount": 3,
+          "fired": true,
+          "steeringChars": 26599,
+          "previousSubIds": [
+            "west-cluster-standup",
+            "nat-gateway-costs",
+            "east-region-decom",
+            "rag-service-deploy",
+            "old-cluster-decom"
+          ],
+          "coreSubIds": [
+            "west-cluster-standup",
+            "nat-gateway-costs",
+            "east-region-decom",
+            "rag-service-deploy"
+          ],
+          "previousKeyStateCount": 19,
+          "recentLifecycleCount": 3,
+          "schema": "v3",
+          "subCount": 5,
+          "keyStateCount": 20
+        }
+      ]
+    }
+  },
+  "probes": {
+    "conv-eks-migration": [
+      {
+        "probeId": "eks-p1",
+        "depth": 1,
+        "type": "long-range-recall",
+        "question": "What was the deployment URL we were using when we first started this migration thread?",
+        "expectedAnswer": "https://app-prod-v1.us-east-1.example.com",
+        "vanilla": {
+          "answer": "NOT_FOUND",
+          "verdict": "WRONG",
+          "reason": "NOT_FOUND",
+          "autoMatched": true
+        },
+        "kasett": {
+          "answer": "NOT_FOUND",
+          "verdict": "WRONG",
+          "reason": "NOT_FOUND",
+          "autoMatched": true
+        }
+      },
+      {
+        "probeId": "eks-p2",
+        "depth": 1,
+        "type": "decision-continuity",
+        "question": "Why did we choose Postgres 14 over Aurora Serverless?",
+        "expectedAnswer": "Aurora had 3.2s p99 Lambda cold-start latency, too slow for auth",
+        "vanilla": {
+          "answer": "NOT_FOUND",
+          "verdict": "WRONG",
+          "reason": "NOT_FOUND",
+          "autoMatched": true
+        },
+        "kasett": {
+          "answer": "NOT_FOUND",
+          "verdict": "WRONG",
+          "reason": "NOT_FOUND",
+          "autoMatched": true
+        }
+      },
+      {
+        "probeId": "eks-p3",
+        "depth": 1,
+        "type": "thread-lineage",
+        "question": "What was the original name of the thread we now call `east-region-decom`?",
+        "expectedAnswer": "old-cluster-decom",
+        "vanilla": {
+          "answer": "NOT_FOUND",
+          "verdict": "WRONG",
+          "reason": "NOT_FOUND",
+          "autoMatched": true
+        },
+        "kasett": {
+          "answer": "NOT_FOUND",
+          "verdict": "WRONG",
+          "reason": "NOT_FOUND",
+          "autoMatched": true
+        }
+      },
+      {
+        "probeId": "eks-p4",
+        "depth": 2,
+        "type": "long-range-recall",
+        "question": "What is the API Gateway ID in us-west-2?",
+        "expectedAnswer": "w8x9y0z1q2",
+        "vanilla": {
+          "answer": "NOT_FOUND",
+          "verdict": "WRONG",
+          "reason": "NOT_FOUND",
+          "autoMatched": true
+        },
+        "kasett": {
+          "answer": "w8x9y0z1q2",
+          "verdict": "CORRECT",
+          "reason": "string-match",
+          "autoMatched": true
+        }
+      },
+      {
+        "probeId": "eks-p5",
+        "depth": 2,
+        "type": "decision-continuity",
+        "question": "Why did we go directly to EKS 1.29 instead of 1.28?",
+        "expectedAnswer": "To skip an interim upgrade — 1.29 is latest stable, supported until 2027",
+        "vanilla": {
+          "answer": "NOT_FOUND",
+          "verdict": "WRONG",
+          "reason": "NOT_FOUND",
+          "autoMatched": true
+        },
+        "kasett": {
+          "answer": "NOT_FOUND",
+          "verdict": "WRONG",
+          "reason": "NOT_FOUND",
+          "autoMatched": true
+        }
+      },
+      {
+        "probeId": "eks-p6",
+        "depth": 2,
+        "type": "long-range-recall",
+        "question": "What Bedrock model did we configure as the default for the RAG service?",
+        "expectedAnswer": "anthropic.claude-sonnet-4-v1:0",
+        "vanilla": {
+          "answer": "NOT_FOUND",
+          "verdict": "WRONG",
+          "reason": "NOT_FOUND",
+          "autoMatched": true
+        },
+        "kasett": {
+          "answer": "anthropic.claude-sonnet-4-v1:0",
+          "verdict": "CORRECT",
+          "reason": "string-match",
+          "autoMatched": true
+        }
+      },
+      {
+        "probeId": "eks-p7",
+        "depth": 3,
+        "type": "long-range-recall",
+        "question": "What is the ARN of the database credentials secret on the west cluster?",
+        "expectedAnswer": "arn:aws:secretsmanager:us-west-2:492372116065:secret:molt-prod-west/db-credentials-AbCdEf",
+        "vanilla": {
+          "answer": "NOT_FOUND",
+          "verdict": "WRONG",
+          "reason": "NOT_FOUND",
+          "autoMatched": true
+        },
+        "kasett": {
+          "answer": "arn:aws:secretsmanager:us-west-2:492372116065:secret:molt-prod-west/db-credentials-AbCdEf",
+          "verdict": "CORRECT",
+          "reason": "string-match",
+          "autoMatched": true
+        }
+      },
+      {
+        "probeId": "eks-p8",
+        "depth": 3,
+        "type": "decision-continuity",
+        "question": "What was the criterion we set for escalating from Phase 1 (5%) to Phase 2 (50/50)?",
+        "expectedAnswer": "7 consecutive days with no SLO violations on west",
+        "vanilla": {
+          "answer": "NOT_FOUND",
+          "verdict": "WRONG",
+          "reason": "NOT_FOUND",
+          "autoMatched": true
+        },
+        "kasett": {
+          "answer": "NOT_FOUND",
+          "verdict": "WRONG",
+          "reason": "NOT_FOUND",
+          "autoMatched": true
+        }
+      },
+      {
+        "probeId": "eks-p9",
+        "depth": 3,
+        "type": "trajectory",
+        "question": "What was the status of the `rag-service-deploy` thread at compaction 3 — was it active, blocked, or completed?",
+        "expectedAnswer": "active",
+        "vanilla": {
+          "answer": "NOT_FOUND",
+          "verdict": "WRONG",
+          "reason": "NOT_FOUND",
+          "autoMatched": true
+        },
+        "kasett": {
+          "answer": "completed",
+          "verdict": "WRONG",
+          "reason": "WRONG\nThe agent answered \"completed\" but the expected answer is \"active.\"",
+          "autoMatched": false
+        }
+      },
+      {
+        "probeId": "eks-p10",
+        "depth": "current",
+        "type": "long-range-recall",
+        "question": "What is the production URL on the west cluster right now?",
+        "expectedAnswer": "https://app-prod-v2.us-west-2.example.com",
+        "vanilla": {
+          "answer": "https://app-prod-v2.us-west-2.example.com",
+          "verdict": "CORRECT",
+          "reason": "string-match",
+          "autoMatched": true
+        },
+        "kasett": {
+          "answer": "https://app-prod-v2.us-west-2.example.com",
+          "verdict": "CORRECT",
+          "reason": "string-match",
+          "autoMatched": true
+        }
+      },
+      {
+        "probeId": "eks-p11",
+        "depth": "current",
+        "type": "trajectory",
+        "question": "What is the status of `east-region-decom` right now?",
+        "expectedAnswer": "drained, awaiting teardown (or \"tearing down Friday +7d if no rollbacks\")",
+        "vanilla": {
+          "answer": "The east region has been fully drained with zero traffic for six days, and a formal decision was made to tear down the east VPC on Friday, contingent on maintaining zero rollback events for a full week from the decision point.",
+          "verdict": "CORRECT",
+          "reason": "string-match",
+          "autoMatched": true
+        },
+        "kasett": {
+          "answer": "The `east-region-decom` thread status is **active**, with the us-east-1 VPC teardown scheduled for Friday, conditional on zero rollback events for one week from now.",
+          "verdict": "CORRECT",
+          "reason": "string-match",
+          "autoMatched": true
+        }
+      },
+      {
+        "probeId": "eks-p12",
+        "depth": "current",
+        "type": "long-range-recall",
+        "question": "What new thread did we just add at the end of the session?",
+        "expectedAnswer": "soc2-evidence-collection",
+        "vanilla": {
+          "answer": "NOT_FOUND",
+          "verdict": "WRONG",
+          "reason": "NOT_FOUND",
+          "autoMatched": true
+        },
+        "kasett": {
+          "answer": "The new sub-thread established is **SOC 2 evidence collection** (id: `soc2-evidence-collection`), covering evidence for the Schellman audit with a T-30 day window before next month's kickoff.",
+          "verdict": "CORRECT",
+          "reason": "string-match",
+          "autoMatched": true
+        }
+      }
+    ]
+  }
+}

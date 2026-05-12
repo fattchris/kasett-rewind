@@ -45,6 +45,7 @@
  *     Heavy, runs only when OC triggers compaction.
  *   - These are two SEPARATE concerns — no cross-contamination.
  */
+import type { KeyStateEntry } from './threads/schema.js';
 interface SessionStoreEntry {
     sessionId?: string;
     sessionFile?: string;
@@ -126,6 +127,28 @@ interface SummarizeParams {
     previousSummary?: string;
 }
 export declare function register(api: PluginAPI): void;
+/**
+ * Phase G: aggregate continuity hints across a window of previous compaction
+ * summary texts. Walks every summary in the window (not just the most recent)
+ * and builds:
+ *   - `previousSubIds`: every sub-thread id seen, sorted by recurrence
+ *     frequency descending (most-recurring first — "core" threads bubble up).
+ *   - `coreSubIds`: subset of `previousSubIds` with frequency >= 2 (i.e.
+ *     appeared in at least 2 of the windowed summaries).
+ *   - `previousKeyState`: deduped key_state entries across all summaries,
+ *     keyed by `${kind}::${value}`. First-seen wins; since `summaries` is
+ *     most-recent-first, the most recent entry for a given (kind, value)
+ *     pair is preserved.
+ *
+ * Pure function — no I/O, side-effect-free, suitable for unit tests.
+ *
+ * @param summaries - Previous compaction summary texts, MOST RECENT FIRST.
+ */
+export declare function aggregateContinuityHints(summaries: ReadonlyArray<string>): {
+    previousSubIds?: string[];
+    coreSubIds?: string[];
+    previousKeyState?: KeyStateEntry[];
+};
 export { SessionReader, KasettError } from './storage/reader.js';
 export { weightSummaries, classifyThreadsV2, classifyThreadsV1Fallback, } from './threads/weight.js';
 export type { WeightedSummary, ClassifiedThread, ThreadContinuityClass, } from './threads/weight.js';

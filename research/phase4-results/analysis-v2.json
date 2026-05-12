@@ -1,0 +1,186 @@
+{
+  "config": {
+    "compactionModel": "anthropic/claude-sonnet-4-5",
+    "probeModel": "anthropic/claude-sonnet-4-5",
+    "judgeModel": "anthropic/claude-sonnet-4-6",
+    "weights": [
+      1,
+      0.6,
+      0.3
+    ],
+    "windowSize": 3,
+    "phaseG": true
+  },
+  "byDepth": {
+    "v2K": {
+      "1": {
+        "n": 9,
+        "correct": 3,
+        "rate": 0.3333333333333333
+      },
+      "2": {
+        "n": 9,
+        "correct": 4,
+        "rate": 0.4444444444444444
+      },
+      "3": {
+        "n": 9,
+        "correct": 4,
+        "rate": 0.4444444444444444
+      },
+      "current": {
+        "n": 9,
+        "correct": 9,
+        "rate": 1
+      },
+      "overall": {
+        "n": 36,
+        "correct": 20,
+        "rate": 0.5555555555555556
+      }
+    },
+    "v2V": {
+      "1": {
+        "n": 9,
+        "correct": 0,
+        "rate": 0
+      },
+      "2": {
+        "n": 9,
+        "correct": 0,
+        "rate": 0
+      },
+      "3": {
+        "n": 9,
+        "correct": 1,
+        "rate": 0.1111111111111111
+      },
+      "current": {
+        "n": 9,
+        "correct": 7,
+        "rate": 0.7777777777777778
+      },
+      "overall": {
+        "n": 36,
+        "correct": 8,
+        "rate": 0.2222222222222222
+      }
+    },
+    "baseK": {
+      "1": {
+        "n": 9,
+        "correct": 3,
+        "rate": 0.3333333333333333
+      },
+      "2": {
+        "n": 9,
+        "correct": 4,
+        "rate": 0.4444444444444444
+      },
+      "3": {
+        "n": 9,
+        "correct": 4,
+        "rate": 0.4444444444444444
+      },
+      "current": {
+        "n": 9,
+        "correct": 9,
+        "rate": 1
+      },
+      "overall": {
+        "n": 36,
+        "correct": 20,
+        "rate": 0.5555555555555556
+      }
+    },
+    "baseV": {
+      "1": {
+        "n": 9,
+        "correct": 0,
+        "rate": 0
+      },
+      "2": {
+        "n": 9,
+        "correct": 0,
+        "rate": 0
+      },
+      "3": {
+        "n": 9,
+        "correct": 1,
+        "rate": 0.1111111111111111
+      },
+      "current": {
+        "n": 9,
+        "correct": 7,
+        "rate": 0.7777777777777778
+      },
+      "overall": {
+        "n": 36,
+        "correct": 8,
+        "rate": 0.2222222222222222
+      }
+    }
+  },
+  "byType": {
+    "v2KT": {
+      "long-range-recall": {
+        "n": 17,
+        "correct": 14,
+        "rate": 0.8235294117647058
+      },
+      "decision-continuity": {
+        "n": 9,
+        "correct": 1,
+        "rate": 0.1111111111111111
+      },
+      "trajectory": {
+        "n": 5,
+        "correct": 4,
+        "rate": 0.8
+      },
+      "thread-lineage": {
+        "n": 5,
+        "correct": 1,
+        "rate": 0.2
+      }
+    },
+    "baseKT": {
+      "long-range-recall": {
+        "n": 17,
+        "correct": 13,
+        "rate": 0.7647058823529411
+      },
+      "decision-continuity": {
+        "n": 9,
+        "correct": 2,
+        "rate": 0.2222222222222222
+      },
+      "trajectory": {
+        "n": 5,
+        "correct": 4,
+        "rate": 0.8
+      },
+      "thread-lineage": {
+        "n": 5,
+        "correct": 1,
+        "rate": 0.2
+      }
+    }
+  },
+  "mcnemar": {
+    "bothC": 8,
+    "kOnly": 12,
+    "vOnly": 0,
+    "bothW": 16,
+    "n": 12,
+    "oneTailed": 0.000244140625,
+    "twoTailed": 0.00048828125
+  },
+  "mechanism": {
+    "totalCore": 11,
+    "totalLifecycle": 23,
+    "totalKeyState": 184,
+    "totalSubs": 47,
+    "transitions": 9
+  }
+}

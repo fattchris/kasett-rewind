@@ -56,6 +56,7 @@ import { generateStub } from './hotswap/stub.js';
 import { runHotSwapWorker } from './hotswap/worker.js';
 import { detectCandidateKeyState } from './keystate/detector.js';
 import type { KeyStateEntry } from './threads/schema.js';
+import type { LifecycleEvent } from './threads/lifecycle.js';
 import type { KasettConfig, ThreadMeta } from './types.js';
 import { DEFAULT_CONFIG } from './types.js';
 
@@ -477,12 +478,23 @@ export function register(api: PluginAPI): void {
       // Blocks until the LLM returns the full summary.
       // ─────────────────────────────────────────────────────────────────────
       try {
-        const { steeringPrompt } = await buildCompactionContext({
+        const { steeringPrompt, lifecycleCount, coreSubIdCount } = await buildCompactionContext({
           params,
           capturedCtx,
           config,
           api,
           reader,
+        });
+        void logHookEvent({
+          hook: 'before_compaction',
+          sessionId: capturedCtx?.sessionKey,
+          agentId: capturedCtx?.agentId,
+          action: 'context_built',
+          detail: {
+            mode: 'sync',
+            lifecycle_count: lifecycleCount,
+            core_sub_id_count: coreSubIdCount,
+          },
         });
 
         const summary = await callLLMForCompaction({
@@ -572,12 +584,24 @@ async function summarizeWithHotSwap(p: SummarizeWithHotSwapParams): Promise<stri
   try {
     // Step 1: Build compaction context (previous summaries + steering prompt)
     // This is fast — just file reads and string ops, no LLM call.
-    const { previousSummaries, steeringPrompt, sessionFile } = await buildCompactionContext({
-      params,
-      capturedCtx,
-      config,
-      api,
-      reader,
+    const { previousSummaries, steeringPrompt, sessionFile, lifecycleCount, coreSubIdCount } =
+      await buildCompactionContext({
+        params,
+        capturedCtx,
+        config,
+        api,
+        reader,
+      });
+    void logHookEvent({
+      hook: 'before_compaction',
+      sessionId: capturedCtx?.sessionKey,
+      agentId: capturedCtx?.agentId,
+      action: 'context_built',
+      detail: {
+        mode: 'hotswap',
+        lifecycle_count: lifecycleCount,
+        core_sub_id_count: coreSubIdCount,
+      },
     });
 
     // Step 2: Generate stub immediately (no LLM call)
@@ -590,7 +614,12 @@ async function summarizeWithHotSwap(p: SummarizeWithHotSwapParams): Promise<stri
       agentId: capturedCtx?.agentId,
       action: 'hotswap_stub_returned',
       charCount: stub.length,
-      detail: { stubId, sessionFile: sessionFile ?? null },
+      detail: {
+        stubId,
+        sessionFile: sessionFile ?? null,
+        lifecycle_count: lifecycleCount,
+        core_sub_id_count: coreSubIdCount,
+      },
     });
 
     // Step 3: Fire-and-forget the background worker
@@ -680,10 +709,89 @@ async function summarizeWithHotSwap(p: SummarizeWithHotSwapParams): Promise<stri
 // Shared compaction context builder
 // ---------------------------------------------------------------------------
 
+/**
+ * Phase G: aggregate continuity hints across a window of previous compaction
+ * summary texts. Walks every summary in the window (not just the most recent)
+ * and builds:
+ *   - `previousSubIds`: every sub-thread id seen, sorted by recurrence
+ *     frequency descending (most-recurring first — "core" threads bubble up).
+ *   - `coreSubIds`: subset of `previousSubIds` with frequency >= 2 (i.e.
+ *     appeared in at least 2 of the windowed summaries).
+ *   - `previousKeyState`: deduped key_state entries across all summaries,
+ *     keyed by `${kind}::${value}`. First-seen wins; since `summaries` is
+ *     most-recent-first, the most recent entry for a given (kind, value)
+ *     pair is preserved.
+ *
+ * Pure function — no I/O, side-effect-free, suitable for unit tests.
+ *
+ * @param summaries - Previous compaction summary texts, MOST RECENT FIRST.
+ */
+export function aggregateContinuityHints(summaries: ReadonlyArray<string>): {
+  previousSubIds?: string[];
+  coreSubIds?: string[];
+  previousKeyState?: KeyStateEntry[];
+} {
+  if (summaries.length === 0) return {};
+
+  const idFrequency = new Map<string, number>();
+  const keyStateByKey = new Map<string, KeyStateEntry>();
+
+  for (const summaryText of summaries) {
+    if (!summaryText) continue;
+    const parsed = parseCompactionOutputBestEffort(summaryText);
+    if (parsed.metaV2 && parsed.metaV2.sub.length > 0) {
+      for (const s of parsed.metaV2.sub) {
+        if (!s.id) continue;
+        idFrequency.set(s.id, (idFrequency.get(s.id) ?? 0) + 1);
+      }
+    }
+    if (parsed.metaV3?.key_state && parsed.metaV3.key_state.length > 0) {
+      for (const k of parsed.metaV3.key_state) {
+        const key = `${k.kind}::${k.value}`;
+        if (!keyStateByKey.has(key)) {
+          keyStateByKey.set(key, k);
+        }
+      }
+    }
+  }
+
+  const result: {
+    previousSubIds?: string[];
+    coreSubIds?: string[];
+    previousKeyState?: KeyStateEntry[];
+  } = {};
+
+  if (idFrequency.size > 0) {
+    const sorted = Array.from(idFrequency.entries()).sort(
+      (a, b) => b[1] - a[1],
+    );
+    result.previousSubIds = sorted.map(([id]) => id);
+    const core = sorted.filter(([, freq]) => freq >= 2).map(([id]) => id);
+    if (core.length > 0) result.coreSubIds = core;
+  }
+  if (keyStateByKey.size > 0) {
+    result.previousKeyState = Array.from(keyStateByKey.values());
+  }
+  return result;
+}
+
 interface CompactionContext {
   previousSummaries: string[];
   steeringPrompt: string;
   sessionFile: string | null;
+  /**
+   * Phase G: number of lifecycle events (renames/merges/splits) re-surfaced
+   * from the prior compaction's sidecar into the steering prompt. 0 means
+   * either no prior compactions, no lifecycle events were detected, or the
+   * sidecar read failed (non-blocking). Logged via hook events for
+   * observability.
+   */
+  lifecycleCount: number;
+  /**
+   * Phase G: number of "core" sub-thread IDs (appeared in 2+ previous
+   * compactions in the window). 0 if no recurrence detected.
+   */
+  coreSubIdCount: number;
 }
 
 interface BuildCompactionContextParams {
@@ -752,21 +860,11 @@ async function buildCompactionContext(
   const weighted = weightSummaries(previousSummaries, config.compaction.weights);
 
   // --- 3. Extract previous v2 sub-thread ids and v3 key_state (continuity) ---
-  // Best-effort: read the most recent summary and pull its v2 ids and v3
-  // key_state if present. Lets the LLM REUSE the same id for continuing
-  // threads, and carry forward still-relevant key state, rather than
-  // inventing fresh state each compaction.
-  let previousSubIds: string[] | undefined;
-  let previousKeyState: KeyStateEntry[] | undefined;
-  if (previousSummaries.length > 0) {
-    const latest = parseCompactionOutputBestEffort(previousSummaries[0]);
-    if (latest.metaV2 && latest.metaV2.sub.length > 0) {
-      previousSubIds = latest.metaV2.sub.map((s) => s.id);
-    }
-    if (latest.metaV3?.key_state && latest.metaV3.key_state.length > 0) {
-      previousKeyState = latest.metaV3.key_state;
-    }
-  }
+  // Phase G: aggregate across the FULL window (not just the latest summary).
+  const aggregated = aggregateContinuityHints(previousSummaries);
+  const previousSubIds: string[] | undefined = aggregated.previousSubIds;
+  const previousKeyState: KeyStateEntry[] | undefined = aggregated.previousKeyState;
+  const coreSubIds: string[] | undefined = aggregated.coreSubIds;
 
   // --- 3b. Detect candidate key state values from the conversation (Phase C) ---
   // The detector is heuristic / advisory — we surface candidates to the LLM
@@ -780,15 +878,41 @@ async function buildCompactionContext(
     api.logger.debug(`[kasett-rewind] keystate detector failed: ${String(err)}`);
   }
 
+  // --- 3c. Read lifecycle events from the prior compaction's sidecar (Phase G) ---
+  // The prior compaction's worker may have detected renames/merges/splits
+  // and stored them on the sidecar. Surfacing them here lets the LLM keep
+  // IDs stable after a rename, instead of re-detecting it via fuzzy match.
+  // Failures are non-blocking — if the sidecar can't be read, we just
+  // proceed without lifecycle hints.
+  let recentLifecycle: LifecycleEvent[] | undefined;
+  if (sessionFile) {
+    try {
+      const events = await reader.readLatestLifecycleEvents(sessionFile);
+      if (events.length > 0) recentLifecycle = events;
+    } catch (err) {
+      api.logger.debug(
+        `[kasett-rewind] readLatestLifecycleEvents failed (non-blocking): ${String(err)}`,
+      );
+    }
+  }
+
   // --- 4. Build thread-aware steering prompt (v3/json by default) ---
   const steeringPrompt = buildSteeringPrompt(weighted, {
     structuredOutput: 'json',
     ...(previousSubIds ? { previousSubIds } : {}),
+    ...(coreSubIds ? { coreSubIds } : {}),
     ...(previousKeyState ? { previousKeyState } : {}),
     ...(candidateKeyState.length > 0 ? { candidateKeyState } : {}),
+    ...(recentLifecycle ? { recentLifecycle } : {}),
   });
 
-  return { previousSummaries, steeringPrompt, sessionFile };
+  return {
+    previousSummaries,
+    steeringPrompt,
+    sessionFile,
+    lifecycleCount: recentLifecycle?.length ?? 0,
+    coreSubIdCount: coreSubIds?.length ?? 0,
+  };
 }
 
 // ---------------------------------------------------------------------------

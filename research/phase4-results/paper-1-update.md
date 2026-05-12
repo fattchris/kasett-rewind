@@ -113,3 +113,22 @@ We claim the multi-cycle behavioral benefit (Phase 4: +33pp Recall@1, p=0.0005) 
 ✅ Two non-blocking implementation gaps identified for future work.
 
 The paper goes from "structural-only" to "structural + behavioral" with the Phase 4 addition.
+
+---
+
+## Addendum: Phase G — Post-hoc gap closure
+
+**Date:** 2026-05-12 (same day, after Phase 4 reporting).
+**Recommendation:** Add as a short §3.4.7 ablation paragraph in the paper.
+
+### Suggested paragraph (drop into the Discussion or as §3.4.7)
+
+> The two implementation gaps surfaced in Phase 4 (lifecycle events stored but not re-read; sub-IDs and key_state mined only from the most recent summary in the window) were closed in a post-hoc patch. The fixes are mechanical: `buildCompactionContext` now (a) calls `SessionReader.readLatestLifecycleEvents(sessionFile)` and passes the resulting `recentLifecycle` array to `buildSteeringPrompt`; and (b) walks all N=3 prior summaries (not just the most recent), aggregates sub-thread IDs by recurrence frequency, and surfaces those appearing in 2+ prior compactions as a separate `coreSubIds` hint. Replicating the Phase 4 protocol with the patched code (same corpus, same models, same probes) produced **identical Recall@1 by depth** (vanilla 22.2%, Kasett 55.6%, McNemar p=0.0005), with small probe-type movement (long-range-recall +5.9pp, decision-continuity −11.1pp; both ±1 question on n=17 and n=9 respectively). Mechanism telemetry confirmed the patches fire as designed: lifecycle events surface at an average of 2.56 / transition (was 0 in Phase 4) and core sub IDs at 1.22 / transition (was 0). Per-compaction `key_state[]` count grew ≈15% in aggregate (160 → 184 entries across 12 compactions). We interpret this as an **ablation confirming that window-1 hints are sufficient at this corpus difficulty**: the Phase 4 baseline already saturates the easy-recall gains, and the residual hard probes (decision rationale and renamed-thread lineage) require richer mechanisms (verbatim decision rationale carry-over, structured rename tracking) that Phase G does not add. The patches are kept in the production code path because they expand the per-compaction signal envelope and may matter on noisier real-session data; they are not claimed as a separate behavioral win. Phase 4 stands as the headline result.
+
+### Status
+
+✅ Both Phase 4 implementation gaps closed in production code (Phase G).
+✅ 448 unit tests pass (+14 new for window aggregation and lifecycle re-surfacing).
+✅ Mechanism firing confirmed via telemetry (lifecycle 2.56/transition, core sub IDs 1.22/transition).
+⚫️ Behavioral metric (Recall@1 by depth) unchanged on this corpus.
+⚫️ Decision-continuity and thread-lineage probes still flat — those need future work beyond Phase G.

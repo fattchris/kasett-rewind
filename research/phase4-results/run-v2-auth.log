@@ -1,0 +1,28 @@
+
+=== conv-auth-launch (Auth system rebuild — JWT vs OAuth, cookies, MFA) ===
+-- Vanilla pass --
+  C1 (100 turns)... 2970 chars
+  C2 (100 turns)... 3090 chars
+  C3 (100 turns)... 2703 chars
+  C4 (100 turns)... 2215 chars
+-- Kasett v2 pass --
+  C1 (100 turns)... 4979 chars, schema=v3, subs=4, key_state=9, prev=0, core=0, lc=0
+  C2 (100 turns)... 4873 chars, schema=v3, subs=5, key_state=12, prev=2, core=0, lc=0
+  C3 (100 turns)... 5644 chars, schema=v3, subs=3, key_state=16, prev=3, core=0, lc=8
+  C4 (100 turns)... 5750 chars, schema=v3, subs=4, key_state=17, prev=3, core=1, lc=4
+-- Probes (12) --
+  [auth-p1] depth=1 type=decision-continuity: vanilla=WRONG kasett=WRONG
+  [auth-p2] depth=1 type=long-range-recall: vanilla=WRONG kasett=WRONG
+  [auth-p3] depth=1 type=long-range-recall: vanilla=WRONG kasett=CORRECT
+  [auth-p4] depth=2 type=decision-continuity: vanilla=WRONG kasett=WRONG
+  [auth-p5] depth=2 type=long-range-recall: vanilla=WRONG kasett=CORRECT
+  [auth-p6] depth=2 type=thread-lineage: vanilla=WRONG kasett=WRONG
+  [auth-p7] depth=3 type=decision-continuity: vanilla=WRONG kasett=WRONG
+  [auth-p8] depth=3 type=long-range-recall: vanilla=WRONG kasett=CORRECT
+  [auth-p9] depth=3 type=thread-lineage: vanilla=WRONG kasett=WRONG
+  [auth-p10] depth=current type=long-range-recall: vanilla=CORRECT kasett=CORRECT
+  [auth-p11] depth=current type=long-range-recall: vanilla=CORRECT kasett=CORRECT
+  [auth-p12] depth=current type=trajectory: vanilla=WRONG kasett=CORRECT
+
+=== Done ===
+Results: /home/node/.openclaw/workspace/research/phase4-results/results-v2-conv-auth-launch.json

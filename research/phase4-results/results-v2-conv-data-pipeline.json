@@ -1,0 +1,963 @@
+{
+  "config": {
+    "compactionModel": "anthropic/claude-sonnet-4-5",
+    "probeModel": "anthropic/claude-sonnet-4-5",
+    "judgeModel": "anthropic/claude-sonnet-4-6",
+    "weights": [
+      1,
+      0.6,
+      0.3
+    ],
+    "windowSize": 3,
+    "phaseG": true
+  },
+  "timestamp": "2026-05-12T21:32:32.315Z",
+  "vanilla": {
+    "conv-data-pipeline": {
+      "summaries": [
+        "This conversation covers the onboarding and pipeline design for a new customer, Acme Corp, with Jane Smith serving as the primary contact at jane.smith@acmecorp.io in her role as Director of Data Engineering. Procurement closed yesterday, and the team is now working through technical implementation details under the tracking thread acme-pipeline-design, which includes subtasks for schema mapping, DAG authoring, and monitoring.\n\nThe team decided to use AWS MWAA (Managed Workflows for Apache Airflow) instead of self-hosted Argo Workflows, primarily because MWAA allows Acme to inherit SOC 2 compliance through AWS's attestation, satisfying their SOC 2 requirement without requiring separate attestation. The managed service also reduces operational burden. Infrastructure setup includes the S3 bucket s3://acme-intake-prod-492372 with KMS encryption, versioning enabled, and a lifecycle policy transitioning data to Glacier after 90 days. Acme's data volume is approximately 40GB per day with peaks at 80GB, consisting mostly of transactional CSVs and some Avro files, totaling around 12TB per year at steady state.\n\nThe service level agreement specifies 6-hour data freshness and 99.5% uptime under the standard tier without premium add-ons. Compliance requirements include handling PII data (emails and phone numbers) with tokenization required at ingest, and Acme needs SOC 2 Type II attestation by Q3. Schema drift is managed through Great Expectations validations on every DAG run, with schema changes triggering Slack alerts and pausing downstream DAGs. The backfill strategy uses DAG-level catchup=False, with manual triggering for explicit date ranges; Acme's historical data required a 30-day backfill completed over a weekend.\n\nSource-side changes are handled through a webhook at /internal/acme/source-change that pauses affected DAGs and requires human acknowledgment to resume. A separate MWAA small environment in the dev account serves as the test environment, mirroring the production DAG layout with a synthetic data generator running nightly. Cost management includes weekly internal reviews in the #data-pipelines channel with costs tagged customer:acme for attribution. Cross-team dependencies involve the platform team owning the underlying MWAA service while the data team owns Acme-specific DAGs, with breaking changes reviewed via pull requests. Two open low-priority tickets address schema drift alert tuning due to high false-positive rates and Macie cost optimization to reduce scanning frequency from hourly to twice daily. The runbook is located at docs/runbooks/acme-pipeline.md and covers on-call playbooks for SLA breaches, schema drift response, and cost spike response, though these runbooks remain internal while Acme maintains a customer-facing status page at status.acme.example.com.",
+        "The team has transitioned from design to build phase for the Acme pipeline project, renaming the thread from `acme-pipeline-design` to `acme-pipeline-build`. The pipeline architecture consists of three separate DAGs—one each for transactions, customers, and products data sources—to ensure failure isolation so that issues with one source don't block the others. The DAG code lives in dags/acme/main.py and imports from a shared DAG factory utility.\n\nInfrastructure and security configurations are now locked in. The project uses KMS key arn:aws:kms:us-east-1:492372116065:key/abc-def-ghi-jkl for encryption across both S3 buckets and MWAA secrets. The MWAA execution role arn:aws:iam::492372116065:role/mwaa-acme-execution has appropriate permissions for S3 read/write on the intake bucket, Secrets Manager read on /acme/*, and KMS decrypt on the project key. For data protection, the pipeline uses AWS Macie for PII detection in the staging zone, followed by Format-Preserving Encryption via a custom Python function using the cryptography library, with tokenization keys stored in /acme/tokenization.\n\nThe rollout schedule is staggered: the transactions DAG goes live tomorrow morning on an hourly schedule, while the customers DAG follows the day after on a daily schedule. Schema drift is managed through Great Expectations validations on every DAG run, with schema changes triggering Slack alerts and pausing downstream DAGs. The backfill strategy uses catchup=False at the DAG level, with manual triggering for explicit date ranges—the initial Acme historical data backfill covered 30 days and was completed over a weekend. Source-side changes are handled via a webhook to /internal/acme/source-change, which pauses affected DAGs and requires human acknowledgment to resume.\n\nThe operational setup includes a separate MWAA small environment in the dev account that mirrors the production DAG layout, with a synthetic data generator running nightly for testing. Cost management involves weekly reviews by the team in #data-pipelines, with all costs tagged `customer:acme` for clean attribution. Cross-team dependencies are managed with the platform team owning the underlying MWAA service while the data team owns the Acme-specific DAGs, with breaking changes reviewed via PR. Two open tickets remain low priority: tuning schema drift alerts to reduce false positives and optimizing Macie costs by reducing runs from hourly to twice daily. Documentation is maintained in docs/runbooks/acme-pipeline.md, covering on-call playbooks for SLA breaches, schema drift response, and cost spike response, while Acme has a customer-facing status page at status.acme.example.com.",
+        "The conversation begins with the Acme pipeline now operational and shifts focus to monitoring and cost optimization work. The original thread acme-pipeline-build is split into two new threads: acme-monitoring and acme-cost-optimization to handle these distinct workstreams.\n\nThe monitoring strategy combines Datadog for runtime metrics such as DAG duration and task success or failure rates, with CloudWatch handling AWS infrastructure monitoring for S3, MWAA, and Lambda services. Alerts are routed through a PagerDuty integration identified as acme-pipeline-prod. Current monthly costs run approximately $3400, broken down as $2100 for compute, $700 for storage, $400 for transfer, and $200 for Macie. The cost optimization target aims to reduce spending to under $2500 per month, primarily by switching to a smaller MWAA environment (mw1.small) after 60 days of steady-state validation, which should save roughly $900 monthly.\n\nThe team has experienced one SLA breach so far. On Friday, the source system held a batch for four hours, causing the pipeline to exceed its six-hour freshness SLA. Acme acknowledged this was a source-side issue stemming from an uncommunicated maintenance window, and no penalty was applied. This incident has been documented in the incident log with the root cause clearly identified.\n\nSchema drift is managed through Great Expectations validations that run on every DAG execution. When schema changes are detected, a Slack alert is triggered and downstream DAGs are paused. The backfill strategy uses DAG-level catchup=False, with backfills triggered manually using explicit date ranges. The initial Acme historical data backfill covered 30 days and was completed over a weekend. Source-side changes are communicated via a webhook to /internal/acme/source-change, which pauses affected DAGs and requires human acknowledgment before resuming operations.\n\nA separate test environment exists as a MWAA small environment in the dev account, mirroring the production DAG layout with a synthetic data generator running nightly. Cost reporting happens weekly within the team's #data-pipelines channel, with all costs tagged as customer:acme for clean attribution. Cross-team dependencies involve the platform team owning the underlying MWAA service while the data team owns the Acme-specific DAGs, with breaking changes reviewed via pull requests. Two open tickets exist: one for tuning schema drift alerts due to a high false-positive rate, and another for Macie cost optimization to reduce scanning frequency from hourly to twice daily. The runbook is located at docs/runbooks/acme-pipeline.md and includes on-call playbooks for SLA breaches, schema drift response, and cost spike response. These runbooks are internal only, while Acme maintains a customer-facing status page at status.acme.example.com.",
+        "This conversation slice covers an operational review of the Acme data pipeline infrastructure, with the user conducting a comprehensive status check and exploring various operational aspects. The system is currently stable with all three DAGs running steadily, monitored through Datadog, CloudWatch, and PagerDuty. Cost optimization efforts are underway, with the team 30 days out from switching to an MWAA small environment. SOC 2 compliance has been successfully completed for the Acme inheritance scope, with evidence collection finished and auditor approval received.\n\nA new decision was made during this conversation to implement an automated weekly cost dashboard that will be sent to Jane Smith via SES. Two active threads remain open: acme-monitoring and acme-cost-optimization, while the original build thread has been completed. The team has implemented robust data quality controls using Great Expectations validations on every DAG run, which detect schema changes and trigger Slack alerts while pausing downstream DAGs to prevent data issues.\n\nThe backfill strategy is conservative, with DAG-level catchup set to False and all backfills triggered manually with explicit date ranges. The initial Acme historical data backfill covered 30 days and was executed over a weekend. Source-side changes are managed through a webhook at /internal/acme/source-change, which pauses affected DAGs and requires human acknowledgment before resuming operations. A separate MWAA small environment exists in the dev account for testing, mirroring the production DAG layout and running a synthetic data generator nightly.\n\nCost management is handled through weekly internal reviews in the #data-pipelines Slack channel, with all costs tagged as customer:acme for clean attribution. Cross-team coordination exists with the platform team, who owns the underlying MWAA service while the data team owns the Acme-specific DAGs, with breaking changes reviewed via pull requests. Two low-priority tickets are currently open: tuning schema drift alerts to reduce false-positive rates and optimizing Macie to run twice daily instead of hourly. Operational documentation is maintained at docs/runbooks/acme-pipeline.md, covering on-call playbooks for SLA breaches, schema drift responses, and cost spike responses. These runbooks are internal-only, while Acme has access to a customer-facing status page at status.acme.example.com."
+      ]
+    }
+  },
+  "kasett": {
+    "conv-data-pipeline": {
+      "summaries": [
+        "This session covered the initial design and operational setup for a new customer data pipeline for Acme Corp. The primary contact is Jane Smith, Director of Data Engineering, with procurement closed yesterday. The core architectural decision was to use AWS MWAA (Managed Workflows for Apache Airflow) rather than self-hosted Argo Workflows, driven by SOC 2 compliance requirements and reduced operational burden—MWAA allows SOC 2 Type II attestation via AWS inheritance, which Acme needs by Q3.\n\nInfrastructure setup includes a production S3 bucket (s3://acme-intake-prod-492372) with KMS encryption, versioning, and a 90-day lifecycle policy to Glacier. The pipeline handles approximately 40GB/day (peak 80GB), primarily transactional CSVs and some Avro, totaling around 12TB/year at steady state. The SLA is 6-hour data freshness with 99.5% uptime on the standard tier. PII (emails and phone numbers) is present and requires tokenization at ingest.\n\nOperational patterns include schema drift detection via Great Expectations validations on every DAG run, with Slack alerts and automatic downstream DAG pausing on schema changes. Backfills are manual with explicit date ranges (catchup=False), and a 30-day historical backfill was completed over a weekend. Source-side changes are handled via a webhook to /internal/acme/source-change, which pauses affected DAGs and requires human acknowledgment to resume. A separate MWAA small environment in the dev account mirrors the prod DAG layout, with a synthetic data generator running nightly for testing.\n\nCost attribution uses the tag `customer:acme` with weekly internal reviews in #data-pipelines. Cross-team dependencies exist with the platform team, who own the underlying MWAA service while the data team owns Acme-specific DAGs; breaking changes require PR review. Two low-priority open tickets exist: tuning schema drift alerts (high false-positive rate) and optimizing Macie scans (reducing from hourly to twice daily). The runbook is located at docs/runbooks/acme-pipeline.md and includes on-call playbooks for SLA breaches, schema drift response, and cost spikes. Acme has a customer-facing status page at status.acme.example.com.\n\n```json\n{\n  \"main\": \"Initial design and operational setup for Acme Corp data pipeline on AWS MWAA\",\n  \"sub\": [\n    {\n      \"id\": \"acme-pipeline-design\",\n      \"label\": \"Core pipeline architecture, schema mapping, DAG authoring, and monitoring setup\",\n      \"status\": \"active\"\n    },\n    {\n      \"id\": \"schema-drift-alert-tuning\",\n      \"label\": \"Reduce false-positive rate in Great Expectations schema drift alerts\",\n      \"status\": \"active\"\n    },\n    {\n      \"id\": \"macie-cost-optimization\",\n      \"label\": \"Reduce Macie scan frequency from hourly to twice daily\",\n      \"status\": \"active\"\n    }\n  ],\n  \"decisions\": [\n    \"Use AWS MWAA over self-hosted Argo Workflows for SOC 2 Type II compliance inheritance and reduced ops burden\",\n    \"Implement tokenization at ingest for PII (emails and phone numbers)\",\n    \"Manual backfill strategy with catchup=False and explicit date ranges\",\n    \"Schema drift detection pauses downstream DAGs automatically, requires human ack to resume\"\n  ],\n  \"open_questions\": [],\n  \"key_state\": [\n    {\n      \"kind\": \"id\",\n      \"value\": \"jane.smith@acmecorp.io\",\n      \"label\": \"Acme Corp primary contact email\"\n    },\n    {\n      \"kind\": \"id\",\n      \"value\": \"s3://acme-intake-prod-492372\",\n      \"label\": \"Acme production intake S3 bucket\"\n    },\n    {\n      \"kind\": \"url\",\n      \"value\": \"/internal/acme/source-change\",\n      \"label\": \"Webhook endpoint for Acme source-side changes\"\n    },\n    {\n      \"kind\": \"url\",\n      \"value\": \"status.acme.example.com\",\n      \"label\": \"Acme customer-facing status page\"\n    },\n    {\n      \"kind\": \"path\",\n      \"value\": \"docs/runbooks/acme-pipeline.md\",\n      \"label\": \"Acme pipeline runbook location\"\n    },\n    {\n      \"kind\": \"config\",\n      \"value\": \"customer:acme\",\n      \"label\": \"Cost attribution tag for Acme resources\"\n    },\n    {\n      \"kind\": \"value\",\n      \"value\": \"6 hours\",\n      \"label\": \"Data freshness SLA\"\n    },\n    {\n      \"kind\": \"value\",\n      \"value\": \"99.5%\",\n      \"label\": \"Uptime SLA\"\n    },\n    {\n      \"kind\": \"value\",\n      \"value\": \"40GB/day\",\n      \"label\": \"Typical daily data volume\"\n    },\n    {\n      \"kind\": \"value\",\n      \"value\": \"80GB\",\n      \"label\": \"Peak daily data volume\"\n    },\n    {\n      \"kind\": \"value\",\n      \"value\": \"90d\",\n      \"label\": \"S3 lifecycle policy to Glacier\"\n    }\n  ]\n}\n```",
+        "This session transitioned from design to active build phase for the Acme Corp data pipeline. The primary architectural decision was to split the pipeline into three separate DAGs—one each for transactions, customers, and products—to provide failure isolation so that issues with one data source don't block the others. The DAG code lives at dags/acme/main.py and imports a DAG factory from utils.dag_factory.\n\nInfrastructure details were finalized: the KMS key (arn:aws:kms:us-east-1:492372116065:key/abc-def-ghi-jkl) is shared between the S3 bucket and MWAA secrets, and the MWAA execution role (arn:aws:iam::492372116065:role/mwaa-acme-execution) has S3 read/write on the intake bucket, Secrets Manager read on /acme/*, and KMS decrypt permissions. PII tokenization uses AWS Macie for detection in the staging zone, followed by a custom Python function implementing Format-Preserving Encryption via the cryptography library, with keys stored in /acme/tokenization.\n\nThe rollout schedule is staggered: the transactions DAG goes live tomorrow morning on an hourly schedule, followed by the customers DAG the day after on a daily schedule. The products DAG timeline was not explicitly set. All operational patterns from the previous session remain in place: Great Expectations schema drift detection with automatic downstream DAG pausing, manual backfills with catchup=False, webhook-based source change notifications at /internal/acme/source-change, and a separate MWAA small environment in the dev account for testing with nightly synthetic data generation. The two low-priority open tickets (schema drift alert tuning and Macie cost optimization) remain active.\n\n```json\n{\n  \"main\": \"Building Acme Corp data pipeline with three separate DAGs for transactions, customers, and products\",\n  \"sub\": [\n    {\n      \"id\": \"acme-pipeline-build\",\n      \"label\": \"Active build phase: DAG implementation, infrastructure finalization, and rollout preparation\",\n      \"status\": \"active\"\n    },\n    {\n      \"id\": \"schema-drift-alert-tuning\",\n      \"label\": \"Reduce false-positive rate in Great Expectations schema drift alerts\",\n      \"status\": \"active\"\n    },\n    {\n      \"id\": \"macie-cost-optimization\",\n      \"label\": \"Reduce Macie scan frequency from hourly to twice daily\",\n      \"status\": \"active\"\n    }\n  ],\n  \"decisions\": [\n    \"Split pipeline into three separate DAGs (transactions, customers, products) for failure isolation\",\n    \"Staggered rollout: transactions DAG tomorrow (hourly), customers DAG day-after (daily)\",\n    \"Use Format-Preserving Encryption via cryptography lib for PII tokenization, keys in /acme/tokenization\"\n  ],\n  \"open_questions\": [],\n  \"key_state\": [\n    {\n      \"kind\": \"id\",\n      \"value\": \"jane.smith@acmecorp.io\",\n      \"label\": \"Acme Corp primary contact email\"\n    },\n    {\n      \"kind\": \"id\",\n      \"value\": \"s3://acme-intake-prod-492372\",\n      \"label\": \"Acme production intake S3 bucket\"\n    },\n    {\n      \"kind\": \"id\",\n      \"value\": \"arn:aws:kms:us-east-1:492372116065:key/abc-def-ghi-jkl\",\n      \"label\": \"KMS key for S3 bucket and MWAA secrets\"\n    },\n    {\n      \"kind\": \"id\",\n      \"value\": \"arn:aws:iam::492372116065:role/mwaa-acme-execution\",\n      \"label\": \"MWAA execution role\"\n    },\n    {\n      \"kind\": \"path\",\n      \"value\": \"dags/acme/main.py\",\n      \"label\": \"Acme DAG code location\"\n    },\n    {\n      \"kind\": \"path\",\n      \"value\": \"/acme/tokenization\",\n      \"label\": \"Secrets Manager path for tokenization keys\"\n    },\n    {\n      \"kind\": \"url\",\n      \"value\": \"/internal/acme/source-change\",\n      \"label\": \"Webhook endpoint for Acme source-side changes\"\n    },\n    {\n      \"kind\": \"url\",\n      \"value\": \"status.acme.example.com\",\n      \"label\": \"Acme customer-facing status page\"\n    },\n    {\n      \"kind\": \"path\",\n      \"value\": \"docs/runbooks/acme-pipeline.md\",\n      \"label\": \"Acme pipeline runbook location\"\n    },\n    {\n      \"kind\": \"config\",\n      \"value\": \"customer:acme\",\n      \"label\": \"Cost attribution tag for Acme resources\"\n    },\n    {\n      \"kind\": \"value\",\n      \"value\": \"6 hours\",\n      \"label\": \"Data freshness SLA\"\n    },\n    {\n      \"kind\": \"value\",\n      \"value\": \"99.5%\",\n      \"label\": \"Uptime SLA\"\n    },\n    {\n      \"kind\": \"value\",\n      \"value\": \"40GB/day\",\n      \"label\": \"Typical daily data volume\"\n    },\n    {\n      \"kind\": \"value\",\n      \"value\": \"80GB\",\n      \"label\": \"Peak daily data volume\"\n    },\n    {\n      \"kind\": \"value\",\n      \"value\": \"90d\",\n      \"label\": \"S3 lifecycle policy to Glacier\"\n    }\n  ]\n}\n```",
+        "This session transitioned from active pipeline build to operational monitoring and cost optimization. The three DAGs (transactions, customers, products) are now running in production. The primary focus split into two new threads: establishing a monitoring strategy and driving down monthly costs. The monitoring approach uses Datadog for runtime metrics (DAG duration, task success/failure) and CloudWatch for AWS infrastructure (S3, MWAA, Lambda), with alerts routed through PagerDuty integration `acme-pipeline-prod`.\n\nCurrent monthly cost is approximately $3400 (compute $2100, storage $700, transfer $400, Macie $200). The cost optimization target is to reduce this to under $2500/month, primarily by switching to a MWAA small environment (mw1.small) after 60 days of steady-state validation, which should save around $900/month. One SLA breach occurred on Friday when the source system held a 4-hour batch, exceeding the 6-hour freshness SLA. Acme acknowledged the source-side cause (maintenance window not communicated) and no penalty was applied. This incident was documented in the incident log.\n\nAll operational patterns from previous sessions remain in place: Great Expectations schema drift detection with automatic downstream DAG pausing, manual backfills with catchup=False, webhook-based source change notifications at /internal/acme/source-change, and a separate MWAA small environment in the dev account for testing with nightly synthetic data generation. The two low-priority open tickets (schema drift alert tuning and Macie cost optimization) remain active. The runbook at docs/runbooks/acme-pipeline.md includes on-call playbooks for SLA breaches, schema drift response, and cost spikes.\n\n```json\n{\n  \"main\": \"Operational monitoring and cost optimization for production Acme Corp data pipeline\",\n  \"sub\": [\n    {\n      \"id\": \"acme-monitoring\",\n      \"label\": \"Establish monitoring strategy with Datadog and CloudWatch, PagerDuty alerting\",\n      \"status\": \"active\"\n    },\n    {\n      \"id\": \"acme-cost-optimization\",\n      \"label\": \"Reduce monthly cost from $3400 to under $2500 via MWAA environment downsize\",\n      \"status\": \"active\"\n    },\n    {\n      \"id\": \"schema-drift-alert-tuning\",\n      \"label\": \"Reduce false-positive rate in Great Expectations schema drift alerts\",\n      \"status\": \"active\"\n    },\n    {\n      \"id\": \"macie-cost-optimization\",\n      \"label\": \"Reduce Macie scan frequency from hourly to twice daily\",\n      \"status\": \"active\"\n    }\n  ],\n  \"decisions\": [\n    \"Use Datadog for runtime metrics and CloudWatch for AWS infrastructure monitoring\",\n    \"Route alerts through PagerDuty integration acme-pipeline-prod\",\n    \"Target monthly cost reduction to under $2500 by switching to MWAA mw1.small after 60-day validation period\"\n  ],\n  \"open_questions\": [],\n  \"key_state\": [\n    {\n      \"kind\": \"id\",\n      \"value\": \"jane.smith@acmecorp.io\",\n      \"label\": \"Acme Corp primary contact email\"\n    },\n    {\n      \"kind\": \"id\",\n      \"value\": \"s3://acme-intake-prod-492372\",\n      \"label\": \"Acme production intake S3 bucket\"\n    },\n    {\n      \"kind\": \"id\",\n      \"value\": \"arn:aws:kms:us-east-1:492372116065:key/abc-def-ghi-jkl\",\n      \"label\": \"KMS key for S3 bucket and MWAA secrets\"\n    },\n    {\n      \"kind\": \"id\",\n      \"value\": \"arn:aws:iam::492372116065:role/mwaa-acme-execution\",\n      \"label\": \"MWAA execution role\"\n    },\n    {\n      \"kind\": \"id\",\n      \"value\": \"acme-pipeline-prod\",\n      \"label\": \"PagerDuty integration for Acme pipeline alerts\"\n    },\n    {\n      \"kind\": \"path\",\n      \"value\": \"dags/acme/main.py\",\n      \"label\": \"Acme DAG code location\"\n    },\n    {\n      \"kind\": \"path\",\n      \"value\": \"/acme/tokenization\",\n      \"label\": \"Secrets Manager path for tokenization keys\"\n    },\n    {\n      \"kind\": \"url\",\n      \"value\": \"/internal/acme/source-change\",\n      \"label\": \"Webhook endpoint for Acme source-side changes\"\n    },\n    {\n      \"kind\": \"url\",\n      \"value\": \"status.acme.example.com\",\n      \"label\": \"Acme customer-facing status page\"\n    },\n    {\n      \"kind\": \"path\",\n      \"value\": \"docs/runbooks/acme-pipeline.md\",\n      \"label\": \"Acme pipeline runbook location\"\n    },\n    {\n      \"kind\": \"config\",\n      \"value\": \"customer:acme\",\n      \"label\": \"Cost attribution tag for Acme resources\"\n    },\n    {\n      \"kind\": \"value\",\n      \"value\": \"6 hours\",\n      \"label\": \"Data freshness SLA\"\n    },\n    {\n      \"kind\": \"value\",\n      \"value\": \"99.5%\",\n      \"label\": \"Uptime SLA\"\n    },\n    {\n      \"kind\": \"value\",\n      \"value\": \"40GB/day\",\n      \"label\": \"Typical daily data volume\"\n    },\n    {\n      \"kind\": \"value\",\n      \"value\": \"80GB\",\n      \"label\": \"Peak daily data volume\"\n    },\n    {\n      \"kind\": \"value\",\n      \"value\": \"90d\",\n      \"label\": \"S3 lifecycle policy to Glacier\"\n    },\n    {\n      \"kind\": \"value\",\n      \"value\": \"$3400/mo\",\n      \"label\": \"Current monthly cost\"\n    },\n    {\n      \"kind\": \"value\",\n      \"value\": \"$2500/mo\",\n      \"label\": \"Target monthly cost\"\n    },\n    {\n      \"kind\": \"config\",\n      \"value\": \"mw1.small\",\n      \"label\": \"Target MWAA environment size for cost optimization\"\n    }\n  ]\n}\n```",
+        "This session was a status check and operational review of the Acme Corp data pipeline, now fully in production. All three DAGs (transactions, customers, products) are running steadily. The monitoring stack (Datadog for runtime metrics, CloudWatch for AWS infrastructure, PagerDuty for alerting via the `acme-pipeline-prod` integration) is live and operational. The cost optimization effort is in progress, with 30 days remaining until the planned MWAA environment downsize from the current setup to mw1.small, targeting a reduction from $3400/month to under $2500/month.\n\nA new decision was made to send Acme a weekly automated cost dashboard via AWS SES to Jane Smith. SOC 2 evidence collection for the Acme inheritance scope is complete and has been reviewed by the auditor with no issues. The original pipeline build thread is now completed; the two active threads are monitoring and cost optimization. The two low-priority open tickets (schema drift alert tuning and Macie cost optimization) remain active but unchanged.\n\nThe session included repeated confirmation of operational patterns already established in previous compactions: Great Expectations schema drift detection with automatic downstream DAG pausing, manual backfills with catchup=False, webhook-based source change notifications at /internal/acme/source-change, a separate MWAA small environment in the dev account for testing with nightly synthetic data generation, weekly internal cost reviews in #data-pipelines with the `customer:acme` tag, cross-team dependencies with the platform team owning the underlying MWAA service, and the runbook at docs/runbooks/acme-pipeline.md with on-call playbooks for SLA breaches, schema drift response, and cost spikes. Acme's customer-facing status page remains at status.acme.example.com.\n\n```json\n{\n  \"main\": \"Operational status review and cost reporting enhancement for production Acme Corp data pipeline\",\n  \"sub\": [\n    {\n      \"id\": \"acme-monitoring\",\n      \"label\": \"Monitoring stack operational with Datadog, CloudWatch, and PagerDuty\",\n      \"status\": \"active\"\n    },\n    {\n      \"id\": \"acme-cost-optimization\",\n      \"label\": \"30 days from MWAA environment downsize to mw1.small for cost reduction\",\n      \"status\": \"active\"\n    },\n    {\n      \"id\": \"acme-pipeline-build\",\n      \"label\": \"Three-DAG pipeline build and rollout\",\n      \"status\": \"completed\"\n    },\n    {\n      \"id\": \"schema-drift-alert-tuning\",\n      \"label\": \"Reduce false-positive rate in Great Expectations schema drift alerts\",\n      \"status\": \"active\"\n    },\n    {\n      \"id\": \"macie-cost-optimization\",\n      \"label\": \"Reduce Macie scan frequency from hourly to twice daily\",\n      \"status\": \"active\"\n    }\n  ],\n  \"decisions\": [\n    \"Send Acme a weekly automated cost dashboard via AWS SES to Jane Smith\",\n    \"SOC 2 evidence collection complete for Acme inheritance scope, auditor review passed\"\n  ],\n  \"open_questions\": [],\n  \"key_state\": [\n    {\n      \"kind\": \"id\",\n      \"value\": \"jane.smith@acmecorp.io\",\n      \"label\": \"Acme Corp primary contact email\"\n    },\n    {\n      \"kind\": \"id\",\n      \"value\": \"s3://acme-intake-prod-492372\",\n      \"label\": \"Acme production intake S3 bucket\"\n    },\n    {\n      \"kind\": \"id\",\n      \"value\": \"arn:aws:kms:us-east-1:492372116065:key/abc-def-ghi-jkl\",\n      \"label\": \"KMS key for S3 bucket and MWAA secrets\"\n    },\n    {\n      \"kind\": \"id\",\n      \"value\": \"arn:aws:iam::492372116065:role/mwaa-acme-execution\",\n      \"label\": \"MWAA execution role\"\n    },\n    {\n      \"kind\": \"id\",\n      \"value\": \"acme-pipeline-prod\",\n      \"label\": \"PagerDuty integration for Acme pipeline alerts\"\n    },\n    {\n      \"kind\": \"path\",\n      \"value\": \"dags/acme/main.py\",\n      \"label\": \"Acme DAG code location\"\n    },\n    {\n      \"kind\": \"path\",\n      \"value\": \"/acme/tokenization\",\n      \"label\": \"Secrets Manager path for tokenization keys\"\n    },\n    {\n      \"kind\": \"url\",\n      \"value\": \"/internal/acme/source-change\",\n      \"label\": \"Webhook endpoint for Acme source-side changes\"\n    },\n    {\n      \"kind\": \"url\",\n      \"value\": \"status.acme.example.com\",\n      \"label\": \"Acme customer-facing status page\"\n    },\n    {\n      \"kind\": \"path\",\n      \"value\": \"docs/runbooks/acme-pipeline.md\",\n      \"label\": \"Acme pipeline runbook location\"\n    },\n    {\n      \"kind\": \"config\",\n      \"value\": \"customer:acme\",\n      \"label\": \"Cost attribution tag for Acme resources\"\n    },\n    {\n      \"kind\": \"value\",\n      \"value\": \"6 hours\",\n      \"label\": \"Data freshness SLA\"\n    },\n    {\n      \"kind\": \"value\",\n      \"value\": \"99.5%\",\n      \"label\": \"Uptime SLA\"\n    },\n    {\n      \"kind\": \"value\",\n      \"value\": \"40GB/day\",\n      \"label\": \"Typical daily data volume\"\n    },\n    {\n      \"kind\": \"value\",\n      \"value\": \"80GB\",\n      \"label\": \"Peak daily data volume\"\n    },\n    {\n      \"kind\": \"value\",\n      \"value\": \"90d\",\n      \"label\": \"S3 lifecycle policy to Glacier\"\n    },\n    {\n      \"kind\": \"value\",\n      \"value\": \"$3400/mo\",\n      \"label\": \"Current monthly cost\"\n    },\n    {\n      \"kind\": \"value\",\n      \"value\": \"$2500/mo\",\n      \"label\": \"Target monthly cost\"\n    },\n    {\n      \"kind\": \"config\",\n      \"value\": \"mw1.small\",\n      \"label\": \"Target MWAA environment size for cost optimization\"\n    }\n  ]\n}\n```"
+      ],
+      "metas": [
+        {
+          "version": "v3",
+          "summary": "This session covered the initial design and operational setup for a new customer data pipeline for Acme Corp. The primary contact is Jane Smith, Director of Data Engineering, with procurement closed yesterday. The core architectural decision was to use AWS MWAA (Managed Workflows for Apache Airflow) rather than self-hosted Argo Workflows, driven by SOC 2 compliance requirements and reduced operational burden—MWAA allows SOC 2 Type II attestation via AWS inheritance, which Acme needs by Q3.\n\nInfrastructure setup includes a production S3 bucket (s3://acme-intake-prod-492372) with KMS encryption, versioning, and a 90-day lifecycle policy to Glacier. The pipeline handles approximately 40GB/day (peak 80GB), primarily transactional CSVs and some Avro, totaling around 12TB/year at steady state. The SLA is 6-hour data freshness with 99.5% uptime on the standard tier. PII (emails and phone numbers) is present and requires tokenization at ingest.\n\nOperational patterns include schema drift detection via Great Expectations validations on every DAG run, with Slack alerts and automatic downstream DAG pausing on schema changes. Backfills are manual with explicit date ranges (catchup=False), and a 30-day historical backfill was completed over a weekend. Source-side changes are handled via a webhook to /internal/acme/source-change, which pauses affected DAGs and requires human acknowledgment to resume. A separate MWAA small environment in the dev account mirrors the prod DAG layout, with a synthetic data generator running nightly for testing.\n\nCost attribution uses the tag `customer:acme` with weekly internal reviews in #data-pipelines. Cross-team dependencies exist with the platform team, who own the underlying MWAA service while the data team owns Acme-specific DAGs; breaking changes require PR review. Two low-priority open tickets exist: tuning schema drift alerts (high false-positive rate) and optimizing Macie scans (reducing from hourly to twice daily). The runbook is located at docs/runbooks/acme-pipeline.md and includes on-call playbooks for SLA breaches, schema drift response, and cost spikes. Acme has a customer-facing status page at status.acme.example.com.",
+          "metaV1": {
+            "main": "Initial design and operational setup for Acme Corp data pipeline on AWS MWAA",
+            "sub": [
+              "Core pipeline architecture, schema mapping, DAG authoring, and monitoring setup",
+              "Reduce false-positive rate in Great Expectations schema drift alerts",
+              "Reduce Macie scan frequency from hourly to twice daily"
+            ]
+          },
+          "metaV2": {
+            "main": "Initial design and operational setup for Acme Corp data pipeline on AWS MWAA",
+            "sub": [
+              {
+                "id": "acme-pipeline-design",
+                "label": "Core pipeline architecture, schema mapping, DAG authoring, and monitoring setup",
+                "status": "active"
+              },
+              {
+                "id": "schema-drift-alert-tuning",
+                "label": "Reduce false-positive rate in Great Expectations schema drift alerts",
+                "status": "active"
+              },
+              {
+                "id": "macie-cost-optimization",
+                "label": "Reduce Macie scan frequency from hourly to twice daily",
+                "status": "active"
+              }
+            ],
+            "decisions": [
+              "Use AWS MWAA over self-hosted Argo Workflows for SOC 2 Type II compliance inheritance and reduced ops burden",
+              "Implement tokenization at ingest for PII (emails and phone numbers)",
+              "Manual backfill strategy with catchup=False and explicit date ranges",
+              "Schema drift detection pauses downstream DAGs automatically, requires human ack to resume"
+            ],
+            "open_questions": []
+          },
+          "metaV3": {
+            "main": "Initial design and operational setup for Acme Corp data pipeline on AWS MWAA",
+            "sub": [
+              {
+                "id": "acme-pipeline-design",
+                "label": "Core pipeline architecture, schema mapping, DAG authoring, and monitoring setup",
+                "status": "active"
+              },
+              {
+                "id": "schema-drift-alert-tuning",
+                "label": "Reduce false-positive rate in Great Expectations schema drift alerts",
+                "status": "active"
+              },
+              {
+                "id": "macie-cost-optimization",
+                "label": "Reduce Macie scan frequency from hourly to twice daily",
+                "status": "active"
+              }
+            ],
+            "decisions": [
+              "Use AWS MWAA over self-hosted Argo Workflows for SOC 2 Type II compliance inheritance and reduced ops burden",
+              "Implement tokenization at ingest for PII (emails and phone numbers)",
+              "Manual backfill strategy with catchup=False and explicit date ranges",
+              "Schema drift detection pauses downstream DAGs automatically, requires human ack to resume"
+            ],
+            "open_questions": [],
+            "key_state": [
+              {
+                "kind": "id",
+                "value": "jane.smith@acmecorp.io",
+                "label": "Acme Corp primary contact email"
+              },
+              {
+                "kind": "id",
+                "value": "s3://acme-intake-prod-492372",
+                "label": "Acme production intake S3 bucket"
+              },
+              {
+                "kind": "url",
+                "value": "/internal/acme/source-change",
+                "label": "Webhook endpoint for Acme source-side changes"
+              },
+              {
+                "kind": "url",
+                "value": "status.acme.example.com",
+                "label": "Acme customer-facing status page"
+              },
+              {
+                "kind": "path",
+                "value": "docs/runbooks/acme-pipeline.md",
+                "label": "Acme pipeline runbook location"
+              },
+              {
+                "kind": "config",
+                "value": "customer:acme",
+                "label": "Cost attribution tag for Acme resources"
+              },
+              {
+                "kind": "value",
+                "value": "6 hours",
+                "label": "Data freshness SLA"
+              },
+              {
+                "kind": "value",
+                "value": "99.5%",
+                "label": "Uptime SLA"
+              },
+              {
+                "kind": "value",
+                "value": "40GB/day",
+                "label": "Typical daily data volume"
+              },
+              {
+                "kind": "value",
+                "value": "80GB",
+                "label": "Peak daily data volume"
+              },
+              {
+                "kind": "value",
+                "value": "90d",
+                "label": "S3 lifecycle policy to Glacier"
+              }
+            ]
+          },
+          "errors": []
+        },
+        {
+          "version": "v3",
+          "summary": "This session transitioned from design to active build phase for the Acme Corp data pipeline. The primary architectural decision was to split the pipeline into three separate DAGs—one each for transactions, customers, and products—to provide failure isolation so that issues with one data source don't block the others. The DAG code lives at dags/acme/main.py and imports a DAG factory from utils.dag_factory.\n\nInfrastructure details were finalized: the KMS key (arn:aws:kms:us-east-1:492372116065:key/abc-def-ghi-jkl) is shared between the S3 bucket and MWAA secrets, and the MWAA execution role (arn:aws:iam::492372116065:role/mwaa-acme-execution) has S3 read/write on the intake bucket, Secrets Manager read on /acme/*, and KMS decrypt permissions. PII tokenization uses AWS Macie for detection in the staging zone, followed by a custom Python function implementing Format-Preserving Encryption via the cryptography library, with keys stored in /acme/tokenization.\n\nThe rollout schedule is staggered: the transactions DAG goes live tomorrow morning on an hourly schedule, followed by the customers DAG the day after on a daily schedule. The products DAG timeline was not explicitly set. All operational patterns from the previous session remain in place: Great Expectations schema drift detection with automatic downstream DAG pausing, manual backfills with catchup=False, webhook-based source change notifications at /internal/acme/source-change, and a separate MWAA small environment in the dev account for testing with nightly synthetic data generation. The two low-priority open tickets (schema drift alert tuning and Macie cost optimization) remain active.",
+          "metaV1": {
+            "main": "Building Acme Corp data pipeline with three separate DAGs for transactions, customers, and products",
+            "sub": [
+              "Active build phase: DAG implementation, infrastructure finalization, and rollout preparation",
+              "Reduce false-positive rate in Great Expectations schema drift alerts",
+              "Reduce Macie scan frequency from hourly to twice daily"
+            ]
+          },
+          "metaV2": {
+            "main": "Building Acme Corp data pipeline with three separate DAGs for transactions, customers, and products",
+            "sub": [
+              {
+                "id": "acme-pipeline-build",
+                "label": "Active build phase: DAG implementation, infrastructure finalization, and rollout preparation",
+                "status": "active"
+              },
+              {
+                "id": "schema-drift-alert-tuning",
+                "label": "Reduce false-positive rate in Great Expectations schema drift alerts",
+                "status": "active"
+              },
+              {
+                "id": "macie-cost-optimization",
+                "label": "Reduce Macie scan frequency from hourly to twice daily",
+                "status": "active"
+              }
+            ],
+            "decisions": [
+              "Split pipeline into three separate DAGs (transactions, customers, products) for failure isolation",
+              "Staggered rollout: transactions DAG tomorrow (hourly), customers DAG day-after (daily)",
+              "Use Format-Preserving Encryption via cryptography lib for PII tokenization, keys in /acme/tokenization"
+            ],
+            "open_questions": []
+          },
+          "metaV3": {
+            "main": "Building Acme Corp data pipeline with three separate DAGs for transactions, customers, and products",
+            "sub": [
+              {
+                "id": "acme-pipeline-build",
+                "label": "Active build phase: DAG implementation, infrastructure finalization, and rollout preparation",
+                "status": "active"
+              },
+              {
+                "id": "schema-drift-alert-tuning",
+                "label": "Reduce false-positive rate in Great Expectations schema drift alerts",
+                "status": "active"
+              },
+              {
+                "id": "macie-cost-optimization",
+                "label": "Reduce Macie scan frequency from hourly to twice daily",
+                "status": "active"
+              }
+            ],
+            "decisions": [
+              "Split pipeline into three separate DAGs (transactions, customers, products) for failure isolation",
+              "Staggered rollout: transactions DAG tomorrow (hourly), customers DAG day-after (daily)",
+              "Use Format-Preserving Encryption via cryptography lib for PII tokenization, keys in /acme/tokenization"
+            ],
+            "open_questions": [],
+            "key_state": [
+              {
+                "kind": "id",
+                "value": "jane.smith@acmecorp.io",
+                "label": "Acme Corp primary contact email"
+              },
+              {
+                "kind": "id",
+                "value": "s3://acme-intake-prod-492372",
+                "label": "Acme production intake S3 bucket"
+              },
+              {
+                "kind": "id",
+                "value": "arn:aws:kms:us-east-1:492372116065:key/abc-def-ghi-jkl",
+                "label": "KMS key for S3 bucket and MWAA secrets"
+              },
+              {
+                "kind": "id",
+                "value": "arn:aws:iam::492372116065:role/mwaa-acme-execution",
+                "label": "MWAA execution role"
+              },
+              {
+                "kind": "path",
+                "value": "dags/acme/main.py",
+                "label": "Acme DAG code location"
+              },
+              {
+                "kind": "path",
+                "value": "/acme/tokenization",
+                "label": "Secrets Manager path for tokenization keys"
+              },
+              {
+                "kind": "url",
+                "value": "/internal/acme/source-change",
+                "label": "Webhook endpoint for Acme source-side changes"
+              },
+              {
+                "kind": "url",
+                "value": "status.acme.example.com",
+                "label": "Acme customer-facing status page"
+              },
+              {
+                "kind": "path",
+                "value": "docs/runbooks/acme-pipeline.md",
+                "label": "Acme pipeline runbook location"
+              },
+              {
+                "kind": "config",
+                "value": "customer:acme",
+                "label": "Cost attribution tag for Acme resources"
+              },
+              {
+                "kind": "value",
+                "value": "6 hours",
+                "label": "Data freshness SLA"
+              },
+              {
+                "kind": "value",
+                "value": "99.5%",
+                "label": "Uptime SLA"
+              },
+              {
+                "kind": "value",
+                "value": "40GB/day",
+                "label": "Typical daily data volume"
+              },
+              {
+                "kind": "value",
+                "value": "80GB",
+                "label": "Peak daily data volume"
+              },
+              {
+                "kind": "value",
+                "value": "90d",
+                "label": "S3 lifecycle policy to Glacier"
+              }
+            ]
+          },
+          "errors": []
+        },
+        {
+          "version": "v3",
+          "summary": "This session transitioned from active pipeline build to operational monitoring and cost optimization. The three DAGs (transactions, customers, products) are now running in production. The primary focus split into two new threads: establishing a monitoring strategy and driving down monthly costs. The monitoring approach uses Datadog for runtime metrics (DAG duration, task success/failure) and CloudWatch for AWS infrastructure (S3, MWAA, Lambda), with alerts routed through PagerDuty integration `acme-pipeline-prod`.\n\nCurrent monthly cost is approximately $3400 (compute $2100, storage $700, transfer $400, Macie $200). The cost optimization target is to reduce this to under $2500/month, primarily by switching to a MWAA small environment (mw1.small) after 60 days of steady-state validation, which should save around $900/month. One SLA breach occurred on Friday when the source system held a 4-hour batch, exceeding the 6-hour freshness SLA. Acme acknowledged the source-side cause (maintenance window not communicated) and no penalty was applied. This incident was documented in the incident log.\n\nAll operational patterns from previous sessions remain in place: Great Expectations schema drift detection with automatic downstream DAG pausing, manual backfills with catchup=False, webhook-based source change notifications at /internal/acme/source-change, and a separate MWAA small environment in the dev account for testing with nightly synthetic data generation. The two low-priority open tickets (schema drift alert tuning and Macie cost optimization) remain active. The runbook at docs/runbooks/acme-pipeline.md includes on-call playbooks for SLA breaches, schema drift response, and cost spikes.",
+          "metaV1": {
+            "main": "Operational monitoring and cost optimization for production Acme Corp data pipeline",
+            "sub": [
+              "Establish monitoring strategy with Datadog and CloudWatch, PagerDuty alerting",
+              "Reduce monthly cost from $3400 to under $2500 via MWAA environment downsize",
+              "Reduce false-positive rate in Great Expectations schema drift alerts"
+            ]
+          },
+          "metaV2": {
+            "main": "Operational monitoring and cost optimization for production Acme Corp data pipeline",
+            "sub": [
+              {
+                "id": "acme-monitoring",
+                "label": "Establish monitoring strategy with Datadog and CloudWatch, PagerDuty alerting",
+                "status": "active"
+              },
+              {
+                "id": "acme-cost-optimization",
+                "label": "Reduce monthly cost from $3400 to under $2500 via MWAA environment downsize",
+                "status": "active"
+              },
+              {
+                "id": "schema-drift-alert-tuning",
+                "label": "Reduce false-positive rate in Great Expectations schema drift alerts",
+                "status": "active"
+              },
+              {
+                "id": "macie-cost-optimization",
+                "label": "Reduce Macie scan frequency from hourly to twice daily",
+                "status": "active"
+              }
+            ],
+            "decisions": [
+              "Use Datadog for runtime metrics and CloudWatch for AWS infrastructure monitoring",
+              "Route alerts through PagerDuty integration acme-pipeline-prod",
+              "Target monthly cost reduction to under $2500 by switching to MWAA mw1.small after 60-day validation period"
+            ],
+            "open_questions": []
+          },
+          "metaV3": {
+            "main": "Operational monitoring and cost optimization for production Acme Corp data pipeline",
+            "sub": [
+              {
+                "id": "acme-monitoring",
+                "label": "Establish monitoring strategy with Datadog and CloudWatch, PagerDuty alerting",
+                "status": "active"
+              },
+              {
+                "id": "acme-cost-optimization",
+                "label": "Reduce monthly cost from $3400 to under $2500 via MWAA environment downsize",
+                "status": "active"
+              },
+              {
+                "id": "schema-drift-alert-tuning",
+                "label": "Reduce false-positive rate in Great Expectations schema drift alerts",
+                "status": "active"
+              },
+              {
+                "id": "macie-cost-optimization",
+                "label": "Reduce Macie scan frequency from hourly to twice daily",
+                "status": "active"
+              }
+            ],
+            "decisions": [
+              "Use Datadog for runtime metrics and CloudWatch for AWS infrastructure monitoring",
+              "Route alerts through PagerDuty integration acme-pipeline-prod",
+              "Target monthly cost reduction to under $2500 by switching to MWAA mw1.small after 60-day validation period"
+            ],
+            "open_questions": [],
+            "key_state": [
+              {
+                "kind": "id",
+                "value": "jane.smith@acmecorp.io",
+                "label": "Acme Corp primary contact email"
+              },
+              {
+                "kind": "id",
+                "value": "s3://acme-intake-prod-492372",
+                "label": "Acme production intake S3 bucket"
+              },
+              {
+                "kind": "id",
+                "value": "arn:aws:kms:us-east-1:492372116065:key/abc-def-ghi-jkl",
+                "label": "KMS key for S3 bucket and MWAA secrets"
+              },
+              {
+                "kind": "id",
+                "value": "arn:aws:iam::492372116065:role/mwaa-acme-execution",
+                "label": "MWAA execution role"
+              },
+              {
+                "kind": "id",
+                "value": "acme-pipeline-prod",
+                "label": "PagerDuty integration for Acme pipeline alerts"
+              },
+              {
+                "kind": "path",
+                "value": "dags/acme/main.py",
+                "label": "Acme DAG code location"
+              },
+              {
+                "kind": "path",
+                "value": "/acme/tokenization",
+                "label": "Secrets Manager path for tokenization keys"
+              },
+              {
+                "kind": "url",
+                "value": "/internal/acme/source-change",
+                "label": "Webhook endpoint for Acme source-side changes"
+              },
+              {
+                "kind": "url",
+                "value": "status.acme.example.com",
+                "label": "Acme customer-facing status page"
+              },
+              {
+                "kind": "path",
+                "value": "docs/runbooks/acme-pipeline.md",
+                "label": "Acme pipeline runbook location"
+              },
+              {
+                "kind": "config",
+                "value": "customer:acme",
+                "label": "Cost attribution tag for Acme resources"
+              },
+              {
+                "kind": "value",
+                "value": "6 hours",
+                "label": "Data freshness SLA"
+              },
+              {
+                "kind": "value",
+                "value": "99.5%",
+                "label": "Uptime SLA"
+              },
+              {
+                "kind": "value",
+                "value": "40GB/day",
+                "label": "Typical daily data volume"
+              },
+              {
+                "kind": "value",
+                "value": "80GB",
+                "label": "Peak daily data volume"
+              },
+              {
+                "kind": "value",
+                "value": "90d",
+                "label": "S3 lifecycle policy to Glacier"
+              },
+              {
+                "kind": "value",
+                "value": "$3400/mo",
+                "label": "Current monthly cost"
+              },
+              {
+                "kind": "value",
+                "value": "$2500/mo",
+                "label": "Target monthly cost"
+              },
+              {
+                "kind": "config",
+                "value": "mw1.small",
+                "label": "Target MWAA environment size for cost optimization"
+              }
+            ]
+          },
+          "errors": []
+        },
+        {
+          "version": "v3",
+          "summary": "This session was a status check and operational review of the Acme Corp data pipeline, now fully in production. All three DAGs (transactions, customers, products) are running steadily. The monitoring stack (Datadog for runtime metrics, CloudWatch for AWS infrastructure, PagerDuty for alerting via the `acme-pipeline-prod` integration) is live and operational. The cost optimization effort is in progress, with 30 days remaining until the planned MWAA environment downsize from the current setup to mw1.small, targeting a reduction from $3400/month to under $2500/month.\n\nA new decision was made to send Acme a weekly automated cost dashboard via AWS SES to Jane Smith. SOC 2 evidence collection for the Acme inheritance scope is complete and has been reviewed by the auditor with no issues. The original pipeline build thread is now completed; the two active threads are monitoring and cost optimization. The two low-priority open tickets (schema drift alert tuning and Macie cost optimization) remain active but unchanged.\n\nThe session included repeated confirmation of operational patterns already established in previous compactions: Great Expectations schema drift detection with automatic downstream DAG pausing, manual backfills with catchup=False, webhook-based source change notifications at /internal/acme/source-change, a separate MWAA small environment in the dev account for testing with nightly synthetic data generation, weekly internal cost reviews in #data-pipelines with the `customer:acme` tag, cross-team dependencies with the platform team owning the underlying MWAA service, and the runbook at docs/runbooks/acme-pipeline.md with on-call playbooks for SLA breaches, schema drift response, and cost spikes. Acme's customer-facing status page remains at status.acme.example.com.",
+          "metaV1": {
+            "main": "Operational status review and cost reporting enhancement for production Acme Corp data pipeline",
+            "sub": [
+              "Monitoring stack operational with Datadog, CloudWatch, and PagerDuty",
+              "30 days from MWAA environment downsize to mw1.small for cost reduction",
+              "Three-DAG pipeline build and rollout"
+            ]
+          },
+          "metaV2": {
+            "main": "Operational status review and cost reporting enhancement for production Acme Corp data pipeline",
+            "sub": [
+              {
+                "id": "acme-monitoring",
+                "label": "Monitoring stack operational with Datadog, CloudWatch, and PagerDuty",
+                "status": "active"
+              },
+              {
+                "id": "acme-cost-optimization",
+                "label": "30 days from MWAA environment downsize to mw1.small for cost reduction",
+                "status": "active"
+              },
+              {
+                "id": "acme-pipeline-build",
+                "label": "Three-DAG pipeline build and rollout",
+                "status": "completed"
+              },
+              {
+                "id": "schema-drift-alert-tuning",
+                "label": "Reduce false-positive rate in Great Expectations schema drift alerts",
+                "status": "active"
+              },
+              {
+                "id": "macie-cost-optimization",
+                "label": "Reduce Macie scan frequency from hourly to twice daily",
+                "status": "active"
+              }
+            ],
+            "decisions": [
+              "Send Acme a weekly automated cost dashboard via AWS SES to Jane Smith",
+              "SOC 2 evidence collection complete for Acme inheritance scope, auditor review passed"
+            ],
+            "open_questions": []
+          },
+          "metaV3": {
+            "main": "Operational status review and cost reporting enhancement for production Acme Corp data pipeline",
+            "sub": [
+              {
+                "id": "acme-monitoring",
+                "label": "Monitoring stack operational with Datadog, CloudWatch, and PagerDuty",
+                "status": "active"
+              },
+              {
+                "id": "acme-cost-optimization",
+                "label": "30 days from MWAA environment downsize to mw1.small for cost reduction",
+                "status": "active"
+              },
+              {
+                "id": "acme-pipeline-build",
+                "label": "Three-DAG pipeline build and rollout",
+                "status": "completed"
+              },
+              {
+                "id": "schema-drift-alert-tuning",
+                "label": "Reduce false-positive rate in Great Expectations schema drift alerts",
+                "status": "active"
+              },
+              {
+                "id": "macie-cost-optimization",
+                "label": "Reduce Macie scan frequency from hourly to twice daily",
+                "status": "active"
+              }
+            ],
+            "decisions": [
+              "Send Acme a weekly automated cost dashboard via AWS SES to Jane Smith",
+              "SOC 2 evidence collection complete for Acme inheritance scope, auditor review passed"
+            ],
+            "open_questions": [],
+            "key_state": [
+              {
+                "kind": "id",
+                "value": "jane.smith@acmecorp.io",
+                "label": "Acme Corp primary contact email"
+              },
+              {
+                "kind": "id",
+                "value": "s3://acme-intake-prod-492372",
+                "label": "Acme production intake S3 bucket"
+              },
+              {
+                "kind": "id",
+                "value": "arn:aws:kms:us-east-1:492372116065:key/abc-def-ghi-jkl",
+                "label": "KMS key for S3 bucket and MWAA secrets"
+              },
+              {
+                "kind": "id",
+                "value": "arn:aws:iam::492372116065:role/mwaa-acme-execution",
+                "label": "MWAA execution role"
+              },
+              {
+                "kind": "id",
+                "value": "acme-pipeline-prod",
+                "label": "PagerDuty integration for Acme pipeline alerts"
+              },
+              {
+                "kind": "path",
+                "value": "dags/acme/main.py",
+                "label": "Acme DAG code location"
+              },
+              {
+                "kind": "path",
+                "value": "/acme/tokenization",
+                "label": "Secrets Manager path for tokenization keys"
+              },
+              {
+                "kind": "url",
+                "value": "/internal/acme/source-change",
+                "label": "Webhook endpoint for Acme source-side changes"
+              },
+              {
+                "kind": "url",
+                "value": "status.acme.example.com",
+                "label": "Acme customer-facing status page"
+              },
+              {
+                "kind": "path",
+                "value": "docs/runbooks/acme-pipeline.md",
+                "label": "Acme pipeline runbook location"
+              },
+              {
+                "kind": "config",
+                "value": "customer:acme",
+                "label": "Cost attribution tag for Acme resources"
+              },
+              {
+                "kind": "value",
+                "value": "6 hours",
+                "label": "Data freshness SLA"
+              },
+              {
+                "kind": "value",
+                "value": "99.5%",
+                "label": "Uptime SLA"
+              },
+              {
+                "kind": "value",
+                "value": "40GB/day",
+                "label": "Typical daily data volume"
+              },
+              {
+                "kind": "value",
+                "value": "80GB",
+                "label": "Peak daily data volume"
+              },
+              {
+                "kind": "value",
+                "value": "90d",
+                "label": "S3 lifecycle policy to Glacier"
+              },
+              {
+                "kind": "value",
+                "value": "$3400/mo",
+                "label": "Current monthly cost"
+              },
+              {
+                "kind": "value",
+                "value": "$2500/mo",
+                "label": "Target monthly cost"
+              },
+              {
+                "kind": "config",
+                "value": "mw1.small",
+                "label": "Target MWAA environment size for cost optimization"
+              }
+            ]
+          },
+          "errors": []
+        }
+      ],
+      "feedbackLog": [
+        {
+          "depth": 1,
+          "prevCount": 0,
+          "fired": true,
+          "steeringChars": 6579,
+          "previousSubIds": [],
+          "coreSubIds": [],
+          "previousKeyStateCount": 0,
+          "recentLifecycleCount": 0,
+          "schema": "v3",
+          "subCount": 3,
+          "keyStateCount": 11
+        },
+        {
+          "depth": 2,
+          "prevCount": 2,
+          "fired": true,
+          "steeringChars": 12361,
+          "previousSubIds": [
+            "acme-pipeline-design",
+            "schema-drift-alert-tuning",
+            "macie-cost-optimization"
+          ],
+          "coreSubIds": [],
+          "previousKeyStateCount": 11,
+          "recentLifecycleCount": 0,
+          "schema": "v3",
+          "subCount": 3,
+          "keyStateCount": 15
+        },
+        {
+          "depth": 3,
+          "prevCount": 3,
+          "fired": true,
+          "steeringChars": 17452,
+          "previousSubIds": [
+            "schema-drift-alert-tuning",
+            "macie-cost-optimization",
+            "acme-pipeline-build",
+            "acme-pipeline-design"
+          ],
+          "coreSubIds": [
+            "schema-drift-alert-tuning",
+            "macie-cost-optimization"
+          ],
+          "previousKeyStateCount": 15,
+          "recentLifecycleCount": 2,
+          "schema": "v3",
+          "subCount": 4,
+          "keyStateCount": 19
+        },
+        {
+          "depth": 4,
+          "prevCount": 3,
+          "fired": true,
+          "steeringChars": 22767,
+          "previousSubIds": [
+            "schema-drift-alert-tuning",
+            "macie-cost-optimization",
+            "acme-monitoring",
+            "acme-cost-optimization",
+            "acme-pipeline-build",
+            "acme-pipeline-design"
+          ],
+          "coreSubIds": [
+            "schema-drift-alert-tuning",
+            "macie-cost-optimization"
+          ],
+          "previousKeyStateCount": 19,
+          "recentLifecycleCount": 3,
+          "schema": "v3",
+          "subCount": 5,
+          "keyStateCount": 19
+        }
+      ]
+    }
+  },
+  "probes": {
+    "conv-data-pipeline": [
+      {
+        "probeId": "data-p1",
+        "depth": 1,
+        "type": "long-range-recall",
+        "question": "Who is the primary contact at Acme Corp?",
+        "expectedAnswer": "Jane Smith, jane.smith@acmecorp.io",
+        "vanilla": {
+          "answer": "NOT_FOUND",
+          "verdict": "WRONG",
+          "reason": "NOT_FOUND",
+          "autoMatched": true
+        },
+        "kasett": {
+          "answer": "Jane Smith at jane.smith@acmecorp.io",
+          "verdict": "CORRECT",
+          "reason": "string-match",
+          "autoMatched": true
+        }
+      },
+      {
+        "probeId": "data-p2",
+        "depth": 1,
+        "type": "decision-continuity",
+        "question": "Why did we choose MWAA over self-hosted Argo Workflows?",
+        "expectedAnswer": "Managed service reduces ops burden + SOC 2 inheritance via AWS",
+        "vanilla": {
+          "answer": "NOT_FOUND",
+          "verdict": "WRONG",
+          "reason": "NOT_FOUND",
+          "autoMatched": true
+        },
+        "kasett": {
+          "answer": "NOT_FOUND",
+          "verdict": "WRONG",
+          "reason": "NOT_FOUND",
+          "autoMatched": true
+        }
+      },
+      {
+        "probeId": "data-p3",
+        "depth": 1,
+        "type": "long-range-recall",
+        "question": "What is the S3 intake bucket for Acme?",
+        "expectedAnswer": "s3://acme-intake-prod-492372",
+        "vanilla": {
+          "answer": "NOT_FOUND",
+          "verdict": "WRONG",
+          "reason": "NOT_FOUND",
+          "autoMatched": true
+        },
+        "kasett": {
+          "answer": "s3://acme-intake-prod-492372",
+          "verdict": "CORRECT",
+          "reason": "string-match",
+          "autoMatched": true
+        }
+      },
+      {
+        "probeId": "data-p4",
+        "depth": 2,
+        "type": "decision-continuity",
+        "question": "Why did we go with one DAG per data source instead of one DAG total?",
+        "expectedAnswer": "Failure isolation — one source failing shouldn't block others",
+        "vanilla": {
+          "answer": "NOT_FOUND",
+          "verdict": "WRONG",
+          "reason": "NOT_FOUND",
+          "autoMatched": true
+        },
+        "kasett": {
+          "answer": "NOT_FOUND",
+          "verdict": "WRONG",
+          "reason": "NOT_FOUND",
+          "autoMatched": true
+        }
+      },
+      {
+        "probeId": "data-p5",
+        "depth": 2,
+        "type": "long-range-recall",
+        "question": "What is the MWAA execution role ARN?",
+        "expectedAnswer": "arn:aws:iam::492372116065:role/mwaa-acme-execution",
+        "vanilla": {
+          "answer": "NOT_FOUND",
+          "verdict": "WRONG",
+          "reason": "NOT_FOUND",
+          "autoMatched": true
+        },
+        "kasett": {
+          "answer": "arn:aws:iam::492372116065:role/mwaa-acme-execution",
+          "verdict": "CORRECT",
+          "reason": "string-match",
+          "autoMatched": true
+        }
+      },
+      {
+        "probeId": "data-p6",
+        "depth": 2,
+        "type": "thread-lineage",
+        "question": "What was the original name of the thread before it was renamed to `acme-pipeline-build`?",
+        "expectedAnswer": "acme-pipeline-design",
+        "vanilla": {
+          "answer": "NOT_FOUND",
+          "verdict": "WRONG",
+          "reason": "NOT_FOUND",
+          "autoMatched": true
+        },
+        "kasett": {
+          "answer": "NOT_FOUND",
+          "verdict": "WRONG",
+          "reason": "NOT_FOUND",
+          "autoMatched": true
+        }
+      },
+      {
+        "probeId": "data-p7",
+        "depth": 3,
+        "type": "decision-continuity",
+        "question": "What was the cost optimization plan to get below $2500/mo?",
+        "expectedAnswer": "Switch to MWAA mw1.small after 60 days of steady-state validation",
+        "vanilla": {
+          "answer": "NOT_FOUND",
+          "verdict": "WRONG",
+          "reason": "NOT_FOUND",
+          "autoMatched": true
+        },
+        "kasett": {
+          "answer": "Downsize the MWAA environment to mw1.small, scheduled to occur in 30 days, reducing monthly cost from $3400 to under $2500.",
+          "verdict": "CORRECT",
+          "reason": "string-match",
+          "autoMatched": true
+        }
+      },
+      {
+        "probeId": "data-p8",
+        "depth": 3,
+        "type": "long-range-recall",
+        "question": "What was the root cause of the SLA breach?",
+        "expectedAnswer": "Source system held a 4-hour batch on Friday",
+        "vanilla": {
+          "answer": "NOT_FOUND",
+          "verdict": "WRONG",
+          "reason": "NOT_FOUND",
+          "autoMatched": true
+        },
+        "kasett": {
+          "answer": "NOT_FOUND",
+          "verdict": "WRONG",
+          "reason": "NOT_FOUND",
+          "autoMatched": true
+        }
+      },
+      {
+        "probeId": "data-p9",
+        "depth": 3,
+        "type": "thread-lineage",
+        "question": "What two threads did `acme-pipeline-build` split into?",
+        "expectedAnswer": "acme-monitoring and acme-cost-optimization",
+        "vanilla": {
+          "answer": "The `acme-pipeline-build` thread split into `acme-monitoring` and `acme-cost-optimization`.",
+          "verdict": "CORRECT",
+          "reason": "string-match",
+          "autoMatched": true
+        },
+        "kasett": {
+          "answer": "The `acme-pipeline-build` thread split into `acme-monitoring` and `acme-cost-optimization`.",
+          "verdict": "CORRECT",
+          "reason": "string-match",
+          "autoMatched": true
+        }
+      },
+      {
+        "probeId": "data-p10",
+        "depth": "current",
+        "type": "trajectory",
+        "question": "What is the status of the `acme-pipeline-build` thread now?",
+        "expectedAnswer": "completed (split into monitoring and cost-optimization)",
+        "vanilla": {
+          "answer": "The acme-pipeline-build thread has been completed.",
+          "verdict": "CORRECT",
+          "reason": "string-match",
+          "autoMatched": true
+        },
+        "kasett": {
+          "answer": "completed",
+          "verdict": "CORRECT",
+          "reason": "string-match",
+          "autoMatched": true
+        }
+      },
+      {
+        "probeId": "data-p11",
+        "depth": "current",
+        "type": "long-range-recall",
+        "question": "What new decision did we just make about cost reporting to Acme?",
+        "expectedAnswer": "Send weekly cost dashboard via SES",
+        "vanilla": {
+          "answer": "We decided to implement an automated weekly cost dashboard that will be sent to Jane Smith via SES.",
+          "verdict": "CORRECT",
+          "reason": "string-match",
+          "autoMatched": true
+        },
+        "kasett": {
+          "answer": "Send Acme a weekly automated cost dashboard via AWS SES to Jane Smith.",
+          "verdict": "CORRECT",
+          "reason": "string-match",
+          "autoMatched": true
+        }
+      },
+      {
+        "probeId": "data-p12",
+        "depth": "current",
+        "type": "trajectory",
+        "question": "How many days until the planned MWAA small switchover?",
+        "expectedAnswer": "30 days",
+        "vanilla": {
+          "answer": "30 days",
+          "verdict": "CORRECT",
+          "reason": "string-match",
+          "autoMatched": true
+        },
+        "kasett": {
+          "answer": "30 days",
+          "verdict": "CORRECT",
+          "reason": "string-match",
+          "autoMatched": true
+        }
+      }
+    ]
+  }
+}

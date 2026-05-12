@@ -39,12 +39,23 @@ export interface SteeringOptions {
      */
     structuredOutput?: StructuredOutputMode;
     /**
-     * Optional list of sub-thread IDs from the previous compaction. When
+     * Optional list of sub-thread IDs from the previous compaction(s). When
      * present, the prompt asks the LLM to reuse these `id`s for continuing
      * threads (and only assign new ids for genuinely new work). Critical
      * for ID-based continuity tracking in weight.ts (B2.8).
+     *
+     * Phase G: aggregated across the full window (most-recurring first).
+     * Combine with `coreSubIds` to highlight the IDs that have appeared
+     * in MULTIPLE previous compactions ("core" threads).
      */
     previousSubIds?: ReadonlyArray<string>;
+    /**
+     * Sub-thread IDs that have appeared in 2+ previous compactions in the
+     * current window. These are "core" threads — the LLM is encouraged to
+     * preserve them especially aggressively. A subset of `previousSubIds`.
+     * Phase G — window-aggregated continuity hint.
+     */
+    coreSubIds?: ReadonlyArray<string>;
     /**
      * Detected candidate key-state values (Phase C). The detector emits
      * these from pre-compaction messages and the LLM is asked to keep the

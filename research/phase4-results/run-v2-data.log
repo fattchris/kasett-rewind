@@ -1,0 +1,28 @@
+
+=== conv-data-pipeline (Customer Acme Corp onboarding — data pipeline build) ===
+-- Vanilla pass --
+  C1 (100 turns)... 2824 chars
+  C2 (100 turns)... 2674 chars
+  C3 (100 turns)... 2831 chars
+  C4 (100 turns)... 2414 chars
+-- Kasett v2 pass --
+  C1 (100 turns)... 4505 chars, schema=v3, subs=3, key_state=11, prev=0, core=0, lc=0
+  C2 (100 turns)... 4504 chars, schema=v3, subs=3, key_state=15, prev=2, core=0, lc=0
+  C3 (100 turns)... 5113 chars, schema=v3, subs=4, key_state=19, prev=3, core=2, lc=2
+  C4 (100 turns)... 5231 chars, schema=v3, subs=5, key_state=19, prev=3, core=2, lc=3
+-- Probes (12) --
+  [data-p1] depth=1 type=long-range-recall: vanilla=WRONG kasett=CORRECT
+  [data-p2] depth=1 type=decision-continuity: vanilla=WRONG kasett=WRONG
+  [data-p3] depth=1 type=long-range-recall: vanilla=WRONG kasett=CORRECT
+  [data-p4] depth=2 type=decision-continuity: vanilla=WRONG kasett=WRONG
+  [data-p5] depth=2 type=long-range-recall: vanilla=WRONG kasett=CORRECT
+  [data-p6] depth=2 type=thread-lineage: vanilla=WRONG kasett=WRONG
+  [data-p7] depth=3 type=decision-continuity: vanilla=WRONG kasett=CORRECT
+  [data-p8] depth=3 type=long-range-recall: vanilla=WRONG kasett=WRONG
+  [data-p9] depth=3 type=thread-lineage: vanilla=CORRECT kasett=CORRECT
+  [data-p10] depth=current type=trajectory: vanilla=CORRECT kasett=CORRECT
+  [data-p11] depth=current type=long-range-recall: vanilla=CORRECT kasett=CORRECT
+  [data-p12] depth=current type=trajectory: vanilla=CORRECT kasett=CORRECT
+
+=== Done ===
+Results: /home/node/.openclaw/workspace/research/phase4-results/results-v2-conv-data-pipeline.json
