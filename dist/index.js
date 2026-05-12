@@ -50,7 +50,7 @@ import { readdir, appendFile } from 'node:fs/promises';
 import { SessionReader, KasettError } from './storage/reader.js';
 import { weightSummaries } from './threads/weight.js';
 import { buildSteeringPrompt, buildOrientationPrompt } from './threads/steering.js';
-import { parseCompactionOutput } from './threads/parser.js';
+import { parseCompactionOutput, parseCompactionOutputBestEffort } from './threads/parser.js';
 import { generateStub } from './hotswap/stub.js';
 import { runHotSwapWorker } from './hotswap/worker.js';
 import { DEFAULT_CONFIG } from './types.js';
@@ -318,10 +318,11 @@ export function register(api) {
                     api.logger.warn('[kasett-rewind] LLM returned empty summary — falling back to OC built-in');
                     return undefined;
                 }
-                // Validate [THREAD_META] was produced
-                const parsed = parseCompactionOutput(summary);
-                if (parsed.meta) {
-                    api.logger.info(`[kasett-rewind] Extracted thread meta: main="${parsed.meta.main}"`);
+                // Validate structured thread meta was produced (v2 first, then v1).
+                const parsed = parseCompactionOutputBestEffort(summary);
+                if (parsed.metaV1 || parsed.metaV2) {
+                    const main = parsed.metaV2?.main ?? parsed.metaV1?.main ?? '';
+                    api.logger.info(`[kasett-rewind] Extracted thread meta (schema=${parsed.version}): main="${main}"`);
                     void logHookEvent({
                         hook: 'summarize',
                         sessionId: capturedCtx?.sessionKey,
@@ -329,11 +330,12 @@ export function register(api) {
                         action: 'sync_summary_returned',
                         parsed: true,
                         charCount: summary.length,
-                        metaMain: parsed.meta.main,
+                        metaMain: main,
+                        detail: { schemaVersion: parsed.version },
                     });
                 }
                 else {
-                    api.logger.warn('[kasett-rewind] No [THREAD_META] block found in LLM output. ' +
+                    api.logger.warn('[kasett-rewind] No structured thread meta found in LLM output (neither v2 JSON nor v1 [THREAD_META]). ' +
                         'The steering prompt instructs the LLM to include it — check model compliance.');
                     void logHookEvent({
                         hook: 'summarize',
@@ -342,6 +344,7 @@ export function register(api) {
                         action: 'sync_summary_no_meta',
                         parsed: false,
                         charCount: summary.length,
+                        detail: { v2_errors: parsed.errors.slice(0, 3) },
                     });
                 }
                 // Return full output (with [THREAD_META]) to OC.
@@ -420,6 +423,7 @@ async function summarizeWithHotSwap(p) {
                             stubId,
                             sidecarPath: info.sidecarPath,
                             sidecarWritten: true,
+                            schemaVersion: info.schemaVersion,
                         },
                     });
                 },
@@ -505,8 +509,22 @@ async function buildCompactionContext(p) {
     }
     // --- 2. Weight summaries by recency ---
     const weighted = weightSummaries(previousSummaries, config.compaction.weights);
-    // --- 3. Build thread-aware steering prompt ---
-    const steeringPrompt = buildSteeringPrompt(weighted);
+    // --- 3. Extract previous v2 sub-thread ids (for continuity hints) ---
+    // Best-effort: read the most recent summary and pull its v2 ids if present.
+    // Lets the LLM REUSE the same id for continuing threads instead of inventing
+    // a new one each compaction.
+    let previousSubIds;
+    if (previousSummaries.length > 0) {
+        const latest = parseCompactionOutputBestEffort(previousSummaries[0]);
+        if (latest.metaV2 && latest.metaV2.sub.length > 0) {
+            previousSubIds = latest.metaV2.sub.map((s) => s.id);
+        }
+    }
+    // --- 4. Build thread-aware steering prompt (v2/json by default) ---
+    const steeringPrompt = buildSteeringPrompt(weighted, {
+        structuredOutput: 'json',
+        ...(previousSubIds ? { previousSubIds } : {}),
+    });
     return { previousSummaries, steeringPrompt, sessionFile };
 }
 /**
@@ -843,9 +861,10 @@ function resolveConfig(api) {
 // Public API Exports
 // ---------------------------------------------------------------------------
 export { SessionReader, KasettError } from './storage/reader.js';
-export { weightSummaries } from './threads/weight.js';
-export { buildSteeringPrompt, buildOrientationPrompt } from './threads/steering.js';
-export { parseCompactionOutput } from './threads/parser.js';
+export { weightSummaries, classifyThreadsV2, classifyThreadsV1Fallback, } from './threads/weight.js';
+export { buildSteeringPrompt, buildOrientationPrompt, buildOrientationPromptV2, } from './threads/steering.js';
+export { parseCompactionOutput, parseCompactionOutputV2, parseCompactionOutputBestEffort, } from './threads/parser.js';
+export { THREAD_META_SCHEMA_V2, THREAD_STATUS_VALUES, validateThreadMetaV2, projectV2ToV1, schemaAsPromptString, } from './threads/schema.js';
 export { emptyThreadMeta, isValidThreadMeta } from './threads/meta.js';
 export { CompactionWindow } from './compaction/window.js';
 export { generateConfig } from './cli/generate-config.js';

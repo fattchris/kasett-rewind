@@ -1,4 +1,5 @@
 import type { CompactionEvent, ThreadMeta } from '../types.js';
+import type { ThreadMetaV2 } from '../threads/schema.js';
 /**
  * Error class for kasett-rewind operations.
  */
@@ -52,8 +53,31 @@ export declare class SessionReader {
     /**
      * Read the most recent thread meta from the session.
      * Sidecar-first; falls back to JSONL.
+     *
+     * Returns the v1-shaped ThreadMeta. When the sidecar entry is v2, the
+     * v1 shape is produced via `projectV2ToV1` (lossy projection for v1 readers).
+     * Use `readLatestMetaV2` to access the full v2 object directly.
      */
     readLatestMeta(filePath: string): Promise<ThreadMeta | null>;
+    /**
+     * Read the most recent v2 thread meta from the session, or null if none exists.
+     *
+     * V2-only — will not project v1 entries up to v2 (we have no `id`s or
+     * `status` in v1 to fabricate). Use `readLatestMeta` for the unified view.
+     */
+    readLatestMetaV2(filePath: string): Promise<ThreadMetaV2 | null>;
+    /**
+     * Read the last N v1+v2 thread metas, oldest first. Each slot reports
+     * BOTH shapes when available so callers can pick: the orientation
+     * builder uses v2 when present, falls back to v1 when not.
+     *
+     * For sidecar entries with `thread_meta_v2`, both fields are populated
+     * (v1 via `projectV2ToV1`). For legacy entries, only v1 is populated.
+     */
+    readLastNWithMetaV2(filePath: string, count: number): Promise<Array<{
+        v1?: ThreadMeta;
+        v2?: ThreadMetaV2;
+    }>>;
     /**
      * Read the most recent compaction summary string.
      * Sidecar-first; if a rich summary is in the sidecar, return that. Otherwise

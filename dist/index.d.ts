@@ -127,11 +127,14 @@ interface SummarizeParams {
 }
 export declare function register(api: PluginAPI): void;
 export { SessionReader, KasettError } from './storage/reader.js';
-export { weightSummaries } from './threads/weight.js';
-export type { WeightedSummary } from './threads/weight.js';
-export { buildSteeringPrompt, buildOrientationPrompt } from './threads/steering.js';
-export { parseCompactionOutput } from './threads/parser.js';
-export type { ParseResult } from './threads/parser.js';
+export { weightSummaries, classifyThreadsV2, classifyThreadsV1Fallback, } from './threads/weight.js';
+export type { WeightedSummary, ClassifiedThread, ThreadContinuityClass, } from './threads/weight.js';
+export { buildSteeringPrompt, buildOrientationPrompt, buildOrientationPromptV2, } from './threads/steering.js';
+export type { StructuredOutputMode, SteeringOptions, } from './threads/steering.js';
+export { parseCompactionOutput, parseCompactionOutputV2, parseCompactionOutputBestEffort, } from './threads/parser.js';
+export type { ParseResult, ParseResultV2, BestEffortParseResult, } from './threads/parser.js';
+export { THREAD_META_SCHEMA_V2, THREAD_STATUS_VALUES, validateThreadMetaV2, projectV2ToV1, schemaAsPromptString, } from './threads/schema.js';
+export type { ThreadMetaV2, ThreadSubV2, ThreadStatus, ValidateResult, } from './threads/schema.js';
 export { emptyThreadMeta, isValidThreadMeta } from './threads/meta.js';
 export { CompactionWindow } from './compaction/window.js';
 export { generateConfig } from './cli/generate-config.js';

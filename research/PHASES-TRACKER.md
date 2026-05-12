@@ -33,7 +33,7 @@ See `research/phase-a-verification.md` for full report and `research/phase-a-rep
 
 **Goal:** First, fix the actual production bottleneck (hot-swap atomic-rewrite never lands because OC holds the session lock). Then layer structured output on top.
 
-**Status:** 🟡 IN PROGRESS (B1 ✅ complete; B2 next up)
+**Status:** ✅ COMPLETE (2026-05-12) — B1 + B2 both shipped; pending real-world deploy verification.
 
 ### Track 1 — Hot-swap durability (B1) ✅ COMPLETE (2026-05-12)
 
@@ -49,22 +49,28 @@ rewrite the OC-locked session JSONL.
 - [x] B1.6. Tests — 11 new sidecar tests, 122/122 passing
 - [x] B1.7. `scripts/migrate-to-sidecar.js` — idempotent one-shot migration; dry-run validated
 - [x] B1.8. Hook logging — `after_compaction:sidecar_written` / `sidecar_failed`
-- [ ] B1.9. Validate post-deploy: confirm sidecar files appear, compliance rate >0
+- [ ] B1.9. Validate post-deploy: confirm sidecar files appear, compliance rate >0 — **PENDING REAL-WORLD VERIFICATION** (per phase-b1-progress.md checklist; tests pass, awaiting next organic compaction event in production)
 
 Detail: `research/phase-b1-progress.md`.
 
-### Track 2 — Schema v2 / structured output (B2) 🟡 IN PROGRESS (preview)
+### Track 2 — Schema v2 / structured output (B2) ✅ COMPLETE (2026-05-12)
 
-B1 unblocks B2. With reliable storage in place, the next bottleneck is the
-LLM-side compliance rate — currently text-extracted `[THREAD_META]` blocks at
-whatever rate the model emits them. Provider-native structured output should
-push this from ~95% to ~99%.
+B1 unblocked B2. The LLM-side compliance bottleneck is now addressed via
+v2 schema with explicit JSON output. Path B (JSON-only steering + strict
+parser) shipped; Path A (provider-native structured output via tool_use /
+response_format) is scaffolded behind a `structuredOutput: 'tool'` flag for
+future activation when needed.
 
-- [ ] B2.1. Design JSON schema for thread meta (main + structured sub-threads, lifecycle, key-state hooks)
-- [ ] B2.2. Use provider-native structured output (Anthropic/OpenAI tool-calling or response_format)
-- [ ] B2.3. Update parser to read JSON from a function-call result, not text extraction
-- [ ] B2.4. Backward compat: read old [THREAD_META] format from existing sessions and sidecars
-- [ ] B2.5. Re-run benchmark, measure compliance rate delta
+- [x] B2.1. Investigate LLM call site, document Path A vs Path B decision (Path B chosen for cross-provider portability; Path A scaffold left for future)
+- [x] B2.2. Define v2 schema in `src/threads/schema.ts` (main + structured sub-threads with id/label/status, decisions, open_questions, max 5 subs)
+- [x] B2.3. Steering prompt rewritten to demand fenced ```json``` block conforming to v2 schema (with worked example, schema embedded, previousSubIds hint)
+- [x] B2.4. `parseCompactionOutputV2` + `parseCompactionOutputBestEffort` in `src/threads/parser.ts` — v2 first, v1 fallback, errors surfaced for diag
+- [x] B2.5. Worker integration: `parseCompactionOutputBestEffort` in `src/hotswap/worker.ts`; logs schema_version on each write
+- [x] B2.6. Sidecar entry adds optional `thread_meta_v2` and `schema_version` fields; v1 `thread_meta` preserved
+- [x] B2.7. Reader prefers v2 over v1; new `readLastNWithMetaV2`, `readLatestMetaV2`; orientation builder `buildOrientationPromptV2` renders status/decisions/open_questions
+- [x] B2.8. Weight analyzer: `classifyThreadsV2` (id-based) + `classifyThreadsV1Fallback` (substring) for continuity classification
+- [x] B2.9. Tests: 66 new tests across schema/parser-v2/steering-v2/weight-v2 — 188/188 passing (was 122/122 pre-B2)
+- [x] B2.10. Migration / co-existence — v1 entries still readable, v2 writes new entries, dual storage in sidecar
 
 ---
 
@@ -72,7 +78,21 @@ push this from ~95% to ~99%.
 
 **Goal:** Track specific values (URLs, IDs, paths, versions) explicitly. Address CompactBench KSSR (currently ~0).
 
-**Status:** ⏸ QUEUED
+**Status:** 🔵 NEXT (B2 unblocks C)
+
+### What B2 revealed about C
+
+With v2 schema in place we now have a typed `decisions[]` and `open_questions[]`
+field, plus stable sub-thread `id`s. KeyState (Phase C) can plug into the
+same structured-output path:
+
+- Add a top-level `key_state[]` to v2 schema as the v3 increment, OR
+- Add a parallel sidecar `*.kasett-keystate.jsonl` that the LLM populates on
+  the same compaction call (single LLM call, two structured outputs)
+
+Leaning toward the former (single schema, single output, single parser) for
+simplicity. Only escalate to a separate sidecar if KeyState volume bloats v2
+entries beyond ~5KB.
 
 ### Tasks (preview)
 - [ ] C1. Define KeyState type: `{ kind: 'url'|'id'|'path'|'version'|'config', value: string, label?: string }`
@@ -118,6 +138,9 @@ push this from ~95% to ~99%.
 | 2026-05-12 | Tracker file created | Chris directive: "stat a tracker file and let's hit it" |
 | 2026-05-12 | Phase A complete; root cause is `LOCK_WAIT_TIMEOUT` not parser/format/compliance | Diag log evidence: hooks fire, LLM succeeds, atomic-rewrite times out on session lock |
 | 2026-05-12 | Phase B scope expanded to include hot-swap durability fix BEFORE schema v2 | Schema v2 doesn't help if nothing reaches storage; durability fix unblocks compliance regardless |
+| 2026-05-12 | B2 Path B (JSON steering + strict parser) over Path A (provider-native tool_use) | Cross-provider portability; lower code complexity; closes most of the compliance gap. Path A scaffolded behind `structuredOutput: 'tool'` flag for future activation. |
+| 2026-05-12 | sub cap raised 3 → 5 in v2 | Real Clyde infra sessions average 5-8 active sub-threads; cap-at-3 forces information loss. 5 strikes the right balance between completeness and prompt budget. |
+| 2026-05-12 | v2 entries store BOTH `thread_meta` (v1 projection) and `thread_meta_v2` in sidecar | Lossy v1 projection keeps legacy readers working without code changes; v2 is the source of truth for new readers. Cheap (\~30% size increase per entry). |
 
 ---
 

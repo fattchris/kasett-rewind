@@ -145,7 +145,7 @@ describe('buildOrientationPrompt', () => {
 // buildSteeringPrompt — unchanged, compaction-only
 // ---------------------------------------------------------------------------
 
-describe('buildSteeringPrompt', () => {
+describe('buildSteeringPrompt (legacy markdown mode — v1)', () => {
   test('includes weighted previous summaries as context', () => {
     const weighted: WeightedSummary[] = [
       {
@@ -160,7 +160,7 @@ describe('buildSteeringPrompt', () => {
       },
     ];
 
-    const result = buildSteeringPrompt(weighted);
+    const result = buildSteeringPrompt(weighted, { structuredOutput: 'markdown' });
 
     assert.ok(result.includes('Previous Compaction Summaries'));
     assert.ok(result.includes('OAuth system was built'));
@@ -169,8 +169,8 @@ describe('buildSteeringPrompt', () => {
     assert.ok(result.includes('weight 0.6'));
   });
 
-  test('includes THREAD_META output format instructions', () => {
-    const result = buildSteeringPrompt([]);
+  test('includes THREAD_META output format instructions in markdown mode', () => {
+    const result = buildSteeringPrompt([], { structuredOutput: 'markdown' });
 
     assert.ok(result.includes('[THREAD_META]'));
     assert.ok(result.includes('[/THREAD_META]'));
@@ -181,7 +181,7 @@ describe('buildSteeringPrompt', () => {
   });
 
   test('explains weight semantics in the prompt', () => {
-    const result = buildSteeringPrompt([]);
+    const result = buildSteeringPrompt([], { structuredOutput: 'markdown' });
 
     assert.ok(result.includes('Thread-Aware Compaction Instructions'));
   });
@@ -191,13 +191,13 @@ describe('buildSteeringPrompt', () => {
       { summary: 'Recent work.', weight: 1.0, label: 'Previous summary (weight 1.0 — most recent)' },
     ];
 
-    const result = buildSteeringPrompt(weighted);
+    const result = buildSteeringPrompt(weighted, { structuredOutput: 'markdown' });
 
     assert.ok(result.includes('1.0 = most recent'));
   });
 
   test('works with empty weighted summaries — still produces valid output', () => {
-    const result = buildSteeringPrompt([]);
+    const result = buildSteeringPrompt([], { structuredOutput: 'markdown' });
 
     assert.ok(result.includes('Thread-Aware Compaction Instructions'));
     assert.ok(result.includes('[THREAD_META]'));
@@ -205,13 +205,13 @@ describe('buildSteeringPrompt', () => {
     assert.ok(!result.includes('Previous Compaction Summaries'));
   });
 
-  test('includes rules about 1 main + 3 subs', () => {
-    const result = buildSteeringPrompt([]);
+  test('includes rules about 1 main + 3 subs in markdown mode', () => {
+    const result = buildSteeringPrompt([], { structuredOutput: 'markdown' });
     assert.ok(result.includes('1 main + 3 subs') || result.includes('Exactly 1 main'));
   });
 
   test('explains threads are orientation, not task tracker', () => {
-    const result = buildSteeringPrompt([]);
+    const result = buildSteeringPrompt([], { structuredOutput: 'markdown' });
     assert.ok(result.includes('orientation') || result.includes('NOT a task tracker'));
   });
 });

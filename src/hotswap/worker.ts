@@ -24,7 +24,7 @@
 import { appendFile } from 'node:fs/promises';
 import { basename } from 'node:path';
 import { writeSidecarEntry, sidecarPathFor, type SidecarEntry } from '../storage/sidecar.js';
-import { parseCompactionOutput } from '../threads/parser.js';
+import { parseCompactionOutputBestEffort } from '../threads/parser.js';
 
 export interface WorkerParams {
   /** Absolute path to the session `.jsonl` file. The sidecar is derived from this. */
@@ -60,11 +60,17 @@ export interface WorkerParams {
   /**
    * Optional callback invoked after a successful sidecar write. Used by the
    * Phase A hook logger to record success/failure of the sidecar pipeline.
+   *
+   * `schemaVersion` indicates which parser produced the entry's thread meta:
+   *   - 'v2' — LLM emitted valid v2 JSON (preferred path)
+   *   - 'v1' — fell back to legacy [THREAD_META] markdown sentinel
+   *   - 'none' — neither succeeded; entry written without parsed meta
    */
   onSidecarWritten?: (info: {
     sidecarPath: string;
     summaryChars: number;
     metaMain: string | null;
+    schemaVersion: 'v1' | 'v2' | 'none';
   }) => void;
   /**
    * Optional callback invoked on sidecar pipeline failure (LLM empty, write
@@ -153,9 +159,24 @@ export async function runHotSwapWorker(params: WorkerParams): Promise<void> {
     }
 
     // Parse the LLM output to extract structured thread meta.
-    // The summary text itself is stored verbatim in `summary_rich`; the
-    // parsed meta is denormalized into `thread_meta` for cheap reads.
-    const parsed = parseCompactionOutput(fullSummary);
+    //
+    // Phase B2: try v2 schema (fenced ```json``` block) first; fall back to
+    // v1 ([THREAD_META] sentinel) if v2 fails. Records which schema produced
+    // the parse so the hook log can track v1 vs v2 distribution over time.
+    const parsed = parseCompactionOutputBestEffort(fullSummary);
+    const schemaVersion: 'v1' | 'v2' | 'none' = parsed.version;
+
+    if (schemaVersion === 'none' && parsed.errors.length > 0) {
+      // The LLM emitted SOMETHING that looked structured but failed v2
+      // validation, and v1 also missing. Surface in diag for tuning.
+      await diag(
+        `PARSE_NONE stub=${stubId} v2_errors=${parsed.errors.slice(0, 2).join('; ').slice(0, 200)}`,
+      );
+    } else if (schemaVersion === 'v1') {
+      await diag(`PARSE_V1_FALLBACK stub=${stubId} reason=${parsed.errors.slice(0, 1).join('|').slice(0, 150)}`);
+    } else if (schemaVersion === 'v2') {
+      await diag(`PARSE_V2 stub=${stubId} subs=${parsed.metaV2?.sub.length ?? 0}`);
+    }
 
     const sessionId = basename(sessionFile, '.jsonl');
     const entry: SidecarEntry = {
@@ -165,7 +186,9 @@ export async function runHotSwapWorker(params: WorkerParams): Promise<void> {
       stub_id: stubId,
       summary_rich: fullSummary,
       summary_chars: fullSummary.length,
-      ...(parsed.meta ? { thread_meta: parsed.meta } : {}),
+      schema_version: schemaVersion === 'v2' ? 'v2' : 'v1',
+      ...(parsed.metaV1 ? { thread_meta: parsed.metaV1 } : {}),
+      ...(parsed.metaV2 ? { thread_meta_v2: parsed.metaV2 } : {}),
       ...(compactionModel ? { model: compactionModel } : {}),
     };
 
@@ -181,16 +204,18 @@ export async function runHotSwapWorker(params: WorkerParams): Promise<void> {
       return;
     }
 
+    const metaMain = parsed.metaV2?.main ?? parsed.metaV1?.main ?? null;
     logger.info(
-      `[kasett-rewind:sidecar] Sidecar entry written for stub ${stubId} (${fullSummary.length} chars, meta_main=${parsed.meta?.main ?? 'null'})`,
+      `[kasett-rewind:sidecar] Sidecar entry written for stub ${stubId} (${fullSummary.length} chars, schema=${schemaVersion}, meta_main=${metaMain ?? 'null'})`,
     );
     await diag(
-      `SIDECAR_WRITTEN stub=${stubId} path=${sidecarPath} chars=${fullSummary.length} meta_main=${parsed.meta?.main ?? 'null'}`,
+      `SIDECAR_WRITTEN stub=${stubId} path=${sidecarPath} chars=${fullSummary.length} schema=${schemaVersion} meta_main=${metaMain ?? 'null'}`,
     );
     onSidecarWritten?.({
       sidecarPath,
       summaryChars: fullSummary.length,
-      metaMain: parsed.meta?.main ?? null,
+      metaMain,
+      schemaVersion,
     });
   } catch (err: unknown) {
     if (isAbortError(err)) {

@@ -58,11 +58,17 @@ export interface WorkerParams {
     /**
      * Optional callback invoked after a successful sidecar write. Used by the
      * Phase A hook logger to record success/failure of the sidecar pipeline.
+     *
+     * `schemaVersion` indicates which parser produced the entry's thread meta:
+     *   - 'v2' — LLM emitted valid v2 JSON (preferred path)
+     *   - 'v1' — fell back to legacy [THREAD_META] markdown sentinel
+     *   - 'none' — neither succeeded; entry written without parsed meta
      */
     onSidecarWritten?: (info: {
         sidecarPath: string;
         summaryChars: number;
         metaMain: string | null;
+        schemaVersion: 'v1' | 'v2' | 'none';
     }) => void;
     /**
      * Optional callback invoked on sidecar pipeline failure (LLM empty, write

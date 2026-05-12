@@ -24,6 +24,7 @@
  * sessions that have rich meta inline in the OC JSONL `summary` field still
  * work via fallback scanning of the JSONL.
  */
+import type { ThreadMetaV2 } from '../threads/schema.js';
 /**
  * Schema for one sidecar entry. Stable v1 schema. Additive changes only.
  *
@@ -49,11 +50,26 @@ export interface SidecarEntry {
     stub_id?: string;
     /** Full LLM-produced compaction summary (the "rich" content the JSONL never received) */
     summary_rich: string;
-    /** Parsed thread meta — main thread + 3 subs */
+    /** Parsed v1 thread meta — main thread + 3 subs. Always populated when the
+     * worker successfully parsed the LLM output, either directly (v1 mode) or
+     * via projection (v2 mode). Kept for backward compat with v1 readers. */
     thread_meta?: {
         main: string;
         sub: [string, string, string];
     };
+    /**
+     * Parsed v2 thread meta — full structured object with sub-thread `id`,
+     * `status`, decisions, and open_questions. Only set when the LLM output
+     * conformed to the v2 JSON schema. New writes after Phase B2 always
+     * attempt v2 first; absence of this field signals a v1 fallback or a
+     * legacy entry written before B2.
+     */
+    thread_meta_v2?: ThreadMetaV2;
+    /**
+     * Schema version that produced this entry. Defaults to v1 when absent for
+     * backward compat. Phase B2+ writes set this explicitly.
+     */
+    schema_version?: 'v1' | 'v2';
     /** Model identifier used for the LLM call (for debugging / drift analysis) */
     model?: string;
     /** Character count of summary_rich (denormalized for cheap scanning) */

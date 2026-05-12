@@ -1,7 +1,8 @@
 import { createReadStream } from 'node:fs';
 import { createInterface } from 'node:readline';
 import { readSidecar, sidecarExists } from './sidecar.js';
-import { parseCompactionOutput } from '../threads/parser.js';
+import { parseCompactionOutput, parseCompactionOutputV2 } from '../threads/parser.js';
+import { projectV2ToV1 } from '../threads/schema.js';
 /**
  * Error class for kasett-rewind operations.
  */
@@ -95,13 +96,20 @@ export class SessionReader {
     /**
      * Read the most recent thread meta from the session.
      * Sidecar-first; falls back to JSONL.
+     *
+     * Returns the v1-shaped ThreadMeta. When the sidecar entry is v2, the
+     * v1 shape is produced via `projectV2ToV1` (lossy projection for v1 readers).
+     * Use `readLatestMetaV2` to access the full v2 object directly.
      */
     async readLatestMeta(filePath) {
         if (sidecarExists(filePath)) {
             const entries = readSidecar(filePath);
             for (let i = entries.length - 1; i >= 0; i--) {
-                if (entries[i].thread_meta)
-                    return entries[i].thread_meta;
+                const e = entries[i];
+                if (e.thread_meta_v2)
+                    return projectV2ToV1(e.thread_meta_v2);
+                if (e.thread_meta)
+                    return e.thread_meta;
             }
         }
         // Fallback: scan JSONL
@@ -111,6 +119,92 @@ export class SessionReader {
                 return all[i].data.kaspiett;
         }
         return null;
+    }
+    /**
+     * Read the most recent v2 thread meta from the session, or null if none exists.
+     *
+     * V2-only — will not project v1 entries up to v2 (we have no `id`s or
+     * `status` in v1 to fabricate). Use `readLatestMeta` for the unified view.
+     */
+    async readLatestMetaV2(filePath) {
+        if (sidecarExists(filePath)) {
+            const entries = readSidecar(filePath);
+            for (let i = entries.length - 1; i >= 0; i--) {
+                if (entries[i].thread_meta_v2)
+                    return entries[i].thread_meta_v2;
+            }
+        }
+        return null;
+    }
+    /**
+     * Read the last N v1+v2 thread metas, oldest first. Each slot reports
+     * BOTH shapes when available so callers can pick: the orientation
+     * builder uses v2 when present, falls back to v1 when not.
+     *
+     * For sidecar entries with `thread_meta_v2`, both fields are populated
+     * (v1 via `projectV2ToV1`). For legacy entries, only v1 is populated.
+     */
+    async readLastNWithMetaV2(filePath, count) {
+        if (count <= 0)
+            return [];
+        const sidecarEntries = sidecarExists(filePath) ? readSidecar(filePath) : [];
+        const jsonlEvents = await this.readCompactionEvents(filePath);
+        // Build per-stub lookup of sidecar entries
+        const sidecarByStub = new Map();
+        for (const e of sidecarEntries) {
+            if (e.stub_id)
+                sidecarByStub.set(e.stub_id, e);
+            sidecarByStub.set(e.compaction_id, e);
+        }
+        const KASETT_STUB_ID_RE = /\[KASETT_STUB::([0-9a-f-]{36})\]/i;
+        const results = [];
+        for (const ev of jsonlEvents) {
+            // First check if this JSONL slot has a matching sidecar (sidecar wins)
+            const m = ev.data.summary.match(KASETT_STUB_ID_RE);
+            let sidecar;
+            if (m)
+                sidecar = sidecarByStub.get(m[1]);
+            if (sidecar) {
+                const slot = {};
+                if (sidecar.thread_meta_v2) {
+                    slot.v2 = sidecar.thread_meta_v2;
+                    slot.v1 = projectV2ToV1(sidecar.thread_meta_v2);
+                }
+                else if (sidecar.thread_meta) {
+                    slot.v1 = sidecar.thread_meta;
+                }
+                if (slot.v1 || slot.v2)
+                    results.push(slot);
+                continue;
+            }
+            // No sidecar match — use JSONL kaspiett (v1 only) if present
+            if (ev.data.kaspiett) {
+                results.push({ v1: ev.data.kaspiett });
+            }
+        }
+        // Append any orphaned sidecar entries (defensive)
+        const seenStubs = new Set();
+        for (const ev of jsonlEvents) {
+            const m = ev.data.summary.match(KASETT_STUB_ID_RE);
+            if (m)
+                seenStubs.add(m[1]);
+        }
+        for (const e of sidecarEntries) {
+            const id = e.stub_id ?? e.compaction_id;
+            if (seenStubs.has(id))
+                continue;
+            const slot = {};
+            if (e.thread_meta_v2) {
+                slot.v2 = e.thread_meta_v2;
+                slot.v1 = projectV2ToV1(e.thread_meta_v2);
+            }
+            else if (e.thread_meta) {
+                slot.v1 = e.thread_meta;
+            }
+            if (slot.v1 || slot.v2)
+                results.push(slot);
+        }
+        return results.slice(-count);
     }
     /**
      * Read the most recent compaction summary string.
@@ -227,13 +321,21 @@ export class SessionReader {
                     return undefined;
                 // Extract kaspiett if present as a structured field
                 let kaspiett = parseKaspiett(kaspiettRaw);
-                // If no structured field, try parsing [THREAD_META] from the summary
-                // text itself (legacy + fixture layout). This is what enables backward
-                // compatibility for sessions that pre-date the sidecar.
+                // If no structured field, try parsing [THREAD_META] (v1) or fenced
+                // JSON (v2) from the summary text itself. This is what enables
+                // backward compatibility for sessions that pre-date the sidecar AND
+                // forward-compatibility for v2 inline summaries (rare but possible
+                // when the LLM call lands directly in OC's storage path).
                 if (!kaspiett) {
-                    const fromText = parseCompactionOutput(summary).meta;
-                    if (fromText)
-                        kaspiett = fromText;
+                    const v2 = parseCompactionOutputV2(summary);
+                    if (v2.metaV1) {
+                        kaspiett = v2.metaV1;
+                    }
+                    else {
+                        const fromText = parseCompactionOutput(summary).meta;
+                        if (fromText)
+                            kaspiett = fromText;
+                    }
                 }
                 return {
                     type: 'compaction',
@@ -275,12 +377,17 @@ function parseKaspiett(raw) {
  * Convert a sidecar entry into a CompactionEvent for backward-compatible APIs.
  */
 function sidecarEntryToCompactionEvent(entry) {
-    const meta = entry.thread_meta
-        ? {
+    // Prefer v2 (project to v1 shape for legacy callers); fall back to v1.
+    let meta;
+    if (entry.thread_meta_v2) {
+        meta = projectV2ToV1(entry.thread_meta_v2);
+    }
+    else if (entry.thread_meta) {
+        meta = {
             main: entry.thread_meta.main,
             sub: entry.thread_meta.sub,
-        }
-        : undefined;
+        };
+    }
     return {
         type: 'compaction',
         id: entry.stub_id ?? entry.compaction_id,
