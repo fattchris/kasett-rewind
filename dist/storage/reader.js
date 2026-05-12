@@ -159,6 +159,24 @@ export class SessionReader {
         return null;
     }
     /**
+     * Read the lifecycle events recorded on the most recent sidecar entry,
+     * or an empty array if none exists. Phase D — used by the steering
+     * builder to surface recent renames/merges as continuity hints, and by
+     * the orientation builder to note recent renames inline.
+     */
+    async readLatestLifecycleEvents(filePath) {
+        if (!sidecarExists(filePath))
+            return [];
+        const entries = readSidecar(filePath);
+        for (let i = entries.length - 1; i >= 0; i--) {
+            const e = entries[i];
+            if (e.lifecycle_events && e.lifecycle_events.length > 0) {
+                return e.lifecycle_events;
+            }
+        }
+        return [];
+    }
+    /**
      * Read the last N thread metas with all available shapes (v1, v2, v3),
      * oldest first. Each slot reports every shape that's available so callers
      * can pick: orientation v3 uses v3+key_state when present, v2 falls back

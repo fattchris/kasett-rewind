@@ -9,6 +9,7 @@ import {
 } from '../threads/parser.js';
 import type { ThreadMetaV2, ThreadMetaV3 } from '../threads/schema.js';
 import { projectV2ToV1, projectV3ToV2 } from '../threads/schema.js';
+import type { LifecycleEvent } from '../threads/lifecycle.js';
 
 /**
  * Error class for kasett-rewind operations.
@@ -171,6 +172,24 @@ export class SessionReader {
       }
     }
     return null;
+  }
+
+  /**
+   * Read the lifecycle events recorded on the most recent sidecar entry,
+   * or an empty array if none exists. Phase D — used by the steering
+   * builder to surface recent renames/merges as continuity hints, and by
+   * the orientation builder to note recent renames inline.
+   */
+  async readLatestLifecycleEvents(filePath: string): Promise<LifecycleEvent[]> {
+    if (!sidecarExists(filePath)) return [];
+    const entries = readSidecar(filePath);
+    for (let i = entries.length - 1; i >= 0; i--) {
+      const e = entries[i];
+      if (e.lifecycle_events && e.lifecycle_events.length > 0) {
+        return e.lifecycle_events;
+      }
+    }
+    return [];
   }
 
   /**

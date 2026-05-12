@@ -22,9 +22,11 @@
  */
 import { appendFile } from 'node:fs/promises';
 import { basename } from 'node:path';
-import { writeSidecarEntry, sidecarPathFor } from '../storage/sidecar.js';
+import { writeSidecarEntry, sidecarPathFor, readSidecar } from '../storage/sidecar.js';
 import { parseCompactionOutputBestEffort } from '../threads/parser.js';
 import { detectCandidateKeyState } from '../keystate/detector.js';
+import { matchAllThreads } from '../threads/identity.js';
+import { detectLifecycleEvents } from '../threads/lifecycle.js';
 const DIAG_LOG = '/home/node/.openclaw/workspace/repos/kasett-rewind/research/hotswap-diag.log';
 async function diag(msg) {
     const ts = new Date().toISOString();
@@ -105,6 +107,37 @@ export async function runHotSwapWorker(params) {
         }
         const sessionId = basename(sessionFile, '.jsonl');
         const sidecarSchemaVersion = schemaVersion === 'v3' ? 'v3' : schemaVersion === 'v2' ? 'v2' : 'v1';
+        // Phase D — lifecycle event detection against the previous compaction.
+        // Advisory only: failure here MUST NOT stop the sidecar write.
+        let lifecycleEvents;
+        try {
+            const currentMeta = parsed.metaV3 ?? parsed.metaV2 ?? undefined;
+            if (currentMeta && currentMeta.sub.length > 0) {
+                const existing = readSidecar(sessionFile);
+                let prevMeta;
+                for (let i = existing.length - 1; i >= 0; i--) {
+                    const e = existing[i];
+                    if (e.thread_meta_v3) {
+                        prevMeta = e.thread_meta_v3;
+                        break;
+                    }
+                    if (e.thread_meta_v2) {
+                        prevMeta = e.thread_meta_v2;
+                        break;
+                    }
+                }
+                if (prevMeta && prevMeta.sub.length > 0) {
+                    const matches = matchAllThreads(currentMeta.sub, prevMeta.sub);
+                    const events = detectLifecycleEvents(prevMeta.sub, currentMeta.sub, matches);
+                    if (events.length > 0)
+                        lifecycleEvents = events;
+                }
+            }
+        }
+        catch (err) {
+            // Advisory — swallow and log only.
+            await diag(`LIFECYCLE_DETECT_FAIL stub=${stubId} err=${String(err).slice(0, 200)}`);
+        }
         const entry = {
             ts: new Date().toISOString(),
             session_id: sessionId,
@@ -119,6 +152,7 @@ export async function runHotSwapWorker(params) {
             ...(keyStateCandidates.length > 0
                 ? { key_state_candidates: keyStateCandidates }
                 : {}),
+            ...(lifecycleEvents ? { lifecycle_events: lifecycleEvents } : {}),
             ...(compactionModel ? { model: compactionModel } : {}),
         };
         let sidecarPath;

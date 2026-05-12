@@ -26,6 +26,13 @@ TOTAL_KEY_STATE=0
 KEY_STATE_COMPACTIONS=0
 FIVE_PLUS_KEY_STATE_SESSIONS=0
 
+# Phase D — lifecycle event aggregation
+TOTAL_LIFECYCLE_EVENTS=0
+LIFECYCLE_RENAMED=0
+LIFECYCLE_MERGED=0
+LIFECYCLE_SPLIT=0
+LIFECYCLE_COMPACTIONS=0
+
 echo "## Sessions Compacted (last 24h)" >> "$OUTPUT"
 echo "" >> "$OUTPUT"
 
@@ -159,6 +166,50 @@ print(f'{total} {compactions_with_ks} {max_ks}')
     FIVE_PLUS_KEY_STATE_SESSIONS=$((FIVE_PLUS_KEY_STATE_SESSIONS + 1))
   fi
 
+  # Phase D — lifecycle events tally per session
+  LC_STATS=$(python3 -c "
+import sys, json, os
+path = sys.argv[1] + '.kasett-meta.jsonl'
+total = 0
+renamed = 0
+merged = 0
+split = 0
+compactions_with = 0
+if os.path.exists(path):
+    try:
+        with open(path, 'r', encoding='utf-8', errors='replace') as sf:
+            for line in sf:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    obj = json.loads(line)
+                except Exception:
+                    continue
+                evs = obj.get('lifecycle_events')
+                if isinstance(evs, list) and len(evs) > 0:
+                    compactions_with += 1
+                    total += len(evs)
+                    for e in evs:
+                        k = e.get('kind') if isinstance(e, dict) else None
+                        if k == 'renamed': renamed += 1
+                        elif k == 'merged': merged += 1
+                        elif k == 'split': split += 1
+    except Exception:
+        pass
+print(f'{total} {renamed} {merged} {split} {compactions_with}')
+" "$session_file" 2>/dev/null) || LC_STATS="0 0 0 0 0"
+  LC_TOTAL=$(echo "$LC_STATS" | awk '{print $1}')
+  LC_RENAMED=$(echo "$LC_STATS" | awk '{print $2}')
+  LC_MERGED=$(echo "$LC_STATS" | awk '{print $3}')
+  LC_SPLIT=$(echo "$LC_STATS" | awk '{print $4}')
+  LC_COMP=$(echo "$LC_STATS" | awk '{print $5}')
+  TOTAL_LIFECYCLE_EVENTS=$((TOTAL_LIFECYCLE_EVENTS + LC_TOTAL))
+  LIFECYCLE_RENAMED=$((LIFECYCLE_RENAMED + LC_RENAMED))
+  LIFECYCLE_MERGED=$((LIFECYCLE_MERGED + LC_MERGED))
+  LIFECYCLE_SPLIT=$((LIFECYCLE_SPLIT + LC_SPLIT))
+  LIFECYCLE_COMPACTIONS=$((LIFECYCLE_COMPACTIONS + LC_COMP))
+
   if [[ "$STATUS" == "rich-sidecar" || "$STATUS" == "rich-inline" || "$STATUS" == "stub" || "$STATUS" == "kasett-other" ]]; then
     KASETT_HANDLED=$((KASETT_HANDLED + 1))
     if [[ "$STATUS" == "rich-sidecar" ]]; then
@@ -272,6 +323,19 @@ if [ "$KEY_STATE_COMPACTIONS" -gt 0 ]; then
 fi
 echo "" >> "$OUTPUT"
 echo "_For per-session KSSR (preserved/detected), run \`scripts/measure-kssr.js <session.jsonl>\` on individual sessions._" >> "$OUTPUT"
+
+echo "" >> "$OUTPUT"
+echo "### Thread lifecycle (Phase D)" >> "$OUTPUT"
+echo "" >> "$OUTPUT"
+echo "- Total lifecycle events: $TOTAL_LIFECYCLE_EVENTS" >> "$OUTPUT"
+echo "- Compactions with lifecycle events: $LIFECYCLE_COMPACTIONS" >> "$OUTPUT"
+echo "- Renamed: $LIFECYCLE_RENAMED  Merged: $LIFECYCLE_MERGED  Split: $LIFECYCLE_SPLIT" >> "$OUTPUT"
+if [ "$LIFECYCLE_COMPACTIONS" -gt 0 ]; then
+  RENAME_PER_100=$((LIFECYCLE_RENAMED * 100 / LIFECYCLE_COMPACTIONS))
+  echo "- Renames per 100 lifecycle-bearing compactions: $RENAME_PER_100" >> "$OUTPUT"
+fi
+echo "" >> "$OUTPUT"
+echo "_For per-session detail, run \`node scripts/identity-report.js\`._" >> "$OUTPUT"
 
 echo "" >> "$OUTPUT"
 echo "## Observations" >> "$OUTPUT"

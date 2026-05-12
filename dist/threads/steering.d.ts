@@ -19,6 +19,7 @@
 import type { ThreadMeta } from '../types.js';
 import type { KeyStateEntry, ThreadMetaV2, ThreadMetaV3 } from './schema.js';
 import type { WeightedSummary } from './weight.js';
+import type { LifecycleEvent } from './lifecycle.js';
 /** Steering output mode — controls how the prompt instructs the LLM to format the meta. */
 export type StructuredOutputMode = 'json' | 'tool' | 'markdown';
 /**
@@ -54,6 +55,12 @@ export interface SteeringOptions {
      * encouraged to carry these forward when still relevant (continuity).
      */
     previousKeyState?: ReadonlyArray<KeyStateEntry>;
+    /**
+     * Lifecycle events detected between the last compaction and the one
+     * before it (Phase D). Surfaced as continuity hints so the LLM can
+     * preserve stable IDs after a rename / merge / split.
+     */
+    recentLifecycle?: ReadonlyArray<LifecycleEvent>;
 }
 /**
  * Build the orientation string for the before_prompt_build hook.
@@ -96,7 +103,7 @@ export declare function buildOrientationPromptV3(metas: Array<{
     v1?: ThreadMeta;
     v2?: ThreadMetaV2;
     v3?: ThreadMetaV3;
-}>): string | null;
+}>, recentLifecycle?: ReadonlyArray<LifecycleEvent>): string | null;
 /**
  * Build the pre-compaction steering prompt.
  *

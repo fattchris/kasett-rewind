@@ -139,7 +139,7 @@ export function buildOrientationPromptV2(metas) {
  * @param metas — Most-recent-first list. Each entry can be V1, V2, V3, or any
  *                 mix. V3 wins when both V2 and V3 are present.
  */
-export function buildOrientationPromptV3(metas) {
+export function buildOrientationPromptV3(metas, recentLifecycle) {
     if (metas.length === 0)
         return null;
     // Project V3 → V2 for the V2 builder so we don't duplicate that logic.
@@ -150,16 +150,40 @@ export function buildOrientationPromptV3(metas) {
     const base = buildOrientationPromptV2(v2Metas);
     if (!base)
         return null;
+    const lines = [base];
     // Append Recent values from the MOST RECENT meta's key_state
     const current = metas[0];
     const ks = current.v3?.key_state;
-    if (!ks || ks.length === 0)
-        return base;
-    const lines = [base, '', '## Recent values'];
-    for (const e of ks) {
-        const label = e.label ? `${e.label}: ` : '';
-        lines.push(`  - ${label}${e.value}`);
+    if (ks && ks.length > 0) {
+        lines.push('');
+        lines.push('## Recent values');
+        for (const e of ks) {
+            const label = e.label ? `${e.label}: ` : '';
+            lines.push(`  - ${label}${e.value}`);
+        }
     }
+    // Phase D: surface recent thread renames so the agent recognizes
+    // continuity even when labels drift between compactions.
+    if (recentLifecycle && recentLifecycle.length > 0) {
+        const renames = recentLifecycle.filter((e) => e.kind === 'renamed');
+        const merges = recentLifecycle.filter((e) => e.kind === 'merged');
+        if (renames.length > 0 || merges.length > 0) {
+            lines.push('');
+            lines.push('## Recent thread changes');
+            for (const e of renames) {
+                if (e.kind !== 'renamed')
+                    continue;
+                lines.push(`  - "${e.from_label}" was renamed to "${e.to_label}" last compaction`);
+            }
+            for (const e of merges) {
+                if (e.kind !== 'merged')
+                    continue;
+                lines.push(`  - threads merged into "${e.into_id}" (from: ${e.from_ids.join(', ')})`);
+            }
+        }
+    }
+    if (lines.length === 1)
+        return base;
     return lines.join('\n');
 }
 /**
@@ -211,7 +235,7 @@ export function buildSteeringPrompt(weightedSummaries, options = {}) {
     else {
         // 'json' or 'tool' — the prompt is the same; the call site decides
         // whether to also pass response_format / tool_choice to the provider.
-        sections.push(buildJsonInstructions(options.previousSubIds, options.candidateKeyState, options.previousKeyState));
+        sections.push(buildJsonInstructions(options.previousSubIds, options.candidateKeyState, options.previousKeyState, options.recentLifecycle));
     }
     return sections.join('\n');
 }
@@ -240,7 +264,7 @@ function buildMarkdownInstructions() {
 // ---------------------------------------------------------------------------
 // V2 JSON-mode instructions (default)
 // ---------------------------------------------------------------------------
-function buildJsonInstructions(previousSubIds, candidateKeyState, previousKeyState) {
+function buildJsonInstructions(previousSubIds, candidateKeyState, previousKeyState, recentLifecycle) {
     const lines = [];
     lines.push('Your response MUST contain TWO things, in this order:');
     lines.push('');
@@ -271,6 +295,33 @@ function buildJsonInstructions(previousSubIds, candidateKeyState, previousKeySta
         lines.push(`- Previous sub-thread IDs (REUSE when threads continue): ${previousSubIds
             .map((id) => `"${id}"`)
             .join(', ')}`);
+    }
+    if (recentLifecycle && recentLifecycle.length > 0) {
+        const renames = recentLifecycle.filter((e) => e.kind === 'renamed');
+        const merges = recentLifecycle.filter((e) => e.kind === 'merged');
+        const splits = recentLifecycle.filter((e) => e.kind === 'split');
+        if (renames.length > 0 || merges.length > 0 || splits.length > 0) {
+            lines.push('');
+            lines.push('#### Recent thread lifecycle (last compaction)');
+            lines.push('');
+            lines.push('These changes were detected between the last two compactions. ' +
+                'Use them to keep IDs stable: if a thread was renamed, prefer its new id going forward.');
+            for (const e of renames) {
+                if (e.kind !== 'renamed')
+                    continue;
+                lines.push(`  - renamed: "${e.from_id}" ("${e.from_label}") → "${e.to_id}" ("${e.to_label}")`);
+            }
+            for (const e of merges) {
+                if (e.kind !== 'merged')
+                    continue;
+                lines.push(`  - merged: [${e.from_ids.map((id) => `"${id}"`).join(', ')}] → "${e.into_id}"`);
+            }
+            for (const e of splits) {
+                if (e.kind !== 'split')
+                    continue;
+                lines.push(`  - split: "${e.from_id}" → [${e.into_ids.map((id) => `"${id}"`).join(', ')}]`);
+            }
+        }
     }
     lines.push('- `decisions` (optional, max 5) captures KEY decisions made since last compaction. ' +
         'Skip if nothing important was decided. Plain sentences.');

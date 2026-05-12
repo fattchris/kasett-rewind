@@ -71,9 +71,25 @@ import type {
   ThreadMetaV3,
   ThreadSubV2,
 } from './schema.js';
+import { matchAllThreads, type IdentityMatch, type MatchOptions } from './identity.js';
 
-/** Classification of a single sub-thread relative to recent history. */
-export type ThreadContinuityClass = 'core' | 'fresh' | 'fading';
+/**
+ * Classification of a single sub-thread relative to recent history.
+ *
+ * Phase D adds two non-exclusive identity-aware classifications stacked
+ * on top of the legacy core/fresh/fading taxonomy:
+ *   - 'renamed'  — appears under a new label this compaction
+ *   - 'merged'   — collapses multiple prior threads into one
+ *
+ * For the legacy classifier output (V1/V2 paths) only the original three
+ * are emitted. Identity-aware paths return the richer enum.
+ */
+export type ThreadContinuityClass =
+  | 'core'
+  | 'fresh'
+  | 'fading'
+  | 'renamed'
+  | 'merged';
 
 export interface ClassifiedThread {
   /** The thread's stable id (v2) or label-as-id fallback (v1) */
@@ -325,4 +341,206 @@ export function pickContinuityKeyState(
       if (c.label) out.label = c.label;
       return out;
     });
+}
+
+// ---------------------------------------------------------------------------
+// Identity-aware thread classification (Phase D)
+// ---------------------------------------------------------------------------
+//
+// classifyThreadsV2 above does exact-id matching and emits core/fresh/fading.
+// classifyThreadsWithIdentity stacks the multi-tier matcher (identity.ts)
+// on top so threads renamed across compactions still classify as continuous,
+// and threads merged across compactions surface as 'merged' instead of
+// "fresh + fading" pair.
+//
+// API choice: returns a SUPERSET of ClassifiedThread that adds optional
+// identity fields. Existing callers that read `.classification` keep
+// working — the new enum values 'renamed' / 'merged' are additive.
+// ---------------------------------------------------------------------------
+
+export interface ClassifiedThreadWithIdentity extends ClassifiedThread {
+  /** Identity match against the IMMEDIATELY previous compaction (if any). */
+  identity?: IdentityMatch;
+  /** When classification is 'merged', the previous IDs that folded into here. */
+  mergedFrom?: string[];
+  /** When classification is 'renamed', the previous label this came from. */
+  renamedFrom?: string;
+}
+
+export interface IdentityClassifyOptions extends MatchOptions {
+  /**
+   * Identity-aware threshold for "core". Default same as classifyThreadsV2:
+   * appears in ≥ ceil(N/2) compactions AND is in the most-recent.
+   */
+  coreThreshold?: number;
+}
+
+/**
+ * Multi-tier-matched continuity classification across a window of v2 metas.
+ *
+ * Walks the window oldest-first, building a canonical ID timeline:
+ *   - At each step, match the meta's threads against the previous step
+ *     using identity.matchAllThreads.
+ *   - Carry forward the canonical ID (oldest known ID for the chain).
+ *   - When the matcher reports `merged`, attach mergedFrom on the canonical.
+ *
+ * Then collapse to a per-canonical record and apply the same core/fresh/
+ * fading thresholds as classifyThreadsV2, with two extra rules:
+ *   - If the most recent meta's thread renamed from an earlier label →
+ *     classification = 'renamed' (instead of 'core' / 'fresh' — rename is
+ *     more informative)
+ *   - If the most recent meta's thread is the merge target of ≥2 previous
+ *     canonicals → classification = 'merged'
+ *
+ * @param metas - Most-recent-first array of v2 metas.
+ */
+export function classifyThreadsWithIdentity(
+  metas: ReadonlyArray<ThreadMetaV2>,
+  options: IdentityClassifyOptions = {},
+): ClassifiedThreadWithIdentity[] {
+  if (metas.length === 0) return [];
+
+  // Walk OLDEST first so canonical IDs anchor on oldest occurrence.
+  const oldestFirst = [...metas].reverse();
+
+  // canonicalId -> tracker
+  type Tracker = {
+    canonicalId: string;
+    label: string;
+    appearances: number;
+    /** Most recent slot index in oldest-first ordering (= newest slot = high index) */
+    lastSlot: number;
+    /** Oldest slot in oldest-first ordering */
+    firstSlot: number;
+    latestStatus: ThreadSubV2['status'];
+    renamedFrom?: string;
+    mergedFrom?: string[];
+    /** Identity match for newest slot occurrence */
+    latestIdentity?: IdentityMatch;
+  };
+  const trackers = new Map<string, Tracker>();
+  // Map from "id-as-seen-at-slot-i" to canonicalId, so subsequent slots
+  // can fold matches into the same canonical.
+  const idToCanonical = new Map<string, string>();
+
+  // Slot 0 (oldest): seed canonicals from the first meta.
+  const firstSubs = oldestFirst[0]?.sub ?? [];
+  for (const s of firstSubs) {
+    trackers.set(s.id, {
+      canonicalId: s.id,
+      label: s.label,
+      appearances: 1,
+      lastSlot: 0,
+      firstSlot: 0,
+      latestStatus: s.status,
+    });
+    idToCanonical.set(s.id, s.id);
+  }
+
+  for (let slot = 1; slot < oldestFirst.length; slot++) {
+    const prev = oldestFirst[slot - 1];
+    const cur = oldestFirst[slot];
+    const matches = matchAllThreads(cur.sub, prev.sub, options);
+
+    // For each current thread, find its canonical via the matcher.
+    // Track multi-merge: collect previous canonicals matching into this
+    // current via the lifecycle.detectLifecycleEvents merged heuristic.
+    for (const c of cur.sub) {
+      const m = matches.get(c.id) ?? { strategy: 'none', confidence: 0 };
+      let canonicalId: string | undefined;
+      let renamedFrom: string | undefined;
+      const mergedFrom: string[] = [];
+
+      if (m.strategy !== 'none' && m.matched_to) {
+        canonicalId = idToCanonical.get(m.matched_to);
+        if (m.evolved) {
+          const prevSub = prev.sub.find((p) => p.id === m.matched_to);
+          if (prevSub) renamedFrom = prevSub.label;
+        }
+      }
+
+      // Merge heuristic: any other previous threads whose label is a
+      // substring of c.label (or vice versa, ≥4 chars) and whose canonical
+      // hasn't yet been forwarded to a current in THIS slot.
+      const cLabel = c.label.trim().toLowerCase();
+      for (const p of prev.sub) {
+        if (m.matched_to && p.id === m.matched_to) continue;
+        const pLabel = p.label.trim().toLowerCase();
+        if (!pLabel || pLabel === cLabel) continue;
+        const shorter = cLabel.length < pLabel.length ? cLabel : pLabel;
+        const longer = cLabel.length < pLabel.length ? pLabel : cLabel;
+        if (longer.includes(shorter) && shorter.length >= 4) {
+          const otherCanonical = idToCanonical.get(p.id);
+          if (otherCanonical && (!canonicalId || otherCanonical !== canonicalId)) {
+            mergedFrom.push(otherCanonical);
+          }
+        }
+      }
+
+      if (!canonicalId) {
+        // Genuinely new
+        canonicalId = c.id;
+        trackers.set(canonicalId, {
+          canonicalId,
+          label: c.label,
+          appearances: 1,
+          lastSlot: slot,
+          firstSlot: slot,
+          latestStatus: c.status,
+        });
+      } else {
+        const t = trackers.get(canonicalId);
+        if (t) {
+          t.appearances += 1;
+          t.lastSlot = slot;
+          t.label = c.label; // newest label wins (display-only)
+          t.latestStatus = c.status;
+          if (renamedFrom) t.renamedFrom = renamedFrom;
+          t.latestIdentity = m;
+        }
+      }
+
+      // If we detected merges, fold the trackers
+      if (mergedFrom.length > 0) {
+        const t = trackers.get(canonicalId);
+        if (t) {
+          t.mergedFrom = Array.from(new Set([...(t.mergedFrom ?? []), ...mergedFrom]));
+        }
+      }
+
+      idToCanonical.set(c.id, canonicalId);
+    }
+  }
+
+  // Build result. classify against newest slot = oldestFirst.length - 1.
+  const newestSlot = oldestFirst.length - 1;
+  const threshold = options.coreThreshold ?? Math.max(2, Math.ceil(metas.length / 2));
+  const result: ClassifiedThreadWithIdentity[] = [];
+  for (const t of trackers.values()) {
+    let classification: ThreadContinuityClass;
+    const inMostRecent = t.lastSlot === newestSlot;
+    if (t.mergedFrom && t.mergedFrom.length > 0 && inMostRecent) {
+      classification = 'merged';
+    } else if (t.renamedFrom && inMostRecent) {
+      classification = 'renamed';
+    } else if (t.appearances >= threshold && inMostRecent) {
+      classification = 'core';
+    } else if (t.firstSlot === newestSlot && t.appearances === 1) {
+      classification = 'fresh';
+    } else {
+      classification = 'fading';
+    }
+    const out: ClassifiedThreadWithIdentity = {
+      id: t.canonicalId,
+      label: t.label,
+      classification,
+      appearances: t.appearances,
+      latestStatus: t.latestStatus,
+    };
+    if (t.latestIdentity) out.identity = t.latestIdentity;
+    if (t.mergedFrom && t.mergedFrom.length > 0) out.mergedFrom = t.mergedFrom;
+    if (t.renamedFrom) out.renamedFrom = t.renamedFrom;
+    result.push(out);
+  }
+  return result;
 }

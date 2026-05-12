@@ -109,31 +109,47 @@ Key state is now a first-class structured field in the compaction sidecar. The s
 
 ---
 
-## Phase D - Thread Identity (embedding-based continuity)
+## Phase D - Thread Identity
 
-**Goal:** Replace 50% substring matching with embedding-based similarity for thread evolution tracking. (V2's stable `id`s already cover the LLM-supplied path; D adds embedding-based detection for cases where the LLM forgets to reuse an id, plus optional cross-session linking.)
+**Goal:** Make sub-thread continuity robust across compactions even when the LLM drops or changes the stable `id`. Multi-tier matcher (exact-id → lexical Jaccard → hash-fingerprint cosine) plus lifecycle event detection for created / completed / blocked / renamed / merged / split.
 
-**Status:** 🔵 QUEUED — next phase after Phase C.
+**Status:** ✅ COMPLETE (2026-05-12) — identity matcher + embedding + lifecycle + steering hints + sidecar field + worker integration + reader + report script + 51 new tests; 321/321 passing.
 
-### Tasks (preview)
-- [ ] D1. Sub-thread renaming detection — LLM forgot to reuse id but the label is clearly the same thread. Use a small local embedding model (or simple TF-IDF / cosine on labels) to detect.
-- [ ] D2. KeyState clustering — same value seen with different `kind` classifications (rare but a sign of LLM/detector disagreement). Surface as a diagnostic hint.
-- [ ] D3. Thread merge / split detection — two threads in compaction N collapse into one in N+1, or vice versa. Heuristic + LLM-aided.
-- [ ] D4. Optional cross-session thread index (small SQLite or JSONL) for E.
-- [ ] D5. Diagnostic surfacing — "thread renamed" / "thread split" notes in steering prompt to nudge LLM toward stable ids.
+### Tasks
+- [x] D1. `src/threads/identity.ts` — multi-tier matcher (exact-id → lexical → semantic). `IdentityMatch` exposes strategy, confidence, matched_to, evolved.
+- [x] D2. Tokenize + Jaccard helpers (in identity.ts) — stopword filter, lowercased alphanumeric splits, defensive empty-set handling.
+- [x] D3. `src/threads/embedding.ts` — hash-fingerprint pseudo-embedding using SHA-1-mod-N bit vectors with cosine similarity. Honest about being a heuristic, not a real semantic embedding. No external deps.
+- [x] D4. `src/threads/lifecycle.ts` — `detectLifecycleEvents` derives created/completed/blocked/renamed/merged/split from matcher output.
+- [x] D5. `src/threads/weight.ts` — `classifyThreadsWithIdentity` walks oldest-first to anchor canonical IDs, classifies as core/fresh/fading/renamed/merged.
+- [x] D6. `src/threads/steering.ts` — `recentLifecycle` option threads renames/merges/splits into the steering prompt as continuity hints.
+- [x] D7. `src/storage/sidecar.ts` — optional `lifecycle_events` field. Worker computes and stores it at write time using the previous sidecar entry.
+- [x] D8. `src/storage/reader.ts` + steering V3 orientation — `readLatestLifecycleEvents` and an optional `recentLifecycle` parameter on `buildOrientationPromptV3` surface recent renames in the orientation context.
+- [x] D9. Tests — 51 new across `identity.test.ts`, `embedding.test.ts`, `lifecycle.test.ts`, `weight-identity.test.ts`. Existing 270 still pass. Total: **321/321**.
+- [x] D10. `scripts/identity-report.js` — per-session + aggregate lifecycle event counts; rename-rate signal. `scripts/daily-compaction-review.sh` enhanced with a Thread lifecycle section.
+- [x] D11. PHASES-TRACKER + phase-d-progress updated; ready for commit.
+
+### Headline
+
+The LLM's stable `id` is the strong path; D adds two fallback tiers so threads survive label drift (Jaccard catches "infra-deploy" → "deploy") and recognize evolution (rename / merge / split as first-class events). Lifecycle events are advisory — if classification is uncertain we omit them rather than guess. Backward compat preserved: V1/V2/V3 sidecars all still read; pre-D entries simply have no `lifecycle_events`.
+
+### Pending real-world data
+
+Worker integration (`hotswap/worker.ts`) is wired and unit-tested. Production sessions will start emitting `lifecycle_events` once kasett re-deploys; identity report will then show real rename-rate per compaction — the quality signal we'll watch for steering effectiveness.
 
 ---
 
 ## Phase E - Multi-session threads
 
-**Goal:** Threads that span topics/sessions (e.g., a feature spanning multiple chats).
+**Goal:** Threads that span topics/sessions — a feature spanning multiple chats keeps a single canonical identity across them. Builds directly on Phase D's identity machinery, projecting it from per-session to cross-session scope.
 
-**Status:** ⏸ QUEUED
+**Status:** 🔵 QUEUED — next phase after Phase D.
 
 ### Tasks (preview)
-- [ ] E1. Cross-session thread index
-- [ ] E2. Migration when topics merge
-- [ ] E3. Aggregation views
+- [ ] E1. Cross-session thread index (JSONL log of canonical thread IDs + per-session occurrence rows). Use D's matcher for cross-session match.
+- [ ] E2. Migration / continuity when topics merge or fork (sibling Telegram topics, OC session reset, intentional thread rebadging).
+- [ ] E3. Aggregation view: "this thread has been worked on across N sessions over M days; latest compaction sidecar links".
+- [ ] E4. CLI: `kasett-rewind threads list --canonical <id>` to inspect cross-session continuity.
+- [ ] E5. Identity report extended to cross-session aggregates (renames detected across session boundaries are a higher-cost continuity miss than within-session renames).
 
 ---
 
@@ -151,6 +167,9 @@ Key state is now a first-class structured field in the compaction sidecar. The s
 | 2026-05-12 | Phase C: V3 = V2 + optional `key_state[]` (single schema, single parser) over a separate sidecar | Simpler: one LLM call, one fence, one validator. V2 entries remain readable as V3 with `key_state: undefined`; V3 entries readable by V2 readers via `projectV3ToV2`. |
 | 2026-05-12 | Detector is heuristic / advisory only — LLM decides what to keep | False positives cost a few prompt tokens; missed values cost continuity. Detector errs toward higher recall and the LLM filters in the structured output. |
 | 2026-05-12 | Sidecar stores BOTH `key_state_candidates` (detected) AND `thread_meta_v3.key_state` (preserved) | Required for empirical KSSR measurement: KSSR = preserved∩detected / detected. Without storing the candidate set we can't reproduce the metric after the fact. |
+| 2026-05-12 | Phase D: hash-fingerprint pseudo-embedding instead of a real semantic model | Zero external deps. Honest heuristic. Catches drift exact-id and Jaccard miss. If we later need real semantics, the public API (`fingerprint`, `fingerprintCosine`) is small enough to swap. |
+| 2026-05-12 | Lifecycle events advisory-only — detector failure logged but never blocks sidecar write | Continuity hints are useful when correct, but never worth dropping the actual rich summary over. False positives at this layer cost a few prompt tokens; missed rich summaries cost everything. |
+| 2026-05-12 | classifyThreadsWithIdentity walks OLDEST-first to anchor canonical IDs | Canonical id = oldest known id for the chain. Stable across multiple compactions even if the LLM drifts every step. The tracker.label tracks the newest label for display. |
 
 ---
 

@@ -1,5 +1,6 @@
 import type { CompactionEvent, ThreadMeta } from '../types.js';
 import type { ThreadMetaV2, ThreadMetaV3 } from '../threads/schema.js';
+import type { LifecycleEvent } from '../threads/lifecycle.js';
 /**
  * Error class for kasett-rewind operations.
  */
@@ -74,6 +75,13 @@ export declare class SessionReader {
      * to fabricate). Use `readLatestMeta` / `readLatestMetaV2` for unified view.
      */
     readLatestMetaV3(filePath: string): Promise<ThreadMetaV3 | null>;
+    /**
+     * Read the lifecycle events recorded on the most recent sidecar entry,
+     * or an empty array if none exists. Phase D — used by the steering
+     * builder to surface recent renames/merges as continuity hints, and by
+     * the orientation builder to note recent renames inline.
+     */
+    readLatestLifecycleEvents(filePath: string): Promise<LifecycleEvent[]>;
     /**
      * Read the last N thread metas with all available shapes (v1, v2, v3),
      * oldest first. Each slot reports every shape that's available so callers

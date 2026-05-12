@@ -30,8 +30,19 @@ export interface WeightedSummary {
  */
 export declare function weightSummaries(summaries: string[], weights: number[]): WeightedSummary[];
 import type { KeyStateEntry, KeyStateKind, ThreadMetaV2, ThreadMetaV3, ThreadSubV2 } from './schema.js';
-/** Classification of a single sub-thread relative to recent history. */
-export type ThreadContinuityClass = 'core' | 'fresh' | 'fading';
+import { type IdentityMatch, type MatchOptions } from './identity.js';
+/**
+ * Classification of a single sub-thread relative to recent history.
+ *
+ * Phase D adds two non-exclusive identity-aware classifications stacked
+ * on top of the legacy core/fresh/fading taxonomy:
+ *   - 'renamed'  — appears under a new label this compaction
+ *   - 'merged'   — collapses multiple prior threads into one
+ *
+ * For the legacy classifier output (V1/V2 paths) only the original three
+ * are emitted. Identity-aware paths return the richer enum.
+ */
+export type ThreadContinuityClass = 'core' | 'fresh' | 'fading' | 'renamed' | 'merged';
 export interface ClassifiedThread {
     /** The thread's stable id (v2) or label-as-id fallback (v1) */
     id: string;
@@ -89,4 +100,39 @@ export declare function classifyKeyState(metas: ThreadMetaV3[]): ClassifiedKeySt
  * as `previousKeyState` hints.
  */
 export declare function pickContinuityKeyState(classified: ReadonlyArray<ClassifiedKeyState>): KeyStateEntry[];
+export interface ClassifiedThreadWithIdentity extends ClassifiedThread {
+    /** Identity match against the IMMEDIATELY previous compaction (if any). */
+    identity?: IdentityMatch;
+    /** When classification is 'merged', the previous IDs that folded into here. */
+    mergedFrom?: string[];
+    /** When classification is 'renamed', the previous label this came from. */
+    renamedFrom?: string;
+}
+export interface IdentityClassifyOptions extends MatchOptions {
+    /**
+     * Identity-aware threshold for "core". Default same as classifyThreadsV2:
+     * appears in ≥ ceil(N/2) compactions AND is in the most-recent.
+     */
+    coreThreshold?: number;
+}
+/**
+ * Multi-tier-matched continuity classification across a window of v2 metas.
+ *
+ * Walks the window oldest-first, building a canonical ID timeline:
+ *   - At each step, match the meta's threads against the previous step
+ *     using identity.matchAllThreads.
+ *   - Carry forward the canonical ID (oldest known ID for the chain).
+ *   - When the matcher reports `merged`, attach mergedFrom on the canonical.
+ *
+ * Then collapse to a per-canonical record and apply the same core/fresh/
+ * fading thresholds as classifyThreadsV2, with two extra rules:
+ *   - If the most recent meta's thread renamed from an earlier label →
+ *     classification = 'renamed' (instead of 'core' / 'fresh' — rename is
+ *     more informative)
+ *   - If the most recent meta's thread is the merge target of ≥2 previous
+ *     canonicals → classification = 'merged'
+ *
+ * @param metas - Most-recent-first array of v2 metas.
+ */
+export declare function classifyThreadsWithIdentity(metas: ReadonlyArray<ThreadMetaV2>, options?: IdentityClassifyOptions): ClassifiedThreadWithIdentity[];
 //# sourceMappingURL=weight.d.ts.map

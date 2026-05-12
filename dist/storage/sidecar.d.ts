@@ -25,6 +25,7 @@
  * work via fallback scanning of the JSONL.
  */
 import type { KeyStateEntry, ThreadMetaV2, ThreadMetaV3 } from '../threads/schema.js';
+import type { LifecycleEvent } from '../threads/lifecycle.js';
 /**
  * Schema for one sidecar entry. Stable v1 schema. Additive changes only.
  *
@@ -83,6 +84,14 @@ export interface SidecarEntry {
      * backward compat. Phase B2 added v2; Phase C added v3.
      */
     schema_version?: 'v1' | 'v2' | 'v3';
+    /**
+     * Lifecycle events detected between this compaction and the one before it
+     * (Phase D). Computed at write time using the previous compaction's
+     * thread_meta_v2/v3. Advisory only — used by the steering prompt and the
+     * daily review report. Backward compat: optional field; older entries
+     * never carried it.
+     */
+    lifecycle_events?: LifecycleEvent[];
     /** Model identifier used for the LLM call (for debugging / drift analysis) */
     model?: string;
     /** Character count of summary_rich (denormalized for cheap scanning) */

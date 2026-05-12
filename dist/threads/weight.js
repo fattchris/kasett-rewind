@@ -28,6 +28,7 @@ export function weightSummaries(summaries, weights) {
         return { summary, weight, label };
     });
 }
+import { matchAllThreads } from './identity.js';
 /**
  * Classify sub-threads across a window of v2 metas using exact id matching.
  *
@@ -221,5 +222,158 @@ export function pickContinuityKeyState(classified) {
             out.label = c.label;
         return out;
     });
+}
+/**
+ * Multi-tier-matched continuity classification across a window of v2 metas.
+ *
+ * Walks the window oldest-first, building a canonical ID timeline:
+ *   - At each step, match the meta's threads against the previous step
+ *     using identity.matchAllThreads.
+ *   - Carry forward the canonical ID (oldest known ID for the chain).
+ *   - When the matcher reports `merged`, attach mergedFrom on the canonical.
+ *
+ * Then collapse to a per-canonical record and apply the same core/fresh/
+ * fading thresholds as classifyThreadsV2, with two extra rules:
+ *   - If the most recent meta's thread renamed from an earlier label →
+ *     classification = 'renamed' (instead of 'core' / 'fresh' — rename is
+ *     more informative)
+ *   - If the most recent meta's thread is the merge target of ≥2 previous
+ *     canonicals → classification = 'merged'
+ *
+ * @param metas - Most-recent-first array of v2 metas.
+ */
+export function classifyThreadsWithIdentity(metas, options = {}) {
+    if (metas.length === 0)
+        return [];
+    // Walk OLDEST first so canonical IDs anchor on oldest occurrence.
+    const oldestFirst = [...metas].reverse();
+    const trackers = new Map();
+    // Map from "id-as-seen-at-slot-i" to canonicalId, so subsequent slots
+    // can fold matches into the same canonical.
+    const idToCanonical = new Map();
+    // Slot 0 (oldest): seed canonicals from the first meta.
+    const firstSubs = oldestFirst[0]?.sub ?? [];
+    for (const s of firstSubs) {
+        trackers.set(s.id, {
+            canonicalId: s.id,
+            label: s.label,
+            appearances: 1,
+            lastSlot: 0,
+            firstSlot: 0,
+            latestStatus: s.status,
+        });
+        idToCanonical.set(s.id, s.id);
+    }
+    for (let slot = 1; slot < oldestFirst.length; slot++) {
+        const prev = oldestFirst[slot - 1];
+        const cur = oldestFirst[slot];
+        const matches = matchAllThreads(cur.sub, prev.sub, options);
+        // For each current thread, find its canonical via the matcher.
+        // Track multi-merge: collect previous canonicals matching into this
+        // current via the lifecycle.detectLifecycleEvents merged heuristic.
+        for (const c of cur.sub) {
+            const m = matches.get(c.id) ?? { strategy: 'none', confidence: 0 };
+            let canonicalId;
+            let renamedFrom;
+            const mergedFrom = [];
+            if (m.strategy !== 'none' && m.matched_to) {
+                canonicalId = idToCanonical.get(m.matched_to);
+                if (m.evolved) {
+                    const prevSub = prev.sub.find((p) => p.id === m.matched_to);
+                    if (prevSub)
+                        renamedFrom = prevSub.label;
+                }
+            }
+            // Merge heuristic: any other previous threads whose label is a
+            // substring of c.label (or vice versa, ≥4 chars) and whose canonical
+            // hasn't yet been forwarded to a current in THIS slot.
+            const cLabel = c.label.trim().toLowerCase();
+            for (const p of prev.sub) {
+                if (m.matched_to && p.id === m.matched_to)
+                    continue;
+                const pLabel = p.label.trim().toLowerCase();
+                if (!pLabel || pLabel === cLabel)
+                    continue;
+                const shorter = cLabel.length < pLabel.length ? cLabel : pLabel;
+                const longer = cLabel.length < pLabel.length ? pLabel : cLabel;
+                if (longer.includes(shorter) && shorter.length >= 4) {
+                    const otherCanonical = idToCanonical.get(p.id);
+                    if (otherCanonical && (!canonicalId || otherCanonical !== canonicalId)) {
+                        mergedFrom.push(otherCanonical);
+                    }
+                }
+            }
+            if (!canonicalId) {
+                // Genuinely new
+                canonicalId = c.id;
+                trackers.set(canonicalId, {
+                    canonicalId,
+                    label: c.label,
+                    appearances: 1,
+                    lastSlot: slot,
+                    firstSlot: slot,
+                    latestStatus: c.status,
+                });
+            }
+            else {
+                const t = trackers.get(canonicalId);
+                if (t) {
+                    t.appearances += 1;
+                    t.lastSlot = slot;
+                    t.label = c.label; // newest label wins (display-only)
+                    t.latestStatus = c.status;
+                    if (renamedFrom)
+                        t.renamedFrom = renamedFrom;
+                    t.latestIdentity = m;
+                }
+            }
+            // If we detected merges, fold the trackers
+            if (mergedFrom.length > 0) {
+                const t = trackers.get(canonicalId);
+                if (t) {
+                    t.mergedFrom = Array.from(new Set([...(t.mergedFrom ?? []), ...mergedFrom]));
+                }
+            }
+            idToCanonical.set(c.id, canonicalId);
+        }
+    }
+    // Build result. classify against newest slot = oldestFirst.length - 1.
+    const newestSlot = oldestFirst.length - 1;
+    const threshold = options.coreThreshold ?? Math.max(2, Math.ceil(metas.length / 2));
+    const result = [];
+    for (const t of trackers.values()) {
+        let classification;
+        const inMostRecent = t.lastSlot === newestSlot;
+        if (t.mergedFrom && t.mergedFrom.length > 0 && inMostRecent) {
+            classification = 'merged';
+        }
+        else if (t.renamedFrom && inMostRecent) {
+            classification = 'renamed';
+        }
+        else if (t.appearances >= threshold && inMostRecent) {
+            classification = 'core';
+        }
+        else if (t.firstSlot === newestSlot && t.appearances === 1) {
+            classification = 'fresh';
+        }
+        else {
+            classification = 'fading';
+        }
+        const out = {
+            id: t.canonicalId,
+            label: t.label,
+            classification,
+            appearances: t.appearances,
+            latestStatus: t.latestStatus,
+        };
+        if (t.latestIdentity)
+            out.identity = t.latestIdentity;
+        if (t.mergedFrom && t.mergedFrom.length > 0)
+            out.mergedFrom = t.mergedFrom;
+        if (t.renamedFrom)
+            out.renamedFrom = t.renamedFrom;
+        result.push(out);
+    }
+    return result;
 }
 //# sourceMappingURL=weight.js.map
