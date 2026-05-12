@@ -1,0 +1,51 @@
+{
+  "days": 7,
+  "sessionFilesScanned": 590,
+  "events": 36,
+  "hasStub": 10,
+  "hasThreadMeta": 10,
+  "parsedValid": 8,
+  "stubAndMeta": 8,
+  "richReplaced": 0,
+  "neither": 24,
+  "complianceRate": 0,
+  "parseSuccessRate": 0.8,
+  "richExamples": [],
+  "stubExamples": [
+    {
+      "file": "554ea513-ff4c-47e7-9301-f3fdf5f84415-topic-26844.jsonl",
+      "timestamp": "2026-05-11T15:44:19.008Z",
+      "charCount": 7258,
+      "metaMain": "Now I'll conduct the deep research",
+      "preview": "[KASETT_STUB::7ed3fd48-3de8-4e71-9782-f9f562ff35ae]\n\nSession compaction in progress. Thread state:\n\n[THREAD_META]\nmain: Now I'll conduct the deep research\nsub1: idle\nsub2: idle\nsub3: idle\n[/THREAD_META]\n\n**Turn Context (split turn):**\n\n- Us"
+    },
+    {
+      "file": "554ea513-ff4c-47e7-9301-f3fdf5f84415-topic-26844.jsonl",
+      "timestamp": "2026-05-11T15:50:33.630Z",
+      "charCount": 5623,
+      "metaMain": "Now let me continue with Section B — Bot API current state",
+      "preview": "[KASETT_STUB::8c4b1706-8372-4b90-a1ba-36c3d3733723]\n\nSession compaction in progress. Thread state:\n\n[THREAD_META]\nmain: Now let me continue with Section B — Bot API current state\nsub1: idle\nsub2: idle\nsub3: idle\n[/THREAD_META]\n\n**Turn Conte"
+    },
+    {
+      "file": "5d65ffe4-f266-4ba1-b97b-5186acc0b0f8-topic-5392.jsonl",
+      "timestamp": "2026-05-05T21:06:38.054Z",
+      "charCount": 7685,
+      "metaMain": "Now let me find the config write section near the end of the build section: 1...",
+      "preview": "[KASETT_STUB::5d2f3bc0-263b-4c36-990b-a75922368fb7]\n\nSession compaction in progress. Thread state:\n\n[THREAD_META]\nmain: Now let me find the config write section near the end of the build section: 1...\nsub1: idle\nsub2: idle\nsub3: idle\n[/THRE"
+    }
+  ],
+  "failedParseExamples": [
+    {
+      "file": "571d75dd-468c-4aa5-9c15-cd2df89b782d-topic-20751.jsonl",
+      "timestamp": "2026-05-05T10:30:58.853Z",
+      "charCount": 16000,
+      "preview": "## Goal\nRefactor kasett-rewind from a CLI config-generator into a proper OpenClaw plugin using the CompactionProvider interface, implementing weighted rolling compaction thread tracking. Maintain backward compatibility with existing Sprint 1 Phase 1 Core functionality (67 tests passing).\n\n## Constraints & Preferences\n- Must follow OpenClaw's official plugin architecture (CompactionProvider interfa"
+    },
+    {
+      "file": "571d75dd-468c-4aa5-9c15-cd2df89b782d-topic-20751.jsonl",
+      "timestamp": "2026-05-05T10:30:58.957Z",
+      "charCount": 16000,
+      "preview": "## Goal\nRefactor kasett-rewind from a CLI config-generator into a proper OpenClaw plugin using the CompactionProvider interface, implementing weighted rolling compaction thread tracking. Maintain backward compatibility with existing Sprint 1 Phase 1 Core functionality (67 tests passing).\n\n## Constraints & Preferences\n- Must follow OpenClaw's official plugin architecture (CompactionProvider interfa"
+    }
+  ]
+}

@@ -46,7 +46,7 @@
  *   - These are two SEPARATE concerns — no cross-contamination.
  */
 import { join } from 'node:path';
-import { readdir } from 'node:fs/promises';
+import { readdir, appendFile } from 'node:fs/promises';
 import { SessionReader, KasettError } from './storage/reader.js';
 import { weightSummaries } from './threads/weight.js';
 import { buildSteeringPrompt, buildOrientationPrompt } from './threads/steering.js';
@@ -54,6 +54,26 @@ import { parseCompactionOutput } from './threads/parser.js';
 import { generateStub } from './hotswap/stub.js';
 import { runHotSwapWorker } from './hotswap/worker.js';
 import { DEFAULT_CONFIG } from './types.js';
+// ---------------------------------------------------------------------------
+// Hook diagnostic logger (Phase A, 2026-05-12)
+// ---------------------------------------------------------------------------
+//
+// Append-only structured log of every kasett hook invocation. Lets us answer
+// "is the hook firing in production at all?" without having to instrument OC.
+// Path is fixed (env override allowed) so the daily-review tooling can pick it
+// up without reading kasett config. JSONL: one event per line.
+// ---------------------------------------------------------------------------
+const HOOK_LOG_PATH = process.env['KASETT_HOOK_LOG'] ||
+    '/home/node/.openclaw/workspace/repos/kasett-rewind/research/hook-events.jsonl';
+async function logHookEvent(ev) {
+    try {
+        const enriched = { ts: new Date().toISOString(), ...ev };
+        await appendFile(HOOK_LOG_PATH, JSON.stringify(enriched) + '\n');
+    }
+    catch {
+        // never throw from logging
+    }
+}
 // ---------------------------------------------------------------------------
 // Module-level session context capture
 // ---------------------------------------------------------------------------
@@ -90,7 +110,7 @@ export function register(api) {
     // Captures session context into pendingCompactionCtx so summarize() can
     // find the right session JSONL. Runs just before the compaction starts.
     // ─────────────────────────────────────────────────────────────────────────
-    api.on('before_compaction', async (_event, ctx) => {
+    api.on('before_compaction', async (event, ctx) => {
         // NOTE: Do NOT guard on config.steering.threadTracking here.
         // The hot-swap worker needs the ctx regardless of whether steering is enabled —
         // it requires the session file path to perform the atomic rewrite.
@@ -99,6 +119,35 @@ export function register(api) {
         const stateDir = api.runtime.state.resolveStateDir();
         pendingCompactionCtx = { sessionKey, agentId, stateDir };
         api.logger.debug(`[kasett-rewind] before_compaction: captured ctx for ${sessionKey}`);
+        void logHookEvent({
+            hook: 'before_compaction',
+            sessionId: sessionKey,
+            agentId,
+            action: 'captured_ctx',
+            detail: {
+                messageCount: event?.messageCount,
+                tokenCount: event?.tokenCount,
+            },
+        });
+    });
+    // ───────────────────────────────────────────────────────────────────────
+    // Hook 1b: after_compaction (VOID, observability only)
+    // ───────────────────────────────────────────────────────────────────────
+    api.on('after_compaction', async (event, ctx) => {
+        const sessionKey = ctx.sessionKey?.trim() || ctx.sessionId;
+        const agentId = ctx.agentId?.trim() || 'main';
+        void logHookEvent({
+            hook: 'after_compaction',
+            sessionId: sessionKey,
+            agentId,
+            action: 'fired',
+            detail: {
+                messageCount: event?.messageCount,
+                tokenCount: event?.tokenCount,
+                compactedCount: event?.compactedCount,
+                sessionFile: event?.sessionFile ?? null,
+            },
+        });
     });
     // ─────────────────────────────────────────────────────────────────────────
     // Hook 2: before_prompt_build (MODIFYING — return values ARE merged)
@@ -111,8 +160,15 @@ export function register(api) {
     // No sidecar file — thread meta lives inside the compaction summaries.
     // ─────────────────────────────────────────────────────────────────────────
     api.on('before_prompt_build', async (_event, ctx) => {
-        if (!config.steering.threadTracking)
+        if (!config.steering.threadTracking) {
+            void logHookEvent({
+                hook: 'before_prompt_build',
+                sessionId: ctx.sessionKey?.trim() || ctx.sessionId,
+                agentId: ctx.agentId?.trim() || 'main',
+                action: 'skip_disabled',
+            });
             return;
+        }
         const sessionKey = ctx.sessionKey?.trim() || ctx.sessionId;
         const agentId = ctx.agentId?.trim() || 'main';
         const stateDir = api.runtime.state.resolveStateDir();
@@ -133,15 +189,58 @@ export function register(api) {
                         const orientation = buildOrientationPrompt(metas);
                         if (orientation) {
                             api.logger.debug(`[kasett-rewind] Injecting thread trajectory orientation (${metas.length} compaction(s))`);
+                            void logHookEvent({
+                                hook: 'before_prompt_build',
+                                sessionId: sessionKey,
+                                agentId,
+                                action: 'inject_orientation',
+                                parsed: true,
+                                charCount: orientation.length,
+                                metaMain: metas[0]?.main ?? null,
+                                detail: { metaCount: metas.length, summaryCount: recentSummaries.length },
+                            });
                             return { prependContext: orientation };
                         }
                     }
+                    void logHookEvent({
+                        hook: 'before_prompt_build',
+                        sessionId: sessionKey,
+                        agentId,
+                        action: 'no_meta_parsed',
+                        parsed: false,
+                        detail: { summaryCount: recentSummaries.length, metaCount: metas.length },
+                    });
                 }
+                else {
+                    void logHookEvent({
+                        hook: 'before_prompt_build',
+                        sessionId: sessionKey,
+                        agentId,
+                        action: 'no_summaries',
+                        parsed: false,
+                    });
+                }
+            }
+            else {
+                void logHookEvent({
+                    hook: 'before_prompt_build',
+                    sessionId: sessionKey,
+                    agentId,
+                    action: 'no_session_file',
+                    parsed: false,
+                });
             }
         }
         catch (err) {
             const msg = err instanceof KasettError ? err.message : String(err);
             api.logger.warn(`[kasett-rewind] before_prompt_build failed: ${msg}`);
+            void logHookEvent({
+                hook: 'before_prompt_build',
+                sessionId: sessionKey,
+                agentId,
+                action: 'error',
+                error: msg,
+            });
         }
         return;
     });
@@ -154,12 +253,30 @@ export function register(api) {
     api.registerCompactionProvider({
         id: 'kasett-rewind',
         async summarize(params) {
-            if (!config.steering.threadTracking)
+            if (!config.steering.threadTracking) {
+                void logHookEvent({
+                    hook: 'summarize',
+                    sessionId: pendingCompactionCtx?.sessionKey,
+                    agentId: pendingCompactionCtx?.agentId,
+                    action: 'skip_disabled',
+                });
                 return undefined;
+            }
             // Consume the pending context captured by before_compaction
             const capturedCtx = pendingCompactionCtx;
             pendingCompactionCtx = null;
             api.logger.info('[kasett-rewind] summarize() called — building thread-aware compaction');
+            void logHookEvent({
+                hook: 'summarize',
+                sessionId: capturedCtx?.sessionKey,
+                agentId: capturedCtx?.agentId,
+                action: 'invoked',
+                detail: {
+                    messageCount: params.messages?.length ?? 0,
+                    hasPreviousSummary: Boolean(params.previousSummary?.trim()),
+                    hotSwap: config.compaction.hotSwap,
+                },
+            });
             // ─────────────────────────────────────────────────────────────────────
             // HOT-SWAP PATH (default, config.hotSwap = true)
             //
@@ -205,10 +322,27 @@ export function register(api) {
                 const parsed = parseCompactionOutput(summary);
                 if (parsed.meta) {
                     api.logger.info(`[kasett-rewind] Extracted thread meta: main="${parsed.meta.main}"`);
+                    void logHookEvent({
+                        hook: 'summarize',
+                        sessionId: capturedCtx?.sessionKey,
+                        agentId: capturedCtx?.agentId,
+                        action: 'sync_summary_returned',
+                        parsed: true,
+                        charCount: summary.length,
+                        metaMain: parsed.meta.main,
+                    });
                 }
                 else {
                     api.logger.warn('[kasett-rewind] No [THREAD_META] block found in LLM output. ' +
                         'The steering prompt instructs the LLM to include it — check model compliance.');
+                    void logHookEvent({
+                        hook: 'summarize',
+                        sessionId: capturedCtx?.sessionKey,
+                        agentId: capturedCtx?.agentId,
+                        action: 'sync_summary_no_meta',
+                        parsed: false,
+                        charCount: summary.length,
+                    });
                 }
                 // Return full output (with [THREAD_META]) to OC.
                 // OC stores this as the compaction entry in the session JSONL.
@@ -245,6 +379,14 @@ async function summarizeWithHotSwap(p) {
         // Step 2: Generate stub immediately (no LLM call)
         const { stub, stubId } = generateStub(params.previousSummary, params.messages);
         api.logger.info(`[kasett-rewind] Hot-swap: returning stub ${stubId} immediately`);
+        void logHookEvent({
+            hook: 'summarize',
+            sessionId: capturedCtx?.sessionKey,
+            agentId: capturedCtx?.agentId,
+            action: 'hotswap_stub_returned',
+            charCount: stub.length,
+            detail: { stubId, sessionFile: sessionFile ?? null },
+        });
         // Step 3: Fire-and-forget the background worker
         // IMPORTANT: do NOT await this. The stub is returned first.
         if (sessionFile) {

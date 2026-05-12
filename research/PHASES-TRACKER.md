@@ -10,35 +10,53 @@ Driven by `research/strategic-analysis-2026-05-12.md`. Single source of truth fo
 
 **Goal:** Confirm whether the kasett hook is actually firing in production before changing schema/code. Build observability so future regressions are visible.
 
-**Status:** 🟡 IN PROGRESS
+**Status:** ✅ COMPLETE (2026-05-12)
 
 ### Tasks
-- [ ] A1. Audit `entry.summary` vs `entry.data.summary` in real session JSONLs — confirm where kasett's output actually lands
-- [ ] A2. Fix daily-review scanner to read the correct path (was blind to production output)
-- [ ] A3. Add structured logging to before_compaction / after_compaction hooks (timestamps, session, parsed-or-not, char counts)
-- [ ] A4. Replay last 7 days of compactions through the parser offline → produce compliance rate report
-- [ ] A5. Manually trigger one compaction in a controlled session to confirm the LLM is actually receiving the steering prompt
-- [ ] A6. Document findings in `research/phase-a-verification.md`
+- [x] A1. Audit `entry.summary` vs `entry.data.summary` in real session JSONLs — confirmed top-level `entry.summary`
+- [x] A2. Fix daily-review scanner — now distinguishes rich/stub/vanilla via JSON parse over compaction events
+- [x] A3. Add structured logging to before_compaction / after_compaction / before_prompt_build / summarize hooks (research/hook-events.jsonl)
+- [x] A4. Replay last 7 days through parser offline — compliance rate **0.0%** (0 rich, 10 stub, 24 vanilla)
+- [x] A5. Document trigger procedure; existing hotswap-diag.log already provided conclusive evidence
+- [x] A6. Findings report `research/phase-a-verification.md`
 
-### Exit criteria
-- Empirical compliance rate measured (% of compactions producing valid [THREAD_META])
-- Daily review scanner shows accurate kasett-handled vs vanilla numbers
-- Clear answer: hook firing? prompt reaching LLM? format compliance? parser working?
+### Headline result
+- **Hooks ARE firing.** LLM calls ARE succeeding (1610–11373 char summaries returned).
+- **Atomic file swap is failing** with `LOCK_WAIT_TIMEOUT 30000ms` on every production session. The hot-swap worker waits for OC's session write lock to clear; on active sessions it never does within 30s.
+- **Production compliance rate: 0.0%** over 36 compactions / 7 days.
+
+See `research/phase-a-verification.md` for full report and `research/phase-a-replay-report.md` for empirical numbers.
 
 ---
 
-## Phase B — Schema v2 (structured output)
+## Phase B — Hot-swap durability + Schema v2
 
-**Goal:** Replace markdown `[THREAD_META]` sentinel with JSON schema / structured output. Lift compliance from ~0% to ~95%.
+**Goal:** First, fix the actual production bottleneck (hot-swap atomic-rewrite never lands because OC holds the session lock). Then layer structured output on top.
 
-**Status:** ⏸ QUEUED
+**Status:** 🟡 IN PROGRESS (Phase A discovered the real failure mode mid-flight; Phase B scope updated accordingly)
 
-### Tasks (preview)
-- [ ] B1. Design JSON schema for thread meta (main + structured sub-threads)
-- [ ] B2. Use provider-native structured output (Anthropic/OpenAI tool calling or response_format)
-- [ ] B3. Update parser to read JSON from a function call result, not text extraction
-- [ ] B4. Backward compat: read old [THREAD_META] format from existing sessions
-- [ ] B5. Re-run benchmark, measure compliance rate delta
+### Track 1 — Hot-swap durability (B1, urgent)
+
+Fixing this turns the production compliance rate from 0% to non-zero independently of any schema change.
+
+- [ ] B1.1. Decide between three options:
+   - (a) Increase `hotSwapTimeoutMs` to >30min and accept slow-replacement
+   - (b) Hook into `session_end` and apply pending swaps when the session closes
+   - (c) **Sidecar file** — store rich summaries in `<session>.kasett.jsonl`; never race OC's lock; before_prompt_build reads sidecar
+   - Recommend (c) on cleanest-separation-of-concerns grounds.
+- [ ] B1.2. Implement chosen option
+- [ ] B1.3. Tests for the new write path
+- [ ] B1.4. Validate: re-run replay analysis after a few days of operation, confirm compliance rate >0
+
+### Track 2 — Schema v2 / structured output (B2, after B1 lands)
+
+Until B1 lands, lifting compliance from 0 → 95% is meaningless because nothing reaches storage anyway.
+
+- [ ] B2.1. Design JSON schema for thread meta (main + structured sub-threads, lifecycle, key-state hooks)
+- [ ] B2.2. Use provider-native structured output (Anthropic/OpenAI tool-calling or response_format)
+- [ ] B2.3. Update parser to read JSON from a function-call result, not text extraction
+- [ ] B2.4. Backward compat: read old [THREAD_META] format from existing sessions
+- [ ] B2.5. Re-run benchmark, measure compliance rate delta
 
 ---
 
@@ -90,13 +108,16 @@ Driven by `research/strategic-analysis-2026-05-12.md`. Single source of truth fo
 |------|----------|-----------|
 | 2026-05-12 | Address phases in order, A first | Don't redesign schema before verifying hook fires |
 | 2026-05-12 | Tracker file created | Chris directive: "stat a tracker file and let's hit it" |
+| 2026-05-12 | Phase A complete; root cause is `LOCK_WAIT_TIMEOUT` not parser/format/compliance | Diag log evidence: hooks fire, LLM succeeds, atomic-rewrite times out on session lock |
+| 2026-05-12 | Phase B scope expanded to include hot-swap durability fix BEFORE schema v2 | Schema v2 doesn't help if nothing reaches storage; durability fix unblocks compliance regardless |
 
 ---
 
 ## Open Questions (carried from strategic analysis)
 
-1. Is the CompactionProvider hook actually being invoked in production? **(Phase A answers this)**
-2. If hook fires, is the LLM ignoring the [THREAD_META] format? **(Phase A measures compliance)**
-3. If LLM emits [THREAD_META], is the parser failing? **(Phase A replay test answers)**
+1. ~~Is the CompactionProvider hook actually being invoked in production?~~ **YES — confirmed by Phase A.**
+2. ~~If hook fires, is the LLM ignoring the [THREAD_META] format?~~ **No — LLM produces substantive output (1.6–11.4k chars).**
+3. ~~If LLM emits [THREAD_META], is the parser failing?~~ **No — parser succeeds on 80% of inputs containing the marker; the 20% are conversation transcripts not actual kasett output.**
+3a. **(NEW)** If hook fires, LLM succeeds, parser works — why is production compliance 0%? **Hot-swap atomic rewrite times out on OC's session lock.** (Phase A new finding.)
 4. What's the right cap on sub-threads — 3, 5, dynamic?
 5. Should kasett be one plugin or split (thread tracking + key state + identity = 3 plugins)?

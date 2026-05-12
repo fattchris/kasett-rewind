@@ -18,6 +18,8 @@ echo "" >> "$OUTPUT"
 
 COMPACTED=0
 KASETT_HANDLED=0
+KASETT_STUB_REMAINED=0
+KASETT_RICH=0
 VANILLA_HANDLED=0
 
 echo "## Sessions Compacted (last 24h)" >> "$OUTPUT"
@@ -46,9 +48,59 @@ for checkpoint in "${CHECKPOINT_FILES[@]+"${CHECKPOINT_FILES[@]}"}"; do
   # Check if the most recent compaction entry has [THREAD_META] (kasett's marker).
   # The summary is stored as a JSON string with \n escape sequences, not raw newlines.
   # grep -q just checks for presence of the marker anywhere in the file.
-  if grep -q "\[THREAD_META\]" "$session_file" 2>/dev/null; then
+  # Decide if this session has any kasett output by reading the actual JSONL,
+  # NOT a naive grep over the whole file (test fixtures and conversation snippets
+  # contain THREAD_META text and would inflate the counts).
+  STATUS=$(python3 -c "
+import sys, json
+path = sys.argv[1]
+rich = False
+stub_only = False
+any_kasett = False
+try:
+    with open(path, 'r', encoding='utf-8', errors='replace') as fh:
+        for line in fh:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                obj = json.loads(line)
+            except Exception:
+                continue
+            if obj.get('type') != 'compaction':
+                continue
+            s = str(obj.get('summary') or '')
+            has_tm = '[THREAD_META]' in s
+            has_stub = 'KASETT_STUB' in s
+            if has_tm or has_stub:
+                any_kasett = True
+            if has_tm and not has_stub:
+                rich = True
+            elif has_stub:
+                stub_only = True
+except Exception:
+    pass
+if rich:
+    print('rich')
+elif stub_only:
+    print('stub')
+elif any_kasett:
+    print('kasett-other')
+else:
+    print('vanilla')
+" "$session_file" 2>/dev/null) || STATUS="vanilla"
+
+  if [[ "$STATUS" == "rich" || "$STATUS" == "stub" || "$STATUS" == "kasett-other" ]]; then
     KASETT_HANDLED=$((KASETT_HANDLED + 1))
-    echo "- ✅ \`$session_id\` — kasett handled" >> "$OUTPUT"
+    if [[ "$STATUS" == "rich" ]]; then
+      KASETT_RICH=$((KASETT_RICH + 1))
+      echo "- ✅ \`$session_id\` — kasett rich (LLM summary)" >> "$OUTPUT"
+    elif [[ "$STATUS" == "stub" ]]; then
+      KASETT_STUB_REMAINED=$((KASETT_STUB_REMAINED + 1))
+      echo "- ⚠️  \`$session_id\` — kasett stub only (hot-swap did not replace)" >> "$OUTPUT"
+    else
+      echo "- ⚠️  \`$session_id\` — kasett (other / unrecognised shape)" >> "$OUTPUT"
+    fi
 
     # Extract the main: field from the [THREAD_META] block.
     # The summary is a JSON string, so \n is literal backslash-n in the file.
@@ -100,6 +152,8 @@ echo "## Summary" >> "$OUTPUT"
 echo "" >> "$OUTPUT"
 echo "- Total compacted: $COMPACTED" >> "$OUTPUT"
 echo "- Kasett handled: $KASETT_HANDLED" >> "$OUTPUT"
+echo "  - Kasett rich (LLM-replaced): $KASETT_RICH" >> "$OUTPUT"
+echo "  - Kasett stub only (NOT replaced): $KASETT_STUB_REMAINED" >> "$OUTPUT"
 echo "- Vanilla fallback: $VANILLA_HANDLED" >> "$OUTPUT"
 if [ $COMPACTED -gt 0 ]; then
   echo "- Coverage: $((KASETT_HANDLED * 100 / COMPACTED))%" >> "$OUTPUT"
@@ -130,4 +184,4 @@ fi
 
 echo ""
 echo "Review written to: $OUTPUT"
-echo "Compacted: $COMPACTED | Kasett: $KASETT_HANDLED | Vanilla: $VANILLA_HANDLED"
+echo "Compacted: $COMPACTED | Kasett: $KASETT_HANDLED (rich=$KASETT_RICH stub=$KASETT_STUB_REMAINED) | Vanilla: $VANILLA_HANDLED"
