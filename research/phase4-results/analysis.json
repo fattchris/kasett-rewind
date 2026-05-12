@@ -1,0 +1,123 @@
+{
+  "totals": {
+    "n": 36,
+    "vanilla": {
+      "correct": 8,
+      "rate": 0.2222222222222222
+    },
+    "kasett": {
+      "correct": 20,
+      "rate": 0.5555555555555556
+    }
+  },
+  "byDepth": {
+    "1": {
+      "n": 9,
+      "vanilla": {
+        "correct": 0,
+        "rate": 0
+      },
+      "kasett": {
+        "correct": 3,
+        "rate": 0.3333333333333333
+      },
+      "delta": 0.3333333333333333
+    },
+    "2": {
+      "n": 9,
+      "vanilla": {
+        "correct": 0,
+        "rate": 0
+      },
+      "kasett": {
+        "correct": 4,
+        "rate": 0.4444444444444444
+      },
+      "delta": 0.4444444444444444
+    },
+    "3": {
+      "n": 9,
+      "vanilla": {
+        "correct": 1,
+        "rate": 0.1111111111111111
+      },
+      "kasett": {
+        "correct": 4,
+        "rate": 0.4444444444444444
+      },
+      "delta": 0.3333333333333333
+    },
+    "current": {
+      "n": 9,
+      "vanilla": {
+        "correct": 7,
+        "rate": 0.7777777777777778
+      },
+      "kasett": {
+        "correct": 9,
+        "rate": 1
+      },
+      "delta": 0.2222222222222222
+    }
+  },
+  "byType": {
+    "long-range-recall": {
+      "n": 17,
+      "vanilla": {
+        "correct": 4,
+        "rate": 0.23529411764705882
+      },
+      "kasett": {
+        "correct": 13,
+        "rate": 0.7647058823529411
+      }
+    },
+    "decision-continuity": {
+      "n": 9,
+      "vanilla": {
+        "correct": 0,
+        "rate": 0
+      },
+      "kasett": {
+        "correct": 2,
+        "rate": 0.2222222222222222
+      }
+    },
+    "trajectory": {
+      "n": 5,
+      "vanilla": {
+        "correct": 3,
+        "rate": 0.6
+      },
+      "kasett": {
+        "correct": 4,
+        "rate": 0.8
+      }
+    },
+    "thread-lineage": {
+      "n": 5,
+      "vanilla": {
+        "correct": 1,
+        "rate": 0.2
+      },
+      "kasett": {
+        "correct": 1,
+        "rate": 0.2
+      }
+    }
+  },
+  "mcnemar": {
+    "bothRight": 8,
+    "bothWrong": 16,
+    "kRightVWrong": 12,
+    "vRightKWrong": 0,
+    "pOneTailed": 0.00024414062500000016,
+    "pTwoTailed": 0.0004882812500000003
+  },
+  "cohenH": 0.7003719845572377,
+  "threadCarryover": {
+    "count": 27,
+    "total": 37,
+    "rate": 0.7297297297297297
+  }
+}

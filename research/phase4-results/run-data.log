@@ -1,0 +1,27 @@
+
+=== conv-data-pipeline (Customer Acme Corp onboarding — data pipeline build) ===
+-- Vanilla pass --
+  C1 (100 turns)... 2828 chars
+  C2 (100 turns)... 2662 chars
+  C3 (100 turns)... 2995 chars
+  C4 (100 turns)... 2414 chars
+-- Kasett pass --
+  C1 (100 turns)... 4792 chars, schema=v3, subs=4, key_state=9, prev=0, fired=true
+  C2 (100 turns)... 4987 chars, schema=v3, subs=4, key_state=13, prev=2, fired=true
+  C3 (100 turns)... 5551 chars, schema=v3, subs=5, key_state=17, prev=3, fired=true
+  C4 (100 turns)... 5253 chars, schema=v3, subs=5, key_state=16, prev=3, fired=true
+-- Probes (12) --
+  [data-p1] depth=1 type=long-range-recall: vanilla=WRONG kasett=CORRECT
+  [data-p2] depth=1 type=decision-continuity: vanilla=WRONG kasett=WRONG
+  [data-p3] depth=1 type=long-range-recall: vanilla=WRONG kasett=CORRECT
+  [data-p4] depth=2 type=decision-continuity: vanilla=WRONG kasett=WRONG
+  [data-p5] depth=2 type=long-range-recall: vanilla=WRONG kasett=CORRECT
+  [data-p6] depth=2 type=thread-lineage: vanilla=WRONG kasett=WRONG
+  [data-p7] depth=3 type=decision-continuity: vanilla=WRONG kasett=CORRECT
+  [data-p8] depth=3 type=long-range-recall: vanilla=WRONG kasett=WRONG
+  [data-p9] depth=3 type=thread-lineage: vanilla=CORRECT kasett=CORRECT
+  [data-p10] depth=current type=trajectory: vanilla=CORRECT kasett=CORRECT
+  [data-p11] depth=current type=long-range-recall: vanilla=CORRECT kasett=CORRECT
+  [data-p12] depth=current type=trajectory: vanilla=CORRECT kasett=CORRECT
+
+=== Done ===

@@ -1,0 +1,59 @@
+Total probes: 36
+
+=== Recall@1 by depth ===
+Depth     | N  | Vanilla       | Kasett        | Delta
+current   |  9 | 7/9 (77.8%) | 9/9 (100.0%) | +22.2pp
+3         |  9 | 1/9 (11.1%) | 4/9 (44.4%) | +33.3pp
+2         |  9 | 0/9 (0.0%) | 4/9 (44.4%) | +44.4pp
+1         |  9 | 0/9 (0.0%) | 3/9 (33.3%) | +33.3pp
+
+=== Recall@1 by probe type ===
+long-range-recall      | n=17 | V=4/17 (24%) | K=13/17 (76%)
+decision-continuity    | n=9 | V=0/9 (0%) | K=2/9 (22%)
+trajectory             | n=5 | V=3/5 (60%) | K=4/5 (80%)
+thread-lineage         | n=5 | V=1/5 (20%) | K=1/5 (20%)
+
+=== Overall ===
+Vanilla: 8/36 (22.2%)
+Kasett:  20/36 (55.6%)
+Delta:   +33.3pp
+
+=== Wilson 95% CIs ===
+Depth current | V CI: [45.3%, 93.7%] | K CI: [70.1%, 100.0%]
+Depth 3       | V CI: [2.0%, 43.5%] | K CI: [18.9%, 73.3%]
+Depth 2       | V CI: [0.0%, 29.9%] | K CI: [18.9%, 73.3%]
+Depth 1       | V CI: [0.0%, 29.9%] | K CI: [12.1%, 64.6%]
+
+=== McNemar contingency ===
+  Both CORRECT:        8
+  Kasett CORRECT only: 12
+  Vanilla CORRECT only: 0
+  Both WRONG/partial:  16
+
+McNemar one-tailed p (Kasett > Vanilla): p = 0.0002 (n_disc=12)
+McNemar two-tailed p: 0.0005
+Cohen's h (overall): 0.700 (small=0.2, medium=0.5, large=0.8)
+
+=== Kasett thread continuity ===
+  conv-eks-migration C2: 2/4 threads carried over from C1
+  conv-eks-migration C3: 4/4 threads carried over from C2
+  conv-eks-migration C4: 4/5 threads carried over from C3
+  conv-auth-launch C2: 2/3 threads carried over from C1
+  conv-auth-launch C3: 1/3 threads carried over from C2
+  conv-auth-launch C4: 3/4 threads carried over from C3
+  conv-data-pipeline C2: 3/4 threads carried over from C1
+  conv-data-pipeline C3: 3/5 threads carried over from C2
+  conv-data-pipeline C4: 5/5 threads carried over from C3
+Overall: 27/37 sub-threads carried over (73.0%)
+
+=== Kasett key_state accumulation ===
+  conv-eks-migration: [10, 13, 16, 18] (per compaction)
+  conv-auth-launch: [8, 11, 14, 15] (per compaction)
+  conv-data-pipeline: [9, 13, 17, 16] (per compaction)
+
+=== Feedback loop firings ===
+  conv-eks-migration: 3/3 fired (prev > 0)
+  conv-auth-launch: 3/3 fired (prev > 0)
+  conv-data-pipeline: 3/3 fired (prev > 0)
+
+Saved: results.json + analysis.json

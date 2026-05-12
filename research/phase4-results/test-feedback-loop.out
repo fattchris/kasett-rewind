@@ -1,0 +1,25 @@
+Read 2 previous summaries from sidecar+JSONL
+Weighted 2 summaries
+  - Previous summary (weight 1 — most recent) (chars: 974)
+  - Earlier summary (weight 0.6 — oldest context) (chars: 651)
+Latest summary parsed as schema=v3
+previousSubIds: [ 'eks-cluster-bootstrap', 'oauth-redirect', 'argocd-sync' ]
+previousKeyState count: 2
+
+Steering prompt length: 8864 chars
+
+=== FEEDBACK LOOP VERIFICATION CHECKS ===
+  ✅  contains_previous_summary_label
+  ✅  contains_eks_cluster_bootstrap
+  ✅  contains_oauth_redirect
+  ✅  contains_argocd_sync
+  ✅  contains_main1_text
+  ✅  contains_main2_text
+  ✅  contains_callback_url
+  ✅  contains_sudo_arn
+  ✅  contains_github_app_id
+  ✅  contains_reuse_instruction
+  ✅  contains_weight_label
+
+✅ All checks pass. Feedback loop is live.
+Tmp dir: /tmp/kasett-feedback-test-tMh8Tc

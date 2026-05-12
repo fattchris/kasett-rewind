@@ -1,0 +1,27 @@
+
+=== conv-eks-migration (EKS migration from us-east-1 to us-west-2) ===
+-- Vanilla pass --
+  C1 (100 turns)... 3304 chars
+  C2 (100 turns)... 2846 chars
+  C3 (100 turns)... 2736 chars
+  C4 (100 turns)... 2442 chars
+-- Kasett pass --
+  C1 (100 turns)... 4209 chars, schema=v3, subs=3, key_state=10, prev=0, fired=true
+  C2 (100 turns)... 4535 chars, schema=v3, subs=4, key_state=13, prev=2, fired=true
+  C3 (100 turns)... 5578 chars, schema=v3, subs=4, key_state=16, prev=3, fired=true
+  C4 (100 turns)... 5863 chars, schema=v3, subs=5, key_state=18, prev=3, fired=true
+-- Probes (12) --
+  [eks-p1] depth=1 type=long-range-recall: vanilla=WRONG kasett=WRONG
+  [eks-p2] depth=1 type=decision-continuity: vanilla=WRONG kasett=WRONG
+  [eks-p3] depth=1 type=thread-lineage: vanilla=WRONG kasett=WRONG
+  [eks-p4] depth=2 type=long-range-recall: vanilla=WRONG kasett=CORRECT
+  [eks-p5] depth=2 type=decision-continuity: vanilla=WRONG kasett=WRONG
+  [eks-p6] depth=2 type=long-range-recall: vanilla=WRONG kasett=CORRECT
+  [eks-p7] depth=3 type=long-range-recall: vanilla=WRONG kasett=CORRECT
+  [eks-p8] depth=3 type=decision-continuity: vanilla=WRONG kasett=WRONG
+  [eks-p9] depth=3 type=trajectory: vanilla=WRONG kasett=WRONG
+  [eks-p10] depth=current type=long-range-recall: vanilla=CORRECT kasett=CORRECT
+  [eks-p11] depth=current type=trajectory: vanilla=CORRECT kasett=CORRECT
+  [eks-p12] depth=current type=long-range-recall: vanilla=WRONG kasett=CORRECT
+
+=== Done ===

@@ -1,0 +1,5433 @@
+{
+  "conversations": [
+    {
+      "id": "conv-eks-migration",
+      "topic": "EKS migration from us-east-1 to us-west-2",
+      "segments": [
+        {
+          "compactionDepth": 1,
+          "facts": {
+            "deploy_url": "https://app-prod-v1.us-east-1.example.com",
+            "cluster_name": "molt-prod-east",
+            "decision_db": "Postgres 14 (chose over Aurora due to Lambda cold-start)",
+            "decision_db_reason": "Lambda cold-start latency on Aurora Serverless v2 was 3.2s p99",
+            "thread_renamed_origin": "old-cluster-decom",
+            "sa_role_arn": "arn:aws:iam::492372116065:role/eks-pod-prod-east",
+            "api_gateway_id": "a1b2c3d4e5",
+            "first_decision_summary": "Use Postgres 14 not Aurora because of cold-start latency"
+          },
+          "narrative": [
+            [
+              "user",
+              "Let's start the EKS migration plan. First, what's the current state?"
+            ],
+            [
+              "assistant",
+              "Current prod runs on `molt-prod-east` cluster in us-east-1. App is at https://app-prod-v1.us-east-1.example.com. Deploy is via ArgoCD, sync interval 3min."
+            ],
+            [
+              "user",
+              "What's the database situation?"
+            ],
+            [
+              "assistant",
+              "We have Postgres 14 on RDS (db.r6g.large). Considered Aurora Serverless v2, but Lambda cold-start latency was 3.2s p99 — too slow for the auth path."
+            ],
+            [
+              "user",
+              "Confirmed: keep Postgres 14, do not switch to Aurora. The cold-start cost dominates."
+            ],
+            [
+              "assistant",
+              "Logged. Decision: Postgres 14 over Aurora due to 3.2s p99 cold-start on Lambda."
+            ],
+            [
+              "user",
+              "What's the IAM setup?"
+            ],
+            [
+              "assistant",
+              "Pod role ARN is arn:aws:iam::492372116065:role/eks-pod-prod-east. Grants RDS connect, S3 read/write on molt-prod-data, SecretsManager read on molt-prod/*."
+            ],
+            [
+              "user",
+              "And API Gateway?"
+            ],
+            [
+              "assistant",
+              "API Gateway ID is a1b2c3d4e5. Custom domain api.example.com points there. WAF rules at v3."
+            ],
+            [
+              "user",
+              "We need to plan the decommissioning of the old us-east cluster. Call that thread `old-cluster-decom`."
+            ],
+            [
+              "assistant",
+              "Tracking thread `old-cluster-decom`. Goals: drain workloads, snapshot RDS, export ArgoCD configs, tear down VPC."
+            ],
+            [
+              "user",
+              "Snapshot RDS first — daily for the next two weeks before any teardown."
+            ],
+            [
+              "assistant",
+              "Acknowledged. Daily RDS snapshots for 14 days starting today."
+            ],
+            [
+              "user",
+              "What's our deployment URL pattern? Want to make sure we keep it consistent."
+            ],
+            [
+              "assistant",
+              "Production today: https://app-prod-v1.us-east-1.example.com. The v1 prefix is the API version, not an env marker."
+            ],
+            [
+              "user",
+              "Good. Document that pattern."
+            ],
+            [
+              "assistant",
+              "Documented in repo/docs/url-conventions.md."
+            ],
+            [
+              "user",
+              "Now let's discuss the new region. Why us-west-2 over us-west-1?"
+            ],
+            [
+              "assistant",
+              "us-west-2 has 4 AZs vs 3 for us-west-1, and Bedrock is available there. We'll need Bedrock for the new RAG service."
+            ],
+            [
+              "user",
+              "Right. Confirmed: target region is us-west-2."
+            ],
+            [
+              "assistant",
+              "Logged. Migration target: us-west-2."
+            ],
+            [
+              "user",
+              "What about the EKS version? Stay on 1.27 or upgrade?"
+            ],
+            [
+              "assistant",
+              "Recommend going straight to 1.29 in us-west-2 to skip an interim upgrade. Latest stable, supported until 2027."
+            ],
+            [
+              "user",
+              "How does this interact with the existing Lambda functions?"
+            ],
+            [
+              "assistant",
+              "Existing Lambdas continue to invoke the API Gateway endpoint; transition is transparent to them. We bumped the timeout to 30s on cold-start sensitive paths."
+            ],
+            [
+              "user",
+              "What about VPC peering for cross-region traffic?"
+            ],
+            [
+              "assistant",
+              "No peering needed — public S3 endpoints with bucket policies. Cross-region replication is asynchronous, replication lag p95 ~200ms."
+            ],
+            [
+              "user",
+              "Any cost concerns?"
+            ],
+            [
+              "assistant",
+              "Brief spike during dual-running window (~$1200/mo extra), then drop below baseline once east is decommissioned (target -$3400/mo)."
+            ],
+            [
+              "user",
+              "CDK or Terraform?"
+            ],
+            [
+              "assistant",
+              "CDK. Existing modules in lib/eks-stack.ts. New region picks up via stage variable."
+            ],
+            [
+              "user",
+              "Test coverage?"
+            ],
+            [
+              "assistant",
+              "Integration tests run against a smaller copy of west in the dev account. ~85% line coverage on the migration scripts."
+            ],
+            [
+              "user",
+              "Any open Slack threads I should know about?"
+            ],
+            [
+              "assistant",
+              "Yes — #infra has a thread on shared NAT gateway costs. Tagging Thomson for review."
+            ],
+            [
+              "user",
+              "OK move on. What about secrets sync?"
+            ],
+            [
+              "assistant",
+              "Secrets Manager replication is enabled for the project namespace. New writes propagate within 60s."
+            ],
+            [
+              "user",
+              "Any issues with the existing IRSA configuration?"
+            ],
+            [
+              "assistant",
+              "No — IRSA works the same way in west. We just had to add the OIDC provider in the new account once."
+            ],
+            [
+              "user",
+              "How are we handling the DNS zone?"
+            ],
+            [
+              "assistant",
+              "Route53 hosted zone is global. The api.example.com record uses weighted routing. Health checks attached."
+            ],
+            [
+              "user",
+              "How does this interact with the existing Lambda functions?"
+            ],
+            [
+              "assistant",
+              "Existing Lambdas continue to invoke the API Gateway endpoint; transition is transparent to them. We bumped the timeout to 30s on cold-start sensitive paths."
+            ],
+            [
+              "user",
+              "What about VPC peering for cross-region traffic?"
+            ],
+            [
+              "assistant",
+              "No peering needed — public S3 endpoints with bucket policies. Cross-region replication is asynchronous, replication lag p95 ~200ms."
+            ],
+            [
+              "user",
+              "Any cost concerns?"
+            ],
+            [
+              "assistant",
+              "Brief spike during dual-running window (~$1200/mo extra), then drop below baseline once east is decommissioned (target -$3400/mo)."
+            ],
+            [
+              "user",
+              "CDK or Terraform?"
+            ],
+            [
+              "assistant",
+              "CDK. Existing modules in lib/eks-stack.ts. New region picks up via stage variable."
+            ],
+            [
+              "user",
+              "Test coverage?"
+            ],
+            [
+              "assistant",
+              "Integration tests run against a smaller copy of west in the dev account. ~85% line coverage on the migration scripts."
+            ],
+            [
+              "user",
+              "Any open Slack threads I should know about?"
+            ],
+            [
+              "assistant",
+              "Yes — #infra has a thread on shared NAT gateway costs. Tagging Thomson for review."
+            ],
+            [
+              "user",
+              "OK move on. What about secrets sync?"
+            ],
+            [
+              "assistant",
+              "Secrets Manager replication is enabled for the project namespace. New writes propagate within 60s."
+            ],
+            [
+              "user",
+              "Any issues with the existing IRSA configuration?"
+            ],
+            [
+              "assistant",
+              "No — IRSA works the same way in west. We just had to add the OIDC provider in the new account once."
+            ],
+            [
+              "user",
+              "How are we handling the DNS zone?"
+            ],
+            [
+              "assistant",
+              "Route53 hosted zone is global. The api.example.com record uses weighted routing. Health checks attached."
+            ],
+            [
+              "user",
+              "How does this interact with the existing Lambda functions?"
+            ],
+            [
+              "assistant",
+              "Existing Lambdas continue to invoke the API Gateway endpoint; transition is transparent to them. We bumped the timeout to 30s on cold-start sensitive paths."
+            ],
+            [
+              "user",
+              "What about VPC peering for cross-region traffic?"
+            ],
+            [
+              "assistant",
+              "No peering needed — public S3 endpoints with bucket policies. Cross-region replication is asynchronous, replication lag p95 ~200ms."
+            ],
+            [
+              "user",
+              "Any cost concerns?"
+            ],
+            [
+              "assistant",
+              "Brief spike during dual-running window (~$1200/mo extra), then drop below baseline once east is decommissioned (target -$3400/mo)."
+            ],
+            [
+              "user",
+              "CDK or Terraform?"
+            ],
+            [
+              "assistant",
+              "CDK. Existing modules in lib/eks-stack.ts. New region picks up via stage variable."
+            ],
+            [
+              "user",
+              "Test coverage?"
+            ],
+            [
+              "assistant",
+              "Integration tests run against a smaller copy of west in the dev account. ~85% line coverage on the migration scripts."
+            ],
+            [
+              "user",
+              "Any open Slack threads I should know about?"
+            ],
+            [
+              "assistant",
+              "Yes — #infra has a thread on shared NAT gateway costs. Tagging Thomson for review."
+            ],
+            [
+              "user",
+              "OK move on. What about secrets sync?"
+            ],
+            [
+              "assistant",
+              "Secrets Manager replication is enabled for the project namespace. New writes propagate within 60s."
+            ],
+            [
+              "user",
+              "Any issues with the existing IRSA configuration?"
+            ],
+            [
+              "assistant",
+              "No — IRSA works the same way in west. We just had to add the OIDC provider in the new account once."
+            ],
+            [
+              "user",
+              "How are we handling the DNS zone?"
+            ],
+            [
+              "assistant",
+              "Route53 hosted zone is global. The api.example.com record uses weighted routing. Health checks attached."
+            ],
+            [
+              "user",
+              "How does this interact with the existing Lambda functions?"
+            ],
+            [
+              "assistant",
+              "Existing Lambdas continue to invoke the API Gateway endpoint; transition is transparent to them. We bumped the timeout to 30s on cold-start sensitive paths."
+            ],
+            [
+              "user",
+              "What about VPC peering for cross-region traffic?"
+            ],
+            [
+              "assistant",
+              "No peering needed — public S3 endpoints with bucket policies. Cross-region replication is asynchronous, replication lag p95 ~200ms."
+            ],
+            [
+              "user",
+              "Any cost concerns?"
+            ],
+            [
+              "assistant",
+              "Brief spike during dual-running window (~$1200/mo extra), then drop below baseline once east is decommissioned (target -$3400/mo)."
+            ],
+            [
+              "user",
+              "CDK or Terraform?"
+            ],
+            [
+              "assistant",
+              "CDK. Existing modules in lib/eks-stack.ts. New region picks up via stage variable."
+            ],
+            [
+              "user",
+              "Test coverage?"
+            ],
+            [
+              "assistant",
+              "Integration tests run against a smaller copy of west in the dev account. ~85% line coverage on the migration scripts."
+            ],
+            [
+              "user",
+              "Any open Slack threads I should know about?"
+            ],
+            [
+              "assistant",
+              "Yes — #infra has a thread on shared NAT gateway costs. Tagging Thomson for review."
+            ],
+            [
+              "user",
+              "OK move on. What about secrets sync?"
+            ],
+            [
+              "assistant",
+              "Secrets Manager replication is enabled for the project namespace. New writes propagate within 60s."
+            ],
+            [
+              "user",
+              "Any issues with the existing IRSA configuration?"
+            ],
+            [
+              "assistant",
+              "No — IRSA works the same way in west. We just had to add the OIDC provider in the new account once."
+            ],
+            [
+              "user",
+              "How are we handling the DNS zone?"
+            ],
+            [
+              "assistant",
+              "Route53 hosted zone is global. The api.example.com record uses weighted routing. Health checks attached."
+            ],
+            [
+              "user",
+              "How does this interact with the existing Lambda functions?"
+            ],
+            [
+              "assistant",
+              "Existing Lambdas continue to invoke the API Gateway endpoint; transition is transparent to them. We bumped the timeout to 30s on cold-start sensitive paths."
+            ],
+            [
+              "user",
+              "What about VPC peering for cross-region traffic?"
+            ],
+            [
+              "assistant",
+              "No peering needed — public S3 endpoints with bucket policies. Cross-region replication is asynchronous, replication lag p95 ~200ms."
+            ]
+          ]
+        },
+        {
+          "compactionDepth": 2,
+          "facts": {
+            "new_cluster_name": "molt-prod-west",
+            "thread_renamed_to": "east-region-decom",
+            "decision_eks_version": "EKS 1.29 (skip 1.28)",
+            "bedrock_model_id": "anthropic.claude-sonnet-4-v1:0",
+            "new_sa_role_arn": "arn:aws:iam::492372116065:role/eks-pod-prod-west",
+            "s3_bucket_west": "molt-prod-data-west-2",
+            "api_gateway_id_west": "w8x9y0z1q2"
+          },
+          "narrative": [
+            [
+              "user",
+              "Created the new cluster. Name it `molt-prod-west`. Confirm the IAM role is set up."
+            ],
+            [
+              "assistant",
+              "New cluster `molt-prod-west` is up. Pod role ARN: arn:aws:iam::492372116065:role/eks-pod-prod-west. Same permission scope as east, but pointed at us-west-2 resources."
+            ],
+            [
+              "user",
+              "S3 bucket?"
+            ],
+            [
+              "assistant",
+              "Created `molt-prod-data-west-2`. Replication from `molt-prod-data` via S3 Cross-Region Replication is now active."
+            ],
+            [
+              "user",
+              "About the decom thread — let's rename it. `old-cluster-decom` is too vague. Call it `east-region-decom`."
+            ],
+            [
+              "assistant",
+              "Renamed thread: `old-cluster-decom` → `east-region-decom`. Same scope: drain, snapshot, ArgoCD export, VPC teardown."
+            ],
+            [
+              "user",
+              "Bedrock setup?"
+            ],
+            [
+              "assistant",
+              "Bedrock is enabled in us-west-2. Default model for the RAG service: anthropic.claude-sonnet-4-v1:0. IAM permissions added to the pod role."
+            ],
+            [
+              "user",
+              "API Gateway in west?"
+            ],
+            [
+              "assistant",
+              "New API Gateway w8x9y0z1q2. Will swap DNS to point api.example.com here once we cut over."
+            ],
+            [
+              "user",
+              "Decision recap: confirm we're going EKS 1.29, skipping 1.28."
+            ],
+            [
+              "assistant",
+              "Confirmed and logged. Decision: EKS 1.29 in west, skip 1.28."
+            ],
+            [
+              "user",
+              "What's the cutover plan?"
+            ],
+            [
+              "assistant",
+              "Phase 1: shadow traffic 5% via API Gateway weighted routing. Phase 2: 50/50. Phase 3: 100% west, decom east."
+            ],
+            [
+              "user",
+              "Timeline?"
+            ],
+            [
+              "assistant",
+              "Phase 1 next week, Phase 2 +14 days, Phase 3 +30 days from start. Total 6-week migration window."
+            ],
+            [
+              "user",
+              "What's the rollback if shadow traffic shows issues?"
+            ],
+            [
+              "assistant",
+              "Reset weighted routing to 100% east. ArgoCD on west keeps running but receives zero traffic. RDS replica stays in sync."
+            ],
+            [
+              "user",
+              "Good. Let's also start the new RAG service deployment. Track that as `rag-service-deploy`."
+            ],
+            [
+              "assistant",
+              "Tracking thread `rag-service-deploy`. Initial deploy: 3 replicas, embedded model = bge-large, vector store = pgvector on the new west RDS."
+            ],
+            [
+              "user",
+              "How does this interact with the existing Lambda functions?"
+            ],
+            [
+              "assistant",
+              "Existing Lambdas continue to invoke the API Gateway endpoint; transition is transparent to them. We bumped the timeout to 30s on cold-start sensitive paths."
+            ],
+            [
+              "user",
+              "What about VPC peering for cross-region traffic?"
+            ],
+            [
+              "assistant",
+              "No peering needed — public S3 endpoints with bucket policies. Cross-region replication is asynchronous, replication lag p95 ~200ms."
+            ],
+            [
+              "user",
+              "Any cost concerns?"
+            ],
+            [
+              "assistant",
+              "Brief spike during dual-running window (~$1200/mo extra), then drop below baseline once east is decommissioned (target -$3400/mo)."
+            ],
+            [
+              "user",
+              "CDK or Terraform?"
+            ],
+            [
+              "assistant",
+              "CDK. Existing modules in lib/eks-stack.ts. New region picks up via stage variable."
+            ],
+            [
+              "user",
+              "Test coverage?"
+            ],
+            [
+              "assistant",
+              "Integration tests run against a smaller copy of west in the dev account. ~85% line coverage on the migration scripts."
+            ],
+            [
+              "user",
+              "Any open Slack threads I should know about?"
+            ],
+            [
+              "assistant",
+              "Yes — #infra has a thread on shared NAT gateway costs. Tagging Thomson for review."
+            ],
+            [
+              "user",
+              "OK move on. What about secrets sync?"
+            ],
+            [
+              "assistant",
+              "Secrets Manager replication is enabled for the project namespace. New writes propagate within 60s."
+            ],
+            [
+              "user",
+              "Any issues with the existing IRSA configuration?"
+            ],
+            [
+              "assistant",
+              "No — IRSA works the same way in west. We just had to add the OIDC provider in the new account once."
+            ],
+            [
+              "user",
+              "How are we handling the DNS zone?"
+            ],
+            [
+              "assistant",
+              "Route53 hosted zone is global. The api.example.com record uses weighted routing. Health checks attached."
+            ],
+            [
+              "user",
+              "How does this interact with the existing Lambda functions?"
+            ],
+            [
+              "assistant",
+              "Existing Lambdas continue to invoke the API Gateway endpoint; transition is transparent to them. We bumped the timeout to 30s on cold-start sensitive paths."
+            ],
+            [
+              "user",
+              "What about VPC peering for cross-region traffic?"
+            ],
+            [
+              "assistant",
+              "No peering needed — public S3 endpoints with bucket policies. Cross-region replication is asynchronous, replication lag p95 ~200ms."
+            ],
+            [
+              "user",
+              "Any cost concerns?"
+            ],
+            [
+              "assistant",
+              "Brief spike during dual-running window (~$1200/mo extra), then drop below baseline once east is decommissioned (target -$3400/mo)."
+            ],
+            [
+              "user",
+              "CDK or Terraform?"
+            ],
+            [
+              "assistant",
+              "CDK. Existing modules in lib/eks-stack.ts. New region picks up via stage variable."
+            ],
+            [
+              "user",
+              "Test coverage?"
+            ],
+            [
+              "assistant",
+              "Integration tests run against a smaller copy of west in the dev account. ~85% line coverage on the migration scripts."
+            ],
+            [
+              "user",
+              "Any open Slack threads I should know about?"
+            ],
+            [
+              "assistant",
+              "Yes — #infra has a thread on shared NAT gateway costs. Tagging Thomson for review."
+            ],
+            [
+              "user",
+              "OK move on. What about secrets sync?"
+            ],
+            [
+              "assistant",
+              "Secrets Manager replication is enabled for the project namespace. New writes propagate within 60s."
+            ],
+            [
+              "user",
+              "Any issues with the existing IRSA configuration?"
+            ],
+            [
+              "assistant",
+              "No — IRSA works the same way in west. We just had to add the OIDC provider in the new account once."
+            ],
+            [
+              "user",
+              "How are we handling the DNS zone?"
+            ],
+            [
+              "assistant",
+              "Route53 hosted zone is global. The api.example.com record uses weighted routing. Health checks attached."
+            ],
+            [
+              "user",
+              "How does this interact with the existing Lambda functions?"
+            ],
+            [
+              "assistant",
+              "Existing Lambdas continue to invoke the API Gateway endpoint; transition is transparent to them. We bumped the timeout to 30s on cold-start sensitive paths."
+            ],
+            [
+              "user",
+              "What about VPC peering for cross-region traffic?"
+            ],
+            [
+              "assistant",
+              "No peering needed — public S3 endpoints with bucket policies. Cross-region replication is asynchronous, replication lag p95 ~200ms."
+            ],
+            [
+              "user",
+              "Any cost concerns?"
+            ],
+            [
+              "assistant",
+              "Brief spike during dual-running window (~$1200/mo extra), then drop below baseline once east is decommissioned (target -$3400/mo)."
+            ],
+            [
+              "user",
+              "CDK or Terraform?"
+            ],
+            [
+              "assistant",
+              "CDK. Existing modules in lib/eks-stack.ts. New region picks up via stage variable."
+            ],
+            [
+              "user",
+              "Test coverage?"
+            ],
+            [
+              "assistant",
+              "Integration tests run against a smaller copy of west in the dev account. ~85% line coverage on the migration scripts."
+            ],
+            [
+              "user",
+              "Any open Slack threads I should know about?"
+            ],
+            [
+              "assistant",
+              "Yes — #infra has a thread on shared NAT gateway costs. Tagging Thomson for review."
+            ],
+            [
+              "user",
+              "OK move on. What about secrets sync?"
+            ],
+            [
+              "assistant",
+              "Secrets Manager replication is enabled for the project namespace. New writes propagate within 60s."
+            ],
+            [
+              "user",
+              "Any issues with the existing IRSA configuration?"
+            ],
+            [
+              "assistant",
+              "No — IRSA works the same way in west. We just had to add the OIDC provider in the new account once."
+            ],
+            [
+              "user",
+              "How are we handling the DNS zone?"
+            ],
+            [
+              "assistant",
+              "Route53 hosted zone is global. The api.example.com record uses weighted routing. Health checks attached."
+            ],
+            [
+              "user",
+              "How does this interact with the existing Lambda functions?"
+            ],
+            [
+              "assistant",
+              "Existing Lambdas continue to invoke the API Gateway endpoint; transition is transparent to them. We bumped the timeout to 30s on cold-start sensitive paths."
+            ],
+            [
+              "user",
+              "What about VPC peering for cross-region traffic?"
+            ],
+            [
+              "assistant",
+              "No peering needed — public S3 endpoints with bucket policies. Cross-region replication is asynchronous, replication lag p95 ~200ms."
+            ],
+            [
+              "user",
+              "Any cost concerns?"
+            ],
+            [
+              "assistant",
+              "Brief spike during dual-running window (~$1200/mo extra), then drop below baseline once east is decommissioned (target -$3400/mo)."
+            ],
+            [
+              "user",
+              "CDK or Terraform?"
+            ],
+            [
+              "assistant",
+              "CDK. Existing modules in lib/eks-stack.ts. New region picks up via stage variable."
+            ],
+            [
+              "user",
+              "Test coverage?"
+            ],
+            [
+              "assistant",
+              "Integration tests run against a smaller copy of west in the dev account. ~85% line coverage on the migration scripts."
+            ],
+            [
+              "user",
+              "Any open Slack threads I should know about?"
+            ],
+            [
+              "assistant",
+              "Yes — #infra has a thread on shared NAT gateway costs. Tagging Thomson for review."
+            ],
+            [
+              "user",
+              "OK move on. What about secrets sync?"
+            ],
+            [
+              "assistant",
+              "Secrets Manager replication is enabled for the project namespace. New writes propagate within 60s."
+            ],
+            [
+              "user",
+              "Any issues with the existing IRSA configuration?"
+            ],
+            [
+              "assistant",
+              "No — IRSA works the same way in west. We just had to add the OIDC provider in the new account once."
+            ],
+            [
+              "user",
+              "How are we handling the DNS zone?"
+            ],
+            [
+              "assistant",
+              "Route53 hosted zone is global. The api.example.com record uses weighted routing. Health checks attached."
+            ],
+            [
+              "user",
+              "How does this interact with the existing Lambda functions?"
+            ],
+            [
+              "assistant",
+              "Existing Lambdas continue to invoke the API Gateway endpoint; transition is transparent to them. We bumped the timeout to 30s on cold-start sensitive paths."
+            ],
+            [
+              "user",
+              "What about VPC peering for cross-region traffic?"
+            ],
+            [
+              "assistant",
+              "No peering needed — public S3 endpoints with bucket policies. Cross-region replication is asynchronous, replication lag p95 ~200ms."
+            ],
+            [
+              "user",
+              "Any cost concerns?"
+            ],
+            [
+              "assistant",
+              "Brief spike during dual-running window (~$1200/mo extra), then drop below baseline once east is decommissioned (target -$3400/mo)."
+            ],
+            [
+              "user",
+              "CDK or Terraform?"
+            ],
+            [
+              "assistant",
+              "CDK. Existing modules in lib/eks-stack.ts. New region picks up via stage variable."
+            ]
+          ]
+        },
+        {
+          "compactionDepth": 3,
+          "facts": {
+            "cutover_phase": "Phase 1 active (5% traffic to west)",
+            "decision_traffic_split": "5/95 west/east, daily review, escalate to 50/50 if no SLO violations for 7 days",
+            "observability_stack": "Datadog APM with custom traces; alerts to #infra-alerts",
+            "secret_for_db": "arn:aws:secretsmanager:us-west-2:492372116065:secret:molt-prod-west/db-credentials-AbCdEf",
+            "rag_endpoint": "https://rag-internal.molt-prod-west.cluster.local:8080"
+          },
+          "narrative": [
+            [
+              "user",
+              "Phase 1 is live. What's the current split?"
+            ],
+            [
+              "assistant",
+              "5% to west, 95% to east. Active for 36 hours. P99 latency on west: 87ms vs east: 92ms. No SLO violations."
+            ],
+            [
+              "user",
+              "What's the criterion for moving to Phase 2?"
+            ],
+            [
+              "assistant",
+              "7 consecutive days with no SLO violations on west, then escalate to 50/50."
+            ],
+            [
+              "user",
+              "Confirmed. Logging that as the decision criterion."
+            ],
+            [
+              "assistant",
+              "Logged."
+            ],
+            [
+              "user",
+              "Which database secret are we using on west?"
+            ],
+            [
+              "assistant",
+              "arn:aws:secretsmanager:us-west-2:492372116065:secret:molt-prod-west/db-credentials-AbCdEf. Rotated daily by Lambda."
+            ],
+            [
+              "user",
+              "Observability?"
+            ],
+            [
+              "assistant",
+              "Datadog APM with custom traces on the request path. Alerts route to #infra-alerts on Slack. SLO dashboards: app.datadoghq.com/dashboard/molt-prod-west."
+            ],
+            [
+              "user",
+              "RAG service status?"
+            ],
+            [
+              "assistant",
+              "RAG running at https://rag-internal.molt-prod-west.cluster.local:8080. 3 replicas, healthy. Indexed 240k docs from S3."
+            ],
+            [
+              "user",
+              "Anyone querying it yet?"
+            ],
+            [
+              "assistant",
+              "Internal beta only. The API gateway path /v2/search is wired but not exposed externally."
+            ],
+            [
+              "user",
+              "What threads are still active?"
+            ],
+            [
+              "assistant",
+              "`molt-prod-west` (cluster ops), `east-region-decom` (waiting on cutover completion), `rag-service-deploy` (active development)."
+            ],
+            [
+              "user",
+              "Phase 2 readiness check?"
+            ],
+            [
+              "assistant",
+              "Day 4 of 7 with zero SLO violations. On track to escalate to 50/50 on day 7."
+            ],
+            [
+              "user",
+              "How does this interact with the existing Lambda functions?"
+            ],
+            [
+              "assistant",
+              "Existing Lambdas continue to invoke the API Gateway endpoint; transition is transparent to them. We bumped the timeout to 30s on cold-start sensitive paths."
+            ],
+            [
+              "user",
+              "What about VPC peering for cross-region traffic?"
+            ],
+            [
+              "assistant",
+              "No peering needed — public S3 endpoints with bucket policies. Cross-region replication is asynchronous, replication lag p95 ~200ms."
+            ],
+            [
+              "user",
+              "Any cost concerns?"
+            ],
+            [
+              "assistant",
+              "Brief spike during dual-running window (~$1200/mo extra), then drop below baseline once east is decommissioned (target -$3400/mo)."
+            ],
+            [
+              "user",
+              "CDK or Terraform?"
+            ],
+            [
+              "assistant",
+              "CDK. Existing modules in lib/eks-stack.ts. New region picks up via stage variable."
+            ],
+            [
+              "user",
+              "Test coverage?"
+            ],
+            [
+              "assistant",
+              "Integration tests run against a smaller copy of west in the dev account. ~85% line coverage on the migration scripts."
+            ],
+            [
+              "user",
+              "Any open Slack threads I should know about?"
+            ],
+            [
+              "assistant",
+              "Yes — #infra has a thread on shared NAT gateway costs. Tagging Thomson for review."
+            ],
+            [
+              "user",
+              "OK move on. What about secrets sync?"
+            ],
+            [
+              "assistant",
+              "Secrets Manager replication is enabled for the project namespace. New writes propagate within 60s."
+            ],
+            [
+              "user",
+              "Any issues with the existing IRSA configuration?"
+            ],
+            [
+              "assistant",
+              "No — IRSA works the same way in west. We just had to add the OIDC provider in the new account once."
+            ],
+            [
+              "user",
+              "How are we handling the DNS zone?"
+            ],
+            [
+              "assistant",
+              "Route53 hosted zone is global. The api.example.com record uses weighted routing. Health checks attached."
+            ],
+            [
+              "user",
+              "How does this interact with the existing Lambda functions?"
+            ],
+            [
+              "assistant",
+              "Existing Lambdas continue to invoke the API Gateway endpoint; transition is transparent to them. We bumped the timeout to 30s on cold-start sensitive paths."
+            ],
+            [
+              "user",
+              "What about VPC peering for cross-region traffic?"
+            ],
+            [
+              "assistant",
+              "No peering needed — public S3 endpoints with bucket policies. Cross-region replication is asynchronous, replication lag p95 ~200ms."
+            ],
+            [
+              "user",
+              "Any cost concerns?"
+            ],
+            [
+              "assistant",
+              "Brief spike during dual-running window (~$1200/mo extra), then drop below baseline once east is decommissioned (target -$3400/mo)."
+            ],
+            [
+              "user",
+              "CDK or Terraform?"
+            ],
+            [
+              "assistant",
+              "CDK. Existing modules in lib/eks-stack.ts. New region picks up via stage variable."
+            ],
+            [
+              "user",
+              "Test coverage?"
+            ],
+            [
+              "assistant",
+              "Integration tests run against a smaller copy of west in the dev account. ~85% line coverage on the migration scripts."
+            ],
+            [
+              "user",
+              "Any open Slack threads I should know about?"
+            ],
+            [
+              "assistant",
+              "Yes — #infra has a thread on shared NAT gateway costs. Tagging Thomson for review."
+            ],
+            [
+              "user",
+              "OK move on. What about secrets sync?"
+            ],
+            [
+              "assistant",
+              "Secrets Manager replication is enabled for the project namespace. New writes propagate within 60s."
+            ],
+            [
+              "user",
+              "Any issues with the existing IRSA configuration?"
+            ],
+            [
+              "assistant",
+              "No — IRSA works the same way in west. We just had to add the OIDC provider in the new account once."
+            ],
+            [
+              "user",
+              "How are we handling the DNS zone?"
+            ],
+            [
+              "assistant",
+              "Route53 hosted zone is global. The api.example.com record uses weighted routing. Health checks attached."
+            ],
+            [
+              "user",
+              "How does this interact with the existing Lambda functions?"
+            ],
+            [
+              "assistant",
+              "Existing Lambdas continue to invoke the API Gateway endpoint; transition is transparent to them. We bumped the timeout to 30s on cold-start sensitive paths."
+            ],
+            [
+              "user",
+              "What about VPC peering for cross-region traffic?"
+            ],
+            [
+              "assistant",
+              "No peering needed — public S3 endpoints with bucket policies. Cross-region replication is asynchronous, replication lag p95 ~200ms."
+            ],
+            [
+              "user",
+              "Any cost concerns?"
+            ],
+            [
+              "assistant",
+              "Brief spike during dual-running window (~$1200/mo extra), then drop below baseline once east is decommissioned (target -$3400/mo)."
+            ],
+            [
+              "user",
+              "CDK or Terraform?"
+            ],
+            [
+              "assistant",
+              "CDK. Existing modules in lib/eks-stack.ts. New region picks up via stage variable."
+            ],
+            [
+              "user",
+              "Test coverage?"
+            ],
+            [
+              "assistant",
+              "Integration tests run against a smaller copy of west in the dev account. ~85% line coverage on the migration scripts."
+            ],
+            [
+              "user",
+              "Any open Slack threads I should know about?"
+            ],
+            [
+              "assistant",
+              "Yes — #infra has a thread on shared NAT gateway costs. Tagging Thomson for review."
+            ],
+            [
+              "user",
+              "OK move on. What about secrets sync?"
+            ],
+            [
+              "assistant",
+              "Secrets Manager replication is enabled for the project namespace. New writes propagate within 60s."
+            ],
+            [
+              "user",
+              "Any issues with the existing IRSA configuration?"
+            ],
+            [
+              "assistant",
+              "No — IRSA works the same way in west. We just had to add the OIDC provider in the new account once."
+            ],
+            [
+              "user",
+              "How are we handling the DNS zone?"
+            ],
+            [
+              "assistant",
+              "Route53 hosted zone is global. The api.example.com record uses weighted routing. Health checks attached."
+            ],
+            [
+              "user",
+              "How does this interact with the existing Lambda functions?"
+            ],
+            [
+              "assistant",
+              "Existing Lambdas continue to invoke the API Gateway endpoint; transition is transparent to them. We bumped the timeout to 30s on cold-start sensitive paths."
+            ],
+            [
+              "user",
+              "What about VPC peering for cross-region traffic?"
+            ],
+            [
+              "assistant",
+              "No peering needed — public S3 endpoints with bucket policies. Cross-region replication is asynchronous, replication lag p95 ~200ms."
+            ],
+            [
+              "user",
+              "Any cost concerns?"
+            ],
+            [
+              "assistant",
+              "Brief spike during dual-running window (~$1200/mo extra), then drop below baseline once east is decommissioned (target -$3400/mo)."
+            ],
+            [
+              "user",
+              "CDK or Terraform?"
+            ],
+            [
+              "assistant",
+              "CDK. Existing modules in lib/eks-stack.ts. New region picks up via stage variable."
+            ],
+            [
+              "user",
+              "Test coverage?"
+            ],
+            [
+              "assistant",
+              "Integration tests run against a smaller copy of west in the dev account. ~85% line coverage on the migration scripts."
+            ],
+            [
+              "user",
+              "Any open Slack threads I should know about?"
+            ],
+            [
+              "assistant",
+              "Yes — #infra has a thread on shared NAT gateway costs. Tagging Thomson for review."
+            ],
+            [
+              "user",
+              "OK move on. What about secrets sync?"
+            ],
+            [
+              "assistant",
+              "Secrets Manager replication is enabled for the project namespace. New writes propagate within 60s."
+            ],
+            [
+              "user",
+              "Any issues with the existing IRSA configuration?"
+            ],
+            [
+              "assistant",
+              "No — IRSA works the same way in west. We just had to add the OIDC provider in the new account once."
+            ],
+            [
+              "user",
+              "How are we handling the DNS zone?"
+            ],
+            [
+              "assistant",
+              "Route53 hosted zone is global. The api.example.com record uses weighted routing. Health checks attached."
+            ],
+            [
+              "user",
+              "How does this interact with the existing Lambda functions?"
+            ],
+            [
+              "assistant",
+              "Existing Lambdas continue to invoke the API Gateway endpoint; transition is transparent to them. We bumped the timeout to 30s on cold-start sensitive paths."
+            ],
+            [
+              "user",
+              "What about VPC peering for cross-region traffic?"
+            ],
+            [
+              "assistant",
+              "No peering needed — public S3 endpoints with bucket policies. Cross-region replication is asynchronous, replication lag p95 ~200ms."
+            ],
+            [
+              "user",
+              "Any cost concerns?"
+            ],
+            [
+              "assistant",
+              "Brief spike during dual-running window (~$1200/mo extra), then drop below baseline once east is decommissioned (target -$3400/mo)."
+            ],
+            [
+              "user",
+              "CDK or Terraform?"
+            ],
+            [
+              "assistant",
+              "CDK. Existing modules in lib/eks-stack.ts. New region picks up via stage variable."
+            ],
+            [
+              "user",
+              "Test coverage?"
+            ],
+            [
+              "assistant",
+              "Integration tests run against a smaller copy of west in the dev account. ~85% line coverage on the migration scripts."
+            ]
+          ]
+        },
+        {
+          "compactionDepth": "current",
+          "facts": {
+            "current_phase": "Phase 3 — 100% on west",
+            "east_status": "drained, awaiting teardown",
+            "latest_decision": "Tear down east VPC on Friday after 1 week of zero rollback events",
+            "latest_url": "https://app-prod-v2.us-west-2.example.com",
+            "rag_external": "GA on /v2/search behind WAF rate-limit 1000 rpm",
+            "new_thread_added": "soc2-evidence-collection"
+          },
+          "narrative": [
+            [
+              "user",
+              "We're on Phase 3 now. Confirm 100% on west."
+            ],
+            [
+              "assistant",
+              "Confirmed. 100% traffic on us-west-2. Production URL is now https://app-prod-v2.us-west-2.example.com (v2 because of the API version bump that landed in shadow traffic)."
+            ],
+            [
+              "user",
+              "East status?"
+            ],
+            [
+              "assistant",
+              "Fully drained. Zero traffic for 6 days. Awaiting teardown approval."
+            ],
+            [
+              "user",
+              "Decision: tear down east VPC on Friday assuming zero rollback events for one week. Log it."
+            ],
+            [
+              "assistant",
+              "Decision logged. East VPC teardown Friday +7d, conditional on zero rollback events."
+            ],
+            [
+              "user",
+              "RAG status?"
+            ],
+            [
+              "assistant",
+              "GA on /v2/search behind WAF rate-limit 1000 rpm. Public users can query. P95 latency 340ms."
+            ],
+            [
+              "user",
+              "What about SOC 2? We need to start collecting evidence."
+            ],
+            [
+              "assistant",
+              "Adding new thread: `soc2-evidence-collection`. Initial scope: access controls, encryption, change management, BCP/DR."
+            ],
+            [
+              "user",
+              "Auditor?"
+            ],
+            [
+              "assistant",
+              "Selected Schellman. Kickoff next month. Evidence window starts now (T-30)."
+            ],
+            [
+              "user",
+              "What's the main thing we're working on right now?"
+            ],
+            [
+              "assistant",
+              "Wrapping up the migration (Phase 3 → east teardown) and starting SOC 2 evidence collection in parallel."
+            ],
+            [
+              "user",
+              "How does this interact with the existing Lambda functions?"
+            ],
+            [
+              "assistant",
+              "Existing Lambdas continue to invoke the API Gateway endpoint; transition is transparent to them. We bumped the timeout to 30s on cold-start sensitive paths."
+            ],
+            [
+              "user",
+              "What about VPC peering for cross-region traffic?"
+            ],
+            [
+              "assistant",
+              "No peering needed — public S3 endpoints with bucket policies. Cross-region replication is asynchronous, replication lag p95 ~200ms."
+            ],
+            [
+              "user",
+              "Any cost concerns?"
+            ],
+            [
+              "assistant",
+              "Brief spike during dual-running window (~$1200/mo extra), then drop below baseline once east is decommissioned (target -$3400/mo)."
+            ],
+            [
+              "user",
+              "CDK or Terraform?"
+            ],
+            [
+              "assistant",
+              "CDK. Existing modules in lib/eks-stack.ts. New region picks up via stage variable."
+            ],
+            [
+              "user",
+              "Test coverage?"
+            ],
+            [
+              "assistant",
+              "Integration tests run against a smaller copy of west in the dev account. ~85% line coverage on the migration scripts."
+            ],
+            [
+              "user",
+              "Any open Slack threads I should know about?"
+            ],
+            [
+              "assistant",
+              "Yes — #infra has a thread on shared NAT gateway costs. Tagging Thomson for review."
+            ],
+            [
+              "user",
+              "OK move on. What about secrets sync?"
+            ],
+            [
+              "assistant",
+              "Secrets Manager replication is enabled for the project namespace. New writes propagate within 60s."
+            ],
+            [
+              "user",
+              "Any issues with the existing IRSA configuration?"
+            ],
+            [
+              "assistant",
+              "No — IRSA works the same way in west. We just had to add the OIDC provider in the new account once."
+            ],
+            [
+              "user",
+              "How are we handling the DNS zone?"
+            ],
+            [
+              "assistant",
+              "Route53 hosted zone is global. The api.example.com record uses weighted routing. Health checks attached."
+            ],
+            [
+              "user",
+              "How does this interact with the existing Lambda functions?"
+            ],
+            [
+              "assistant",
+              "Existing Lambdas continue to invoke the API Gateway endpoint; transition is transparent to them. We bumped the timeout to 30s on cold-start sensitive paths."
+            ],
+            [
+              "user",
+              "What about VPC peering for cross-region traffic?"
+            ],
+            [
+              "assistant",
+              "No peering needed — public S3 endpoints with bucket policies. Cross-region replication is asynchronous, replication lag p95 ~200ms."
+            ],
+            [
+              "user",
+              "Any cost concerns?"
+            ],
+            [
+              "assistant",
+              "Brief spike during dual-running window (~$1200/mo extra), then drop below baseline once east is decommissioned (target -$3400/mo)."
+            ],
+            [
+              "user",
+              "CDK or Terraform?"
+            ],
+            [
+              "assistant",
+              "CDK. Existing modules in lib/eks-stack.ts. New region picks up via stage variable."
+            ],
+            [
+              "user",
+              "Test coverage?"
+            ],
+            [
+              "assistant",
+              "Integration tests run against a smaller copy of west in the dev account. ~85% line coverage on the migration scripts."
+            ],
+            [
+              "user",
+              "Any open Slack threads I should know about?"
+            ],
+            [
+              "assistant",
+              "Yes — #infra has a thread on shared NAT gateway costs. Tagging Thomson for review."
+            ],
+            [
+              "user",
+              "OK move on. What about secrets sync?"
+            ],
+            [
+              "assistant",
+              "Secrets Manager replication is enabled for the project namespace. New writes propagate within 60s."
+            ],
+            [
+              "user",
+              "Any issues with the existing IRSA configuration?"
+            ],
+            [
+              "assistant",
+              "No — IRSA works the same way in west. We just had to add the OIDC provider in the new account once."
+            ],
+            [
+              "user",
+              "How are we handling the DNS zone?"
+            ],
+            [
+              "assistant",
+              "Route53 hosted zone is global. The api.example.com record uses weighted routing. Health checks attached."
+            ],
+            [
+              "user",
+              "How does this interact with the existing Lambda functions?"
+            ],
+            [
+              "assistant",
+              "Existing Lambdas continue to invoke the API Gateway endpoint; transition is transparent to them. We bumped the timeout to 30s on cold-start sensitive paths."
+            ],
+            [
+              "user",
+              "What about VPC peering for cross-region traffic?"
+            ],
+            [
+              "assistant",
+              "No peering needed — public S3 endpoints with bucket policies. Cross-region replication is asynchronous, replication lag p95 ~200ms."
+            ],
+            [
+              "user",
+              "Any cost concerns?"
+            ],
+            [
+              "assistant",
+              "Brief spike during dual-running window (~$1200/mo extra), then drop below baseline once east is decommissioned (target -$3400/mo)."
+            ],
+            [
+              "user",
+              "CDK or Terraform?"
+            ],
+            [
+              "assistant",
+              "CDK. Existing modules in lib/eks-stack.ts. New region picks up via stage variable."
+            ],
+            [
+              "user",
+              "Test coverage?"
+            ],
+            [
+              "assistant",
+              "Integration tests run against a smaller copy of west in the dev account. ~85% line coverage on the migration scripts."
+            ],
+            [
+              "user",
+              "Any open Slack threads I should know about?"
+            ],
+            [
+              "assistant",
+              "Yes — #infra has a thread on shared NAT gateway costs. Tagging Thomson for review."
+            ],
+            [
+              "user",
+              "OK move on. What about secrets sync?"
+            ],
+            [
+              "assistant",
+              "Secrets Manager replication is enabled for the project namespace. New writes propagate within 60s."
+            ],
+            [
+              "user",
+              "Any issues with the existing IRSA configuration?"
+            ],
+            [
+              "assistant",
+              "No — IRSA works the same way in west. We just had to add the OIDC provider in the new account once."
+            ],
+            [
+              "user",
+              "How are we handling the DNS zone?"
+            ],
+            [
+              "assistant",
+              "Route53 hosted zone is global. The api.example.com record uses weighted routing. Health checks attached."
+            ],
+            [
+              "user",
+              "How does this interact with the existing Lambda functions?"
+            ],
+            [
+              "assistant",
+              "Existing Lambdas continue to invoke the API Gateway endpoint; transition is transparent to them. We bumped the timeout to 30s on cold-start sensitive paths."
+            ],
+            [
+              "user",
+              "What about VPC peering for cross-region traffic?"
+            ],
+            [
+              "assistant",
+              "No peering needed — public S3 endpoints with bucket policies. Cross-region replication is asynchronous, replication lag p95 ~200ms."
+            ],
+            [
+              "user",
+              "Any cost concerns?"
+            ],
+            [
+              "assistant",
+              "Brief spike during dual-running window (~$1200/mo extra), then drop below baseline once east is decommissioned (target -$3400/mo)."
+            ],
+            [
+              "user",
+              "CDK or Terraform?"
+            ],
+            [
+              "assistant",
+              "CDK. Existing modules in lib/eks-stack.ts. New region picks up via stage variable."
+            ],
+            [
+              "user",
+              "Test coverage?"
+            ],
+            [
+              "assistant",
+              "Integration tests run against a smaller copy of west in the dev account. ~85% line coverage on the migration scripts."
+            ],
+            [
+              "user",
+              "Any open Slack threads I should know about?"
+            ],
+            [
+              "assistant",
+              "Yes — #infra has a thread on shared NAT gateway costs. Tagging Thomson for review."
+            ],
+            [
+              "user",
+              "OK move on. What about secrets sync?"
+            ],
+            [
+              "assistant",
+              "Secrets Manager replication is enabled for the project namespace. New writes propagate within 60s."
+            ],
+            [
+              "user",
+              "Any issues with the existing IRSA configuration?"
+            ],
+            [
+              "assistant",
+              "No — IRSA works the same way in west. We just had to add the OIDC provider in the new account once."
+            ],
+            [
+              "user",
+              "How are we handling the DNS zone?"
+            ],
+            [
+              "assistant",
+              "Route53 hosted zone is global. The api.example.com record uses weighted routing. Health checks attached."
+            ],
+            [
+              "user",
+              "How does this interact with the existing Lambda functions?"
+            ],
+            [
+              "assistant",
+              "Existing Lambdas continue to invoke the API Gateway endpoint; transition is transparent to them. We bumped the timeout to 30s on cold-start sensitive paths."
+            ],
+            [
+              "user",
+              "What about VPC peering for cross-region traffic?"
+            ],
+            [
+              "assistant",
+              "No peering needed — public S3 endpoints with bucket policies. Cross-region replication is asynchronous, replication lag p95 ~200ms."
+            ],
+            [
+              "user",
+              "Any cost concerns?"
+            ],
+            [
+              "assistant",
+              "Brief spike during dual-running window (~$1200/mo extra), then drop below baseline once east is decommissioned (target -$3400/mo)."
+            ],
+            [
+              "user",
+              "CDK or Terraform?"
+            ],
+            [
+              "assistant",
+              "CDK. Existing modules in lib/eks-stack.ts. New region picks up via stage variable."
+            ],
+            [
+              "user",
+              "Test coverage?"
+            ],
+            [
+              "assistant",
+              "Integration tests run against a smaller copy of west in the dev account. ~85% line coverage on the migration scripts."
+            ],
+            [
+              "user",
+              "Any open Slack threads I should know about?"
+            ],
+            [
+              "assistant",
+              "Yes — #infra has a thread on shared NAT gateway costs. Tagging Thomson for review."
+            ],
+            [
+              "user",
+              "OK move on. What about secrets sync?"
+            ],
+            [
+              "assistant",
+              "Secrets Manager replication is enabled for the project namespace. New writes propagate within 60s."
+            ]
+          ]
+        }
+      ],
+      "probes": [
+        {
+          "id": "eks-p1",
+          "depth": 1,
+          "type": "long-range-recall",
+          "question": "What was the deployment URL we were using when we first started this migration thread?",
+          "expectedAnswer": "https://app-prod-v1.us-east-1.example.com",
+          "acceptableAnswers": [
+            "app-prod-v1.us-east-1.example.com",
+            "v1.us-east-1",
+            "us-east-1.example.com"
+          ]
+        },
+        {
+          "id": "eks-p2",
+          "depth": 1,
+          "type": "decision-continuity",
+          "question": "Why did we choose Postgres 14 over Aurora Serverless?",
+          "expectedAnswer": "Aurora had 3.2s p99 Lambda cold-start latency, too slow for auth",
+          "acceptableAnswers": [
+            "cold-start",
+            "cold start",
+            "lambda",
+            "latency",
+            "3.2s",
+            "auth"
+          ]
+        },
+        {
+          "id": "eks-p3",
+          "depth": 1,
+          "type": "thread-lineage",
+          "question": "What was the original name of the thread we now call `east-region-decom`?",
+          "expectedAnswer": "old-cluster-decom",
+          "acceptableAnswers": [
+            "old-cluster-decom",
+            "old cluster decom"
+          ]
+        },
+        {
+          "id": "eks-p4",
+          "depth": 2,
+          "type": "long-range-recall",
+          "question": "What is the API Gateway ID in us-west-2?",
+          "expectedAnswer": "w8x9y0z1q2",
+          "acceptableAnswers": [
+            "w8x9y0z1q2"
+          ]
+        },
+        {
+          "id": "eks-p5",
+          "depth": 2,
+          "type": "decision-continuity",
+          "question": "Why did we go directly to EKS 1.29 instead of 1.28?",
+          "expectedAnswer": "To skip an interim upgrade — 1.29 is latest stable, supported until 2027",
+          "acceptableAnswers": [
+            "skip",
+            "interim",
+            "1.29",
+            "2027",
+            "latest stable"
+          ]
+        },
+        {
+          "id": "eks-p6",
+          "depth": 2,
+          "type": "long-range-recall",
+          "question": "What Bedrock model did we configure as the default for the RAG service?",
+          "expectedAnswer": "anthropic.claude-sonnet-4-v1:0",
+          "acceptableAnswers": [
+            "claude-sonnet-4-v1",
+            "sonnet-4-v1",
+            "anthropic.claude-sonnet-4"
+          ]
+        },
+        {
+          "id": "eks-p7",
+          "depth": 3,
+          "type": "long-range-recall",
+          "question": "What is the ARN of the database credentials secret on the west cluster?",
+          "expectedAnswer": "arn:aws:secretsmanager:us-west-2:492372116065:secret:molt-prod-west/db-credentials-AbCdEf",
+          "acceptableAnswers": [
+            "molt-prod-west/db-credentials-AbCdEf",
+            "db-credentials-AbCdEf",
+            "molt-prod-west/db-credentials"
+          ]
+        },
+        {
+          "id": "eks-p8",
+          "depth": 3,
+          "type": "decision-continuity",
+          "question": "What was the criterion we set for escalating from Phase 1 (5%) to Phase 2 (50/50)?",
+          "expectedAnswer": "7 consecutive days with no SLO violations on west",
+          "acceptableAnswers": [
+            "7 days",
+            "7 consecutive",
+            "zero SLO",
+            "no SLO violations",
+            "seven days"
+          ]
+        },
+        {
+          "id": "eks-p9",
+          "depth": 3,
+          "type": "trajectory",
+          "question": "What was the status of the `rag-service-deploy` thread at compaction 3 — was it active, blocked, or completed?",
+          "expectedAnswer": "active",
+          "acceptableAnswers": [
+            "active"
+          ]
+        },
+        {
+          "id": "eks-p10",
+          "depth": "current",
+          "type": "long-range-recall",
+          "question": "What is the production URL on the west cluster right now?",
+          "expectedAnswer": "https://app-prod-v2.us-west-2.example.com",
+          "acceptableAnswers": [
+            "app-prod-v2.us-west-2.example.com",
+            "v2.us-west-2"
+          ]
+        },
+        {
+          "id": "eks-p11",
+          "depth": "current",
+          "type": "trajectory",
+          "question": "What is the status of `east-region-decom` right now?",
+          "expectedAnswer": "drained, awaiting teardown (or \"tearing down Friday +7d if no rollbacks\")",
+          "acceptableAnswers": [
+            "drained",
+            "teardown",
+            "tear down",
+            "friday",
+            "awaiting"
+          ]
+        },
+        {
+          "id": "eks-p12",
+          "depth": "current",
+          "type": "long-range-recall",
+          "question": "What new thread did we just add at the end of the session?",
+          "expectedAnswer": "soc2-evidence-collection",
+          "acceptableAnswers": [
+            "soc2-evidence-collection",
+            "soc2 evidence",
+            "soc 2",
+            "soc2"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "conv-auth-launch",
+      "topic": "Auth system rebuild — JWT vs OAuth, cookies, MFA",
+      "segments": [
+        {
+          "compactionDepth": 1,
+          "facts": {
+            "decision_jwt": "JWT (HS256, 15m access + 7d refresh) chosen over OAuth-only",
+            "decision_jwt_reason": "Stateless validation — no session store roundtrip, fits our edge-cache pattern",
+            "old_endpoint": "/api/v1/auth/login",
+            "cookie_name": "molt_session",
+            "thread_orig_name": "auth-rebuild-design",
+            "ssm_secret_name": "/molt/prod/jwt-signing-key"
+          },
+          "narrative": [
+            [
+              "user",
+              "Auth rebuild kickoff. We need to decide: JWT or OAuth-only?"
+            ],
+            [
+              "assistant",
+              "For your edge-cache pattern, JWT (HS256) is the better fit. Stateless validation means no session-store roundtrip per request, which matters at our 12k rps peak."
+            ],
+            [
+              "user",
+              "Confirmed. Decision: JWT, HS256, 15-minute access tokens with 7-day refresh."
+            ],
+            [
+              "assistant",
+              "Logged. Decision: JWT (HS256, 15m access + 7d refresh) chosen over OAuth-only because stateless validation fits the edge-cache pattern."
+            ],
+            [
+              "user",
+              "What's the existing endpoint?"
+            ],
+            [
+              "assistant",
+              "Current login is at /api/v1/auth/login. Cookie is named molt_session, HttpOnly, SameSite=Lax."
+            ],
+            [
+              "user",
+              "Where do we store the signing key?"
+            ],
+            [
+              "assistant",
+              "SSM Parameter Store: /molt/prod/jwt-signing-key. Encrypted with KMS, rotated quarterly."
+            ],
+            [
+              "user",
+              "Good. Track this whole effort as `auth-rebuild-design`."
+            ],
+            [
+              "assistant",
+              "Tracking thread `auth-rebuild-design`. Phase 1: schema design. Phase 2: token issuance. Phase 3: validation middleware. Phase 4: cutover."
+            ],
+            [
+              "user",
+              "Refresh token rotation strategy?"
+            ],
+            [
+              "assistant",
+              "Sliding window — every refresh issues a new refresh token, old one is blacklisted in a Redis short-TTL set."
+            ],
+            [
+              "user",
+              "OK. Refresh token blacklist Redis cluster?"
+            ],
+            [
+              "assistant",
+              "Existing Redis cluster `molt-cache-prod` (cluster mode, 3 shards, Multi-AZ). New keyspace: `auth:refresh:blacklist:*` with 8d TTL."
+            ],
+            [
+              "user",
+              "Pen-test schedule?"
+            ],
+            [
+              "assistant",
+              "Once we have a staging deploy with full token flow. Targeting Cobalt for the engagement."
+            ],
+            [
+              "user",
+              "How are we handling refresh failures?"
+            ],
+            [
+              "assistant",
+              "Refresh failure returns 401 with a `WWW-Authenticate: Bearer error=\"invalid_token\"` header. Client redirects to /login."
+            ],
+            [
+              "user",
+              "Logging level?"
+            ],
+            [
+              "assistant",
+              "INFO for success paths, WARN for refresh failures, ERROR for signing failures. JSON-structured logs."
+            ],
+            [
+              "user",
+              "What does the JWT payload look like?"
+            ],
+            [
+              "assistant",
+              "sub (user_id), iss (auth.example.com), aud (api.example.com), exp, iat, jti (UUID), amr (['mfa'] when MFA passed), tier (free/pro/enterprise)."
+            ],
+            [
+              "user",
+              "Cookie SameSite?"
+            ],
+            [
+              "assistant",
+              "Lax for the cookie. We don't need Strict because we don't have any cross-site POSTs that matter for auth."
+            ],
+            [
+              "user",
+              "Any browser quirks?"
+            ],
+            [
+              "assistant",
+              "Safari 16 has a known issue with HttpOnly cookies in private mode — we have a fallback to sessionStorage for that case, with a security warning shown in the UI."
+            ],
+            [
+              "user",
+              "Tests?"
+            ],
+            [
+              "assistant",
+              "Unit tests on the validation middleware (95% coverage), e2e tests via Playwright on the full login + refresh + revoke flow."
+            ],
+            [
+              "user",
+              "Any internationalization concerns?"
+            ],
+            [
+              "assistant",
+              "Error messages are i18n-keyed. Currently English + Spanish + French + Japanese."
+            ],
+            [
+              "user",
+              "Fallback if Redis is down?"
+            ],
+            [
+              "assistant",
+              "Refresh token blacklist falls open (we accept the refresh) but we trigger a paging alert. We can switch to in-memory fallback for short outages."
+            ],
+            [
+              "user",
+              "Audit log retention?"
+            ],
+            [
+              "assistant",
+              "90 days hot in CloudWatch, 7 years cold in S3 Glacier (compliance requirement)."
+            ],
+            [
+              "user",
+              "Any open security review items?"
+            ],
+            [
+              "assistant",
+              "One: confirm the rate-limit Redis store is HA. Currently backed by `molt-cache-prod` which is multi-AZ, so we're good."
+            ],
+            [
+              "user",
+              "How are we handling refresh failures?"
+            ],
+            [
+              "assistant",
+              "Refresh failure returns 401 with a `WWW-Authenticate: Bearer error=\"invalid_token\"` header. Client redirects to /login."
+            ],
+            [
+              "user",
+              "Logging level?"
+            ],
+            [
+              "assistant",
+              "INFO for success paths, WARN for refresh failures, ERROR for signing failures. JSON-structured logs."
+            ],
+            [
+              "user",
+              "What does the JWT payload look like?"
+            ],
+            [
+              "assistant",
+              "sub (user_id), iss (auth.example.com), aud (api.example.com), exp, iat, jti (UUID), amr (['mfa'] when MFA passed), tier (free/pro/enterprise)."
+            ],
+            [
+              "user",
+              "Cookie SameSite?"
+            ],
+            [
+              "assistant",
+              "Lax for the cookie. We don't need Strict because we don't have any cross-site POSTs that matter for auth."
+            ],
+            [
+              "user",
+              "Any browser quirks?"
+            ],
+            [
+              "assistant",
+              "Safari 16 has a known issue with HttpOnly cookies in private mode — we have a fallback to sessionStorage for that case, with a security warning shown in the UI."
+            ],
+            [
+              "user",
+              "Tests?"
+            ],
+            [
+              "assistant",
+              "Unit tests on the validation middleware (95% coverage), e2e tests via Playwright on the full login + refresh + revoke flow."
+            ],
+            [
+              "user",
+              "Any internationalization concerns?"
+            ],
+            [
+              "assistant",
+              "Error messages are i18n-keyed. Currently English + Spanish + French + Japanese."
+            ],
+            [
+              "user",
+              "Fallback if Redis is down?"
+            ],
+            [
+              "assistant",
+              "Refresh token blacklist falls open (we accept the refresh) but we trigger a paging alert. We can switch to in-memory fallback for short outages."
+            ],
+            [
+              "user",
+              "Audit log retention?"
+            ],
+            [
+              "assistant",
+              "90 days hot in CloudWatch, 7 years cold in S3 Glacier (compliance requirement)."
+            ],
+            [
+              "user",
+              "Any open security review items?"
+            ],
+            [
+              "assistant",
+              "One: confirm the rate-limit Redis store is HA. Currently backed by `molt-cache-prod` which is multi-AZ, so we're good."
+            ],
+            [
+              "user",
+              "How are we handling refresh failures?"
+            ],
+            [
+              "assistant",
+              "Refresh failure returns 401 with a `WWW-Authenticate: Bearer error=\"invalid_token\"` header. Client redirects to /login."
+            ],
+            [
+              "user",
+              "Logging level?"
+            ],
+            [
+              "assistant",
+              "INFO for success paths, WARN for refresh failures, ERROR for signing failures. JSON-structured logs."
+            ],
+            [
+              "user",
+              "What does the JWT payload look like?"
+            ],
+            [
+              "assistant",
+              "sub (user_id), iss (auth.example.com), aud (api.example.com), exp, iat, jti (UUID), amr (['mfa'] when MFA passed), tier (free/pro/enterprise)."
+            ],
+            [
+              "user",
+              "Cookie SameSite?"
+            ],
+            [
+              "assistant",
+              "Lax for the cookie. We don't need Strict because we don't have any cross-site POSTs that matter for auth."
+            ],
+            [
+              "user",
+              "Any browser quirks?"
+            ],
+            [
+              "assistant",
+              "Safari 16 has a known issue with HttpOnly cookies in private mode — we have a fallback to sessionStorage for that case, with a security warning shown in the UI."
+            ],
+            [
+              "user",
+              "Tests?"
+            ],
+            [
+              "assistant",
+              "Unit tests on the validation middleware (95% coverage), e2e tests via Playwright on the full login + refresh + revoke flow."
+            ],
+            [
+              "user",
+              "Any internationalization concerns?"
+            ],
+            [
+              "assistant",
+              "Error messages are i18n-keyed. Currently English + Spanish + French + Japanese."
+            ],
+            [
+              "user",
+              "Fallback if Redis is down?"
+            ],
+            [
+              "assistant",
+              "Refresh token blacklist falls open (we accept the refresh) but we trigger a paging alert. We can switch to in-memory fallback for short outages."
+            ],
+            [
+              "user",
+              "Audit log retention?"
+            ],
+            [
+              "assistant",
+              "90 days hot in CloudWatch, 7 years cold in S3 Glacier (compliance requirement)."
+            ],
+            [
+              "user",
+              "Any open security review items?"
+            ],
+            [
+              "assistant",
+              "One: confirm the rate-limit Redis store is HA. Currently backed by `molt-cache-prod` which is multi-AZ, so we're good."
+            ],
+            [
+              "user",
+              "How are we handling refresh failures?"
+            ],
+            [
+              "assistant",
+              "Refresh failure returns 401 with a `WWW-Authenticate: Bearer error=\"invalid_token\"` header. Client redirects to /login."
+            ],
+            [
+              "user",
+              "Logging level?"
+            ],
+            [
+              "assistant",
+              "INFO for success paths, WARN for refresh failures, ERROR for signing failures. JSON-structured logs."
+            ],
+            [
+              "user",
+              "What does the JWT payload look like?"
+            ],
+            [
+              "assistant",
+              "sub (user_id), iss (auth.example.com), aud (api.example.com), exp, iat, jti (UUID), amr (['mfa'] when MFA passed), tier (free/pro/enterprise)."
+            ],
+            [
+              "user",
+              "Cookie SameSite?"
+            ],
+            [
+              "assistant",
+              "Lax for the cookie. We don't need Strict because we don't have any cross-site POSTs that matter for auth."
+            ],
+            [
+              "user",
+              "Any browser quirks?"
+            ],
+            [
+              "assistant",
+              "Safari 16 has a known issue with HttpOnly cookies in private mode — we have a fallback to sessionStorage for that case, with a security warning shown in the UI."
+            ],
+            [
+              "user",
+              "Tests?"
+            ],
+            [
+              "assistant",
+              "Unit tests on the validation middleware (95% coverage), e2e tests via Playwright on the full login + refresh + revoke flow."
+            ],
+            [
+              "user",
+              "Any internationalization concerns?"
+            ],
+            [
+              "assistant",
+              "Error messages are i18n-keyed. Currently English + Spanish + French + Japanese."
+            ],
+            [
+              "user",
+              "Fallback if Redis is down?"
+            ],
+            [
+              "assistant",
+              "Refresh token blacklist falls open (we accept the refresh) but we trigger a paging alert. We can switch to in-memory fallback for short outages."
+            ],
+            [
+              "user",
+              "Audit log retention?"
+            ],
+            [
+              "assistant",
+              "90 days hot in CloudWatch, 7 years cold in S3 Glacier (compliance requirement)."
+            ],
+            [
+              "user",
+              "Any open security review items?"
+            ],
+            [
+              "assistant",
+              "One: confirm the rate-limit Redis store is HA. Currently backed by `molt-cache-prod` which is multi-AZ, so we're good."
+            ],
+            [
+              "user",
+              "How are we handling refresh failures?"
+            ],
+            [
+              "assistant",
+              "Refresh failure returns 401 with a `WWW-Authenticate: Bearer error=\"invalid_token\"` header. Client redirects to /login."
+            ],
+            [
+              "user",
+              "Logging level?"
+            ],
+            [
+              "assistant",
+              "INFO for success paths, WARN for refresh failures, ERROR for signing failures. JSON-structured logs."
+            ]
+          ]
+        },
+        {
+          "compactionDepth": 2,
+          "facts": {
+            "new_endpoint": "/api/v2/auth/token",
+            "thread_renamed_to": "auth-token-issuance",
+            "decision_mfa": "TOTP via authenticator app, no SMS",
+            "decision_mfa_reason": "SMS interception risk and US carrier reliability problems",
+            "new_secret_name": "/molt/prod/jwt-signing-key-v2",
+            "kms_key_id": "mrk-1234abcd5678efgh"
+          },
+          "narrative": [
+            [
+              "user",
+              "Schema is done. Started the issuance endpoint. New path is /api/v2/auth/token."
+            ],
+            [
+              "assistant",
+              "/api/v2/auth/token is up. Returns access+refresh, sets molt_session cookie. POST { username, password, mfa_code }."
+            ],
+            [
+              "user",
+              "Rename the thread now — we're past design. Call it `auth-token-issuance`."
+            ],
+            [
+              "assistant",
+              "Renamed thread: `auth-rebuild-design` → `auth-token-issuance`."
+            ],
+            [
+              "user",
+              "MFA — we go TOTP only, right? Not SMS?"
+            ],
+            [
+              "assistant",
+              "Confirmed. Decision: TOTP via authenticator app, no SMS. SMS interception risk and US carrier reliability are too high for a financial app."
+            ],
+            [
+              "user",
+              "Logged."
+            ],
+            [
+              "assistant",
+              "Logged. TOTP-only MFA, no SMS path."
+            ],
+            [
+              "user",
+              "We rotated the signing key. New name?"
+            ],
+            [
+              "assistant",
+              "/molt/prod/jwt-signing-key-v2. Encrypted with new KMS multi-region key mrk-1234abcd5678efgh. Old key kept for grace period (7d)."
+            ],
+            [
+              "user",
+              "Edge case — what about SSO users? Bypass MFA?"
+            ],
+            [
+              "assistant",
+              "SSO IdP enforces MFA at their layer. We trust the SAML assertion's `amr` claim to indicate MFA already happened. No double prompt."
+            ],
+            [
+              "user",
+              "Make sure we log the amr value in audit."
+            ],
+            [
+              "assistant",
+              "Audit log writes amr claim, IP, UA, success/failure to CloudWatch log group `/molt/prod/auth-audit`."
+            ],
+            [
+              "user",
+              "Token revocation API?"
+            ],
+            [
+              "assistant",
+              "POST /api/v2/auth/revoke. Adds the JTI to the Redis blacklist. Revokes refresh token chain too."
+            ],
+            [
+              "user",
+              "How are we handling refresh failures?"
+            ],
+            [
+              "assistant",
+              "Refresh failure returns 401 with a `WWW-Authenticate: Bearer error=\"invalid_token\"` header. Client redirects to /login."
+            ],
+            [
+              "user",
+              "Logging level?"
+            ],
+            [
+              "assistant",
+              "INFO for success paths, WARN for refresh failures, ERROR for signing failures. JSON-structured logs."
+            ],
+            [
+              "user",
+              "What does the JWT payload look like?"
+            ],
+            [
+              "assistant",
+              "sub (user_id), iss (auth.example.com), aud (api.example.com), exp, iat, jti (UUID), amr (['mfa'] when MFA passed), tier (free/pro/enterprise)."
+            ],
+            [
+              "user",
+              "Cookie SameSite?"
+            ],
+            [
+              "assistant",
+              "Lax for the cookie. We don't need Strict because we don't have any cross-site POSTs that matter for auth."
+            ],
+            [
+              "user",
+              "Any browser quirks?"
+            ],
+            [
+              "assistant",
+              "Safari 16 has a known issue with HttpOnly cookies in private mode — we have a fallback to sessionStorage for that case, with a security warning shown in the UI."
+            ],
+            [
+              "user",
+              "Tests?"
+            ],
+            [
+              "assistant",
+              "Unit tests on the validation middleware (95% coverage), e2e tests via Playwright on the full login + refresh + revoke flow."
+            ],
+            [
+              "user",
+              "Any internationalization concerns?"
+            ],
+            [
+              "assistant",
+              "Error messages are i18n-keyed. Currently English + Spanish + French + Japanese."
+            ],
+            [
+              "user",
+              "Fallback if Redis is down?"
+            ],
+            [
+              "assistant",
+              "Refresh token blacklist falls open (we accept the refresh) but we trigger a paging alert. We can switch to in-memory fallback for short outages."
+            ],
+            [
+              "user",
+              "Audit log retention?"
+            ],
+            [
+              "assistant",
+              "90 days hot in CloudWatch, 7 years cold in S3 Glacier (compliance requirement)."
+            ],
+            [
+              "user",
+              "Any open security review items?"
+            ],
+            [
+              "assistant",
+              "One: confirm the rate-limit Redis store is HA. Currently backed by `molt-cache-prod` which is multi-AZ, so we're good."
+            ],
+            [
+              "user",
+              "How are we handling refresh failures?"
+            ],
+            [
+              "assistant",
+              "Refresh failure returns 401 with a `WWW-Authenticate: Bearer error=\"invalid_token\"` header. Client redirects to /login."
+            ],
+            [
+              "user",
+              "Logging level?"
+            ],
+            [
+              "assistant",
+              "INFO for success paths, WARN for refresh failures, ERROR for signing failures. JSON-structured logs."
+            ],
+            [
+              "user",
+              "What does the JWT payload look like?"
+            ],
+            [
+              "assistant",
+              "sub (user_id), iss (auth.example.com), aud (api.example.com), exp, iat, jti (UUID), amr (['mfa'] when MFA passed), tier (free/pro/enterprise)."
+            ],
+            [
+              "user",
+              "Cookie SameSite?"
+            ],
+            [
+              "assistant",
+              "Lax for the cookie. We don't need Strict because we don't have any cross-site POSTs that matter for auth."
+            ],
+            [
+              "user",
+              "Any browser quirks?"
+            ],
+            [
+              "assistant",
+              "Safari 16 has a known issue with HttpOnly cookies in private mode — we have a fallback to sessionStorage for that case, with a security warning shown in the UI."
+            ],
+            [
+              "user",
+              "Tests?"
+            ],
+            [
+              "assistant",
+              "Unit tests on the validation middleware (95% coverage), e2e tests via Playwright on the full login + refresh + revoke flow."
+            ],
+            [
+              "user",
+              "Any internationalization concerns?"
+            ],
+            [
+              "assistant",
+              "Error messages are i18n-keyed. Currently English + Spanish + French + Japanese."
+            ],
+            [
+              "user",
+              "Fallback if Redis is down?"
+            ],
+            [
+              "assistant",
+              "Refresh token blacklist falls open (we accept the refresh) but we trigger a paging alert. We can switch to in-memory fallback for short outages."
+            ],
+            [
+              "user",
+              "Audit log retention?"
+            ],
+            [
+              "assistant",
+              "90 days hot in CloudWatch, 7 years cold in S3 Glacier (compliance requirement)."
+            ],
+            [
+              "user",
+              "Any open security review items?"
+            ],
+            [
+              "assistant",
+              "One: confirm the rate-limit Redis store is HA. Currently backed by `molt-cache-prod` which is multi-AZ, so we're good."
+            ],
+            [
+              "user",
+              "How are we handling refresh failures?"
+            ],
+            [
+              "assistant",
+              "Refresh failure returns 401 with a `WWW-Authenticate: Bearer error=\"invalid_token\"` header. Client redirects to /login."
+            ],
+            [
+              "user",
+              "Logging level?"
+            ],
+            [
+              "assistant",
+              "INFO for success paths, WARN for refresh failures, ERROR for signing failures. JSON-structured logs."
+            ],
+            [
+              "user",
+              "What does the JWT payload look like?"
+            ],
+            [
+              "assistant",
+              "sub (user_id), iss (auth.example.com), aud (api.example.com), exp, iat, jti (UUID), amr (['mfa'] when MFA passed), tier (free/pro/enterprise)."
+            ],
+            [
+              "user",
+              "Cookie SameSite?"
+            ],
+            [
+              "assistant",
+              "Lax for the cookie. We don't need Strict because we don't have any cross-site POSTs that matter for auth."
+            ],
+            [
+              "user",
+              "Any browser quirks?"
+            ],
+            [
+              "assistant",
+              "Safari 16 has a known issue with HttpOnly cookies in private mode — we have a fallback to sessionStorage for that case, with a security warning shown in the UI."
+            ],
+            [
+              "user",
+              "Tests?"
+            ],
+            [
+              "assistant",
+              "Unit tests on the validation middleware (95% coverage), e2e tests via Playwright on the full login + refresh + revoke flow."
+            ],
+            [
+              "user",
+              "Any internationalization concerns?"
+            ],
+            [
+              "assistant",
+              "Error messages are i18n-keyed. Currently English + Spanish + French + Japanese."
+            ],
+            [
+              "user",
+              "Fallback if Redis is down?"
+            ],
+            [
+              "assistant",
+              "Refresh token blacklist falls open (we accept the refresh) but we trigger a paging alert. We can switch to in-memory fallback for short outages."
+            ],
+            [
+              "user",
+              "Audit log retention?"
+            ],
+            [
+              "assistant",
+              "90 days hot in CloudWatch, 7 years cold in S3 Glacier (compliance requirement)."
+            ],
+            [
+              "user",
+              "Any open security review items?"
+            ],
+            [
+              "assistant",
+              "One: confirm the rate-limit Redis store is HA. Currently backed by `molt-cache-prod` which is multi-AZ, so we're good."
+            ],
+            [
+              "user",
+              "How are we handling refresh failures?"
+            ],
+            [
+              "assistant",
+              "Refresh failure returns 401 with a `WWW-Authenticate: Bearer error=\"invalid_token\"` header. Client redirects to /login."
+            ],
+            [
+              "user",
+              "Logging level?"
+            ],
+            [
+              "assistant",
+              "INFO for success paths, WARN for refresh failures, ERROR for signing failures. JSON-structured logs."
+            ],
+            [
+              "user",
+              "What does the JWT payload look like?"
+            ],
+            [
+              "assistant",
+              "sub (user_id), iss (auth.example.com), aud (api.example.com), exp, iat, jti (UUID), amr (['mfa'] when MFA passed), tier (free/pro/enterprise)."
+            ],
+            [
+              "user",
+              "Cookie SameSite?"
+            ],
+            [
+              "assistant",
+              "Lax for the cookie. We don't need Strict because we don't have any cross-site POSTs that matter for auth."
+            ],
+            [
+              "user",
+              "Any browser quirks?"
+            ],
+            [
+              "assistant",
+              "Safari 16 has a known issue with HttpOnly cookies in private mode — we have a fallback to sessionStorage for that case, with a security warning shown in the UI."
+            ],
+            [
+              "user",
+              "Tests?"
+            ],
+            [
+              "assistant",
+              "Unit tests on the validation middleware (95% coverage), e2e tests via Playwright on the full login + refresh + revoke flow."
+            ],
+            [
+              "user",
+              "Any internationalization concerns?"
+            ],
+            [
+              "assistant",
+              "Error messages are i18n-keyed. Currently English + Spanish + French + Japanese."
+            ],
+            [
+              "user",
+              "Fallback if Redis is down?"
+            ],
+            [
+              "assistant",
+              "Refresh token blacklist falls open (we accept the refresh) but we trigger a paging alert. We can switch to in-memory fallback for short outages."
+            ],
+            [
+              "user",
+              "Audit log retention?"
+            ],
+            [
+              "assistant",
+              "90 days hot in CloudWatch, 7 years cold in S3 Glacier (compliance requirement)."
+            ],
+            [
+              "user",
+              "Any open security review items?"
+            ],
+            [
+              "assistant",
+              "One: confirm the rate-limit Redis store is HA. Currently backed by `molt-cache-prod` which is multi-AZ, so we're good."
+            ],
+            [
+              "user",
+              "How are we handling refresh failures?"
+            ],
+            [
+              "assistant",
+              "Refresh failure returns 401 with a `WWW-Authenticate: Bearer error=\"invalid_token\"` header. Client redirects to /login."
+            ],
+            [
+              "user",
+              "Logging level?"
+            ],
+            [
+              "assistant",
+              "INFO for success paths, WARN for refresh failures, ERROR for signing failures. JSON-structured logs."
+            ]
+          ]
+        },
+        {
+          "compactionDepth": 3,
+          "facts": {
+            "thread_split_into_two": [
+              "auth-validation-middleware",
+              "auth-mfa-flow"
+            ],
+            "decision_validation_lib": "jose (npm) — chose over jsonwebtoken because of better TS types and node:crypto-native",
+            "cors_origins": "https://app.example.com, https://admin.example.com",
+            "rate_limit": "60 req/min per IP on /api/v2/auth/token, burst 100",
+            "observability_metric": "auth.token.issued.count, auth.token.revoked.count, auth.mfa.failure.count"
+          },
+          "narrative": [
+            [
+              "user",
+              "Issuance is done. Now the validation middleware. Let's split the thread — one for validation, one for MFA flow polish."
+            ],
+            [
+              "assistant",
+              "Splitting `auth-token-issuance` into two: `auth-validation-middleware` and `auth-mfa-flow`."
+            ],
+            [
+              "user",
+              "What library for JWT validation?"
+            ],
+            [
+              "assistant",
+              "jose (npm). Chose over jsonwebtoken because of better TypeScript types and it uses node:crypto natively (no extra deps)."
+            ],
+            [
+              "user",
+              "Confirmed. Logging."
+            ],
+            [
+              "assistant",
+              "Logged. Validation library: jose."
+            ],
+            [
+              "user",
+              "CORS config?"
+            ],
+            [
+              "assistant",
+              "Allowed origins: https://app.example.com and https://admin.example.com. Credentials true for cookie flow."
+            ],
+            [
+              "user",
+              "Rate limits on the token endpoint?"
+            ],
+            [
+              "assistant",
+              "60 req/min per IP, burst 100. Implemented via express-rate-limit with Redis store on `molt-cache-prod`."
+            ],
+            [
+              "user",
+              "Metrics?"
+            ],
+            [
+              "assistant",
+              "Emitting: auth.token.issued.count, auth.token.revoked.count, auth.mfa.failure.count. All to Datadog with `env:prod` tag."
+            ],
+            [
+              "user",
+              "Status of validation work?"
+            ],
+            [
+              "assistant",
+              "Validation middleware is feature-complete in staging. Pending pen-test. Status: active, in pre-prod."
+            ],
+            [
+              "user",
+              "MFA flow status?"
+            ],
+            [
+              "assistant",
+              "MFA flow active. UI hooks done; backend QR-code endpoint live. Pending TOTP secret rotation flow."
+            ],
+            [
+              "user",
+              "Check on pen-test."
+            ],
+            [
+              "assistant",
+              "Cobalt engaged, 5-day window starting Monday. Two testers."
+            ],
+            [
+              "user",
+              "How are we handling refresh failures?"
+            ],
+            [
+              "assistant",
+              "Refresh failure returns 401 with a `WWW-Authenticate: Bearer error=\"invalid_token\"` header. Client redirects to /login."
+            ],
+            [
+              "user",
+              "Logging level?"
+            ],
+            [
+              "assistant",
+              "INFO for success paths, WARN for refresh failures, ERROR for signing failures. JSON-structured logs."
+            ],
+            [
+              "user",
+              "What does the JWT payload look like?"
+            ],
+            [
+              "assistant",
+              "sub (user_id), iss (auth.example.com), aud (api.example.com), exp, iat, jti (UUID), amr (['mfa'] when MFA passed), tier (free/pro/enterprise)."
+            ],
+            [
+              "user",
+              "Cookie SameSite?"
+            ],
+            [
+              "assistant",
+              "Lax for the cookie. We don't need Strict because we don't have any cross-site POSTs that matter for auth."
+            ],
+            [
+              "user",
+              "Any browser quirks?"
+            ],
+            [
+              "assistant",
+              "Safari 16 has a known issue with HttpOnly cookies in private mode — we have a fallback to sessionStorage for that case, with a security warning shown in the UI."
+            ],
+            [
+              "user",
+              "Tests?"
+            ],
+            [
+              "assistant",
+              "Unit tests on the validation middleware (95% coverage), e2e tests via Playwright on the full login + refresh + revoke flow."
+            ],
+            [
+              "user",
+              "Any internationalization concerns?"
+            ],
+            [
+              "assistant",
+              "Error messages are i18n-keyed. Currently English + Spanish + French + Japanese."
+            ],
+            [
+              "user",
+              "Fallback if Redis is down?"
+            ],
+            [
+              "assistant",
+              "Refresh token blacklist falls open (we accept the refresh) but we trigger a paging alert. We can switch to in-memory fallback for short outages."
+            ],
+            [
+              "user",
+              "Audit log retention?"
+            ],
+            [
+              "assistant",
+              "90 days hot in CloudWatch, 7 years cold in S3 Glacier (compliance requirement)."
+            ],
+            [
+              "user",
+              "Any open security review items?"
+            ],
+            [
+              "assistant",
+              "One: confirm the rate-limit Redis store is HA. Currently backed by `molt-cache-prod` which is multi-AZ, so we're good."
+            ],
+            [
+              "user",
+              "How are we handling refresh failures?"
+            ],
+            [
+              "assistant",
+              "Refresh failure returns 401 with a `WWW-Authenticate: Bearer error=\"invalid_token\"` header. Client redirects to /login."
+            ],
+            [
+              "user",
+              "Logging level?"
+            ],
+            [
+              "assistant",
+              "INFO for success paths, WARN for refresh failures, ERROR for signing failures. JSON-structured logs."
+            ],
+            [
+              "user",
+              "What does the JWT payload look like?"
+            ],
+            [
+              "assistant",
+              "sub (user_id), iss (auth.example.com), aud (api.example.com), exp, iat, jti (UUID), amr (['mfa'] when MFA passed), tier (free/pro/enterprise)."
+            ],
+            [
+              "user",
+              "Cookie SameSite?"
+            ],
+            [
+              "assistant",
+              "Lax for the cookie. We don't need Strict because we don't have any cross-site POSTs that matter for auth."
+            ],
+            [
+              "user",
+              "Any browser quirks?"
+            ],
+            [
+              "assistant",
+              "Safari 16 has a known issue with HttpOnly cookies in private mode — we have a fallback to sessionStorage for that case, with a security warning shown in the UI."
+            ],
+            [
+              "user",
+              "Tests?"
+            ],
+            [
+              "assistant",
+              "Unit tests on the validation middleware (95% coverage), e2e tests via Playwright on the full login + refresh + revoke flow."
+            ],
+            [
+              "user",
+              "Any internationalization concerns?"
+            ],
+            [
+              "assistant",
+              "Error messages are i18n-keyed. Currently English + Spanish + French + Japanese."
+            ],
+            [
+              "user",
+              "Fallback if Redis is down?"
+            ],
+            [
+              "assistant",
+              "Refresh token blacklist falls open (we accept the refresh) but we trigger a paging alert. We can switch to in-memory fallback for short outages."
+            ],
+            [
+              "user",
+              "Audit log retention?"
+            ],
+            [
+              "assistant",
+              "90 days hot in CloudWatch, 7 years cold in S3 Glacier (compliance requirement)."
+            ],
+            [
+              "user",
+              "Any open security review items?"
+            ],
+            [
+              "assistant",
+              "One: confirm the rate-limit Redis store is HA. Currently backed by `molt-cache-prod` which is multi-AZ, so we're good."
+            ],
+            [
+              "user",
+              "How are we handling refresh failures?"
+            ],
+            [
+              "assistant",
+              "Refresh failure returns 401 with a `WWW-Authenticate: Bearer error=\"invalid_token\"` header. Client redirects to /login."
+            ],
+            [
+              "user",
+              "Logging level?"
+            ],
+            [
+              "assistant",
+              "INFO for success paths, WARN for refresh failures, ERROR for signing failures. JSON-structured logs."
+            ],
+            [
+              "user",
+              "What does the JWT payload look like?"
+            ],
+            [
+              "assistant",
+              "sub (user_id), iss (auth.example.com), aud (api.example.com), exp, iat, jti (UUID), amr (['mfa'] when MFA passed), tier (free/pro/enterprise)."
+            ],
+            [
+              "user",
+              "Cookie SameSite?"
+            ],
+            [
+              "assistant",
+              "Lax for the cookie. We don't need Strict because we don't have any cross-site POSTs that matter for auth."
+            ],
+            [
+              "user",
+              "Any browser quirks?"
+            ],
+            [
+              "assistant",
+              "Safari 16 has a known issue with HttpOnly cookies in private mode — we have a fallback to sessionStorage for that case, with a security warning shown in the UI."
+            ],
+            [
+              "user",
+              "Tests?"
+            ],
+            [
+              "assistant",
+              "Unit tests on the validation middleware (95% coverage), e2e tests via Playwright on the full login + refresh + revoke flow."
+            ],
+            [
+              "user",
+              "Any internationalization concerns?"
+            ],
+            [
+              "assistant",
+              "Error messages are i18n-keyed. Currently English + Spanish + French + Japanese."
+            ],
+            [
+              "user",
+              "Fallback if Redis is down?"
+            ],
+            [
+              "assistant",
+              "Refresh token blacklist falls open (we accept the refresh) but we trigger a paging alert. We can switch to in-memory fallback for short outages."
+            ],
+            [
+              "user",
+              "Audit log retention?"
+            ],
+            [
+              "assistant",
+              "90 days hot in CloudWatch, 7 years cold in S3 Glacier (compliance requirement)."
+            ],
+            [
+              "user",
+              "Any open security review items?"
+            ],
+            [
+              "assistant",
+              "One: confirm the rate-limit Redis store is HA. Currently backed by `molt-cache-prod` which is multi-AZ, so we're good."
+            ],
+            [
+              "user",
+              "How are we handling refresh failures?"
+            ],
+            [
+              "assistant",
+              "Refresh failure returns 401 with a `WWW-Authenticate: Bearer error=\"invalid_token\"` header. Client redirects to /login."
+            ],
+            [
+              "user",
+              "Logging level?"
+            ],
+            [
+              "assistant",
+              "INFO for success paths, WARN for refresh failures, ERROR for signing failures. JSON-structured logs."
+            ],
+            [
+              "user",
+              "What does the JWT payload look like?"
+            ],
+            [
+              "assistant",
+              "sub (user_id), iss (auth.example.com), aud (api.example.com), exp, iat, jti (UUID), amr (['mfa'] when MFA passed), tier (free/pro/enterprise)."
+            ],
+            [
+              "user",
+              "Cookie SameSite?"
+            ],
+            [
+              "assistant",
+              "Lax for the cookie. We don't need Strict because we don't have any cross-site POSTs that matter for auth."
+            ],
+            [
+              "user",
+              "Any browser quirks?"
+            ],
+            [
+              "assistant",
+              "Safari 16 has a known issue with HttpOnly cookies in private mode — we have a fallback to sessionStorage for that case, with a security warning shown in the UI."
+            ],
+            [
+              "user",
+              "Tests?"
+            ],
+            [
+              "assistant",
+              "Unit tests on the validation middleware (95% coverage), e2e tests via Playwright on the full login + refresh + revoke flow."
+            ],
+            [
+              "user",
+              "Any internationalization concerns?"
+            ],
+            [
+              "assistant",
+              "Error messages are i18n-keyed. Currently English + Spanish + French + Japanese."
+            ],
+            [
+              "user",
+              "Fallback if Redis is down?"
+            ],
+            [
+              "assistant",
+              "Refresh token blacklist falls open (we accept the refresh) but we trigger a paging alert. We can switch to in-memory fallback for short outages."
+            ],
+            [
+              "user",
+              "Audit log retention?"
+            ],
+            [
+              "assistant",
+              "90 days hot in CloudWatch, 7 years cold in S3 Glacier (compliance requirement)."
+            ],
+            [
+              "user",
+              "Any open security review items?"
+            ],
+            [
+              "assistant",
+              "One: confirm the rate-limit Redis store is HA. Currently backed by `molt-cache-prod` which is multi-AZ, so we're good."
+            ],
+            [
+              "user",
+              "How are we handling refresh failures?"
+            ],
+            [
+              "assistant",
+              "Refresh failure returns 401 with a `WWW-Authenticate: Bearer error=\"invalid_token\"` header. Client redirects to /login."
+            ]
+          ]
+        },
+        {
+          "compactionDepth": "current",
+          "facts": {
+            "current_status": "auth v2 GA, deprecating v1",
+            "v1_sunset_date": "2026-08-01",
+            "latest_finding": "Pen-test found one med-severity issue (CSRF on revoke endpoint), already patched",
+            "new_thread": "auth-deprecation-comms"
+          },
+          "narrative": [
+            [
+              "user",
+              "Pen-test report?"
+            ],
+            [
+              "assistant",
+              "One medium-severity finding: CSRF risk on /api/v2/auth/revoke (no CSRF token). Already patched — added double-submit cookie pattern."
+            ],
+            [
+              "user",
+              "GA decision?"
+            ],
+            [
+              "assistant",
+              "v2 is GA as of yesterday. v1 deprecation banner shipped. v1 sunset target 2026-08-01."
+            ],
+            [
+              "user",
+              "Add a thread for the comms."
+            ],
+            [
+              "assistant",
+              "Adding thread `auth-deprecation-comms`. Will draft the customer email and changelog post."
+            ],
+            [
+              "user",
+              "What thread is the most active right now?"
+            ],
+            [
+              "assistant",
+              "Right now the most active thread is `auth-deprecation-comms` — drafting customer-facing comms. The technical threads (validation, MFA) are completed; revoke patch is done."
+            ],
+            [
+              "user",
+              "How are we handling refresh failures?"
+            ],
+            [
+              "assistant",
+              "Refresh failure returns 401 with a `WWW-Authenticate: Bearer error=\"invalid_token\"` header. Client redirects to /login."
+            ],
+            [
+              "user",
+              "Logging level?"
+            ],
+            [
+              "assistant",
+              "INFO for success paths, WARN for refresh failures, ERROR for signing failures. JSON-structured logs."
+            ],
+            [
+              "user",
+              "What does the JWT payload look like?"
+            ],
+            [
+              "assistant",
+              "sub (user_id), iss (auth.example.com), aud (api.example.com), exp, iat, jti (UUID), amr (['mfa'] when MFA passed), tier (free/pro/enterprise)."
+            ],
+            [
+              "user",
+              "Cookie SameSite?"
+            ],
+            [
+              "assistant",
+              "Lax for the cookie. We don't need Strict because we don't have any cross-site POSTs that matter for auth."
+            ],
+            [
+              "user",
+              "Any browser quirks?"
+            ],
+            [
+              "assistant",
+              "Safari 16 has a known issue with HttpOnly cookies in private mode — we have a fallback to sessionStorage for that case, with a security warning shown in the UI."
+            ],
+            [
+              "user",
+              "Tests?"
+            ],
+            [
+              "assistant",
+              "Unit tests on the validation middleware (95% coverage), e2e tests via Playwright on the full login + refresh + revoke flow."
+            ],
+            [
+              "user",
+              "Any internationalization concerns?"
+            ],
+            [
+              "assistant",
+              "Error messages are i18n-keyed. Currently English + Spanish + French + Japanese."
+            ],
+            [
+              "user",
+              "Fallback if Redis is down?"
+            ],
+            [
+              "assistant",
+              "Refresh token blacklist falls open (we accept the refresh) but we trigger a paging alert. We can switch to in-memory fallback for short outages."
+            ],
+            [
+              "user",
+              "Audit log retention?"
+            ],
+            [
+              "assistant",
+              "90 days hot in CloudWatch, 7 years cold in S3 Glacier (compliance requirement)."
+            ],
+            [
+              "user",
+              "Any open security review items?"
+            ],
+            [
+              "assistant",
+              "One: confirm the rate-limit Redis store is HA. Currently backed by `molt-cache-prod` which is multi-AZ, so we're good."
+            ],
+            [
+              "user",
+              "How are we handling refresh failures?"
+            ],
+            [
+              "assistant",
+              "Refresh failure returns 401 with a `WWW-Authenticate: Bearer error=\"invalid_token\"` header. Client redirects to /login."
+            ],
+            [
+              "user",
+              "Logging level?"
+            ],
+            [
+              "assistant",
+              "INFO for success paths, WARN for refresh failures, ERROR for signing failures. JSON-structured logs."
+            ],
+            [
+              "user",
+              "What does the JWT payload look like?"
+            ],
+            [
+              "assistant",
+              "sub (user_id), iss (auth.example.com), aud (api.example.com), exp, iat, jti (UUID), amr (['mfa'] when MFA passed), tier (free/pro/enterprise)."
+            ],
+            [
+              "user",
+              "Cookie SameSite?"
+            ],
+            [
+              "assistant",
+              "Lax for the cookie. We don't need Strict because we don't have any cross-site POSTs that matter for auth."
+            ],
+            [
+              "user",
+              "Any browser quirks?"
+            ],
+            [
+              "assistant",
+              "Safari 16 has a known issue with HttpOnly cookies in private mode — we have a fallback to sessionStorage for that case, with a security warning shown in the UI."
+            ],
+            [
+              "user",
+              "Tests?"
+            ],
+            [
+              "assistant",
+              "Unit tests on the validation middleware (95% coverage), e2e tests via Playwright on the full login + refresh + revoke flow."
+            ],
+            [
+              "user",
+              "Any internationalization concerns?"
+            ],
+            [
+              "assistant",
+              "Error messages are i18n-keyed. Currently English + Spanish + French + Japanese."
+            ],
+            [
+              "user",
+              "Fallback if Redis is down?"
+            ],
+            [
+              "assistant",
+              "Refresh token blacklist falls open (we accept the refresh) but we trigger a paging alert. We can switch to in-memory fallback for short outages."
+            ],
+            [
+              "user",
+              "Audit log retention?"
+            ],
+            [
+              "assistant",
+              "90 days hot in CloudWatch, 7 years cold in S3 Glacier (compliance requirement)."
+            ],
+            [
+              "user",
+              "Any open security review items?"
+            ],
+            [
+              "assistant",
+              "One: confirm the rate-limit Redis store is HA. Currently backed by `molt-cache-prod` which is multi-AZ, so we're good."
+            ],
+            [
+              "user",
+              "How are we handling refresh failures?"
+            ],
+            [
+              "assistant",
+              "Refresh failure returns 401 with a `WWW-Authenticate: Bearer error=\"invalid_token\"` header. Client redirects to /login."
+            ],
+            [
+              "user",
+              "Logging level?"
+            ],
+            [
+              "assistant",
+              "INFO for success paths, WARN for refresh failures, ERROR for signing failures. JSON-structured logs."
+            ],
+            [
+              "user",
+              "What does the JWT payload look like?"
+            ],
+            [
+              "assistant",
+              "sub (user_id), iss (auth.example.com), aud (api.example.com), exp, iat, jti (UUID), amr (['mfa'] when MFA passed), tier (free/pro/enterprise)."
+            ],
+            [
+              "user",
+              "Cookie SameSite?"
+            ],
+            [
+              "assistant",
+              "Lax for the cookie. We don't need Strict because we don't have any cross-site POSTs that matter for auth."
+            ],
+            [
+              "user",
+              "Any browser quirks?"
+            ],
+            [
+              "assistant",
+              "Safari 16 has a known issue with HttpOnly cookies in private mode — we have a fallback to sessionStorage for that case, with a security warning shown in the UI."
+            ],
+            [
+              "user",
+              "Tests?"
+            ],
+            [
+              "assistant",
+              "Unit tests on the validation middleware (95% coverage), e2e tests via Playwright on the full login + refresh + revoke flow."
+            ],
+            [
+              "user",
+              "Any internationalization concerns?"
+            ],
+            [
+              "assistant",
+              "Error messages are i18n-keyed. Currently English + Spanish + French + Japanese."
+            ],
+            [
+              "user",
+              "Fallback if Redis is down?"
+            ],
+            [
+              "assistant",
+              "Refresh token blacklist falls open (we accept the refresh) but we trigger a paging alert. We can switch to in-memory fallback for short outages."
+            ],
+            [
+              "user",
+              "Audit log retention?"
+            ],
+            [
+              "assistant",
+              "90 days hot in CloudWatch, 7 years cold in S3 Glacier (compliance requirement)."
+            ],
+            [
+              "user",
+              "Any open security review items?"
+            ],
+            [
+              "assistant",
+              "One: confirm the rate-limit Redis store is HA. Currently backed by `molt-cache-prod` which is multi-AZ, so we're good."
+            ],
+            [
+              "user",
+              "How are we handling refresh failures?"
+            ],
+            [
+              "assistant",
+              "Refresh failure returns 401 with a `WWW-Authenticate: Bearer error=\"invalid_token\"` header. Client redirects to /login."
+            ],
+            [
+              "user",
+              "Logging level?"
+            ],
+            [
+              "assistant",
+              "INFO for success paths, WARN for refresh failures, ERROR for signing failures. JSON-structured logs."
+            ],
+            [
+              "user",
+              "What does the JWT payload look like?"
+            ],
+            [
+              "assistant",
+              "sub (user_id), iss (auth.example.com), aud (api.example.com), exp, iat, jti (UUID), amr (['mfa'] when MFA passed), tier (free/pro/enterprise)."
+            ],
+            [
+              "user",
+              "Cookie SameSite?"
+            ],
+            [
+              "assistant",
+              "Lax for the cookie. We don't need Strict because we don't have any cross-site POSTs that matter for auth."
+            ],
+            [
+              "user",
+              "Any browser quirks?"
+            ],
+            [
+              "assistant",
+              "Safari 16 has a known issue with HttpOnly cookies in private mode — we have a fallback to sessionStorage for that case, with a security warning shown in the UI."
+            ],
+            [
+              "user",
+              "Tests?"
+            ],
+            [
+              "assistant",
+              "Unit tests on the validation middleware (95% coverage), e2e tests via Playwright on the full login + refresh + revoke flow."
+            ],
+            [
+              "user",
+              "Any internationalization concerns?"
+            ],
+            [
+              "assistant",
+              "Error messages are i18n-keyed. Currently English + Spanish + French + Japanese."
+            ],
+            [
+              "user",
+              "Fallback if Redis is down?"
+            ],
+            [
+              "assistant",
+              "Refresh token blacklist falls open (we accept the refresh) but we trigger a paging alert. We can switch to in-memory fallback for short outages."
+            ],
+            [
+              "user",
+              "Audit log retention?"
+            ],
+            [
+              "assistant",
+              "90 days hot in CloudWatch, 7 years cold in S3 Glacier (compliance requirement)."
+            ],
+            [
+              "user",
+              "Any open security review items?"
+            ],
+            [
+              "assistant",
+              "One: confirm the rate-limit Redis store is HA. Currently backed by `molt-cache-prod` which is multi-AZ, so we're good."
+            ],
+            [
+              "user",
+              "How are we handling refresh failures?"
+            ],
+            [
+              "assistant",
+              "Refresh failure returns 401 with a `WWW-Authenticate: Bearer error=\"invalid_token\"` header. Client redirects to /login."
+            ],
+            [
+              "user",
+              "Logging level?"
+            ],
+            [
+              "assistant",
+              "INFO for success paths, WARN for refresh failures, ERROR for signing failures. JSON-structured logs."
+            ],
+            [
+              "user",
+              "What does the JWT payload look like?"
+            ],
+            [
+              "assistant",
+              "sub (user_id), iss (auth.example.com), aud (api.example.com), exp, iat, jti (UUID), amr (['mfa'] when MFA passed), tier (free/pro/enterprise)."
+            ],
+            [
+              "user",
+              "Cookie SameSite?"
+            ],
+            [
+              "assistant",
+              "Lax for the cookie. We don't need Strict because we don't have any cross-site POSTs that matter for auth."
+            ],
+            [
+              "user",
+              "Any browser quirks?"
+            ],
+            [
+              "assistant",
+              "Safari 16 has a known issue with HttpOnly cookies in private mode — we have a fallback to sessionStorage for that case, with a security warning shown in the UI."
+            ],
+            [
+              "user",
+              "Tests?"
+            ],
+            [
+              "assistant",
+              "Unit tests on the validation middleware (95% coverage), e2e tests via Playwright on the full login + refresh + revoke flow."
+            ]
+          ]
+        }
+      ],
+      "probes": [
+        {
+          "id": "auth-p1",
+          "depth": 1,
+          "type": "decision-continuity",
+          "question": "Why did we choose JWT instead of OAuth-only for auth?",
+          "expectedAnswer": "Stateless validation fits the edge-cache pattern; no session-store roundtrip",
+          "acceptableAnswers": [
+            "stateless",
+            "edge-cache",
+            "edge cache",
+            "session store",
+            "roundtrip",
+            "cache"
+          ]
+        },
+        {
+          "id": "auth-p2",
+          "depth": 1,
+          "type": "long-range-recall",
+          "question": "What was the original cookie name we used in v1?",
+          "expectedAnswer": "molt_session",
+          "acceptableAnswers": [
+            "molt_session"
+          ]
+        },
+        {
+          "id": "auth-p3",
+          "depth": 1,
+          "type": "long-range-recall",
+          "question": "Where did we store the original JWT signing key?",
+          "expectedAnswer": "/molt/prod/jwt-signing-key (SSM Parameter Store)",
+          "acceptableAnswers": [
+            "/molt/prod/jwt-signing-key",
+            "SSM",
+            "parameter store"
+          ]
+        },
+        {
+          "id": "auth-p4",
+          "depth": 2,
+          "type": "decision-continuity",
+          "question": "Why did we choose TOTP over SMS for MFA?",
+          "expectedAnswer": "SMS interception risk and US carrier reliability problems",
+          "acceptableAnswers": [
+            "interception",
+            "carrier",
+            "sms risk",
+            "reliability"
+          ]
+        },
+        {
+          "id": "auth-p5",
+          "depth": 2,
+          "type": "long-range-recall",
+          "question": "What is the new KMS key ID we used for the v2 signing key?",
+          "expectedAnswer": "mrk-1234abcd5678efgh",
+          "acceptableAnswers": [
+            "mrk-1234abcd5678efgh"
+          ]
+        },
+        {
+          "id": "auth-p6",
+          "depth": 2,
+          "type": "thread-lineage",
+          "question": "What was the original name of the thread when it was about design (before we renamed it during issuance work)?",
+          "expectedAnswer": "auth-rebuild-design",
+          "acceptableAnswers": [
+            "auth-rebuild-design",
+            "auth rebuild design"
+          ]
+        },
+        {
+          "id": "auth-p7",
+          "depth": 3,
+          "type": "decision-continuity",
+          "question": "Why did we choose the `jose` library over `jsonwebtoken` for JWT validation?",
+          "expectedAnswer": "Better TypeScript types and uses node:crypto natively",
+          "acceptableAnswers": [
+            "typescript",
+            "types",
+            "node:crypto",
+            "node crypto",
+            "native"
+          ]
+        },
+        {
+          "id": "auth-p8",
+          "depth": 3,
+          "type": "long-range-recall",
+          "question": "What is the rate limit on the /api/v2/auth/token endpoint?",
+          "expectedAnswer": "60 req/min per IP, burst 100",
+          "acceptableAnswers": [
+            "60 req/min",
+            "60/min",
+            "60 per minute",
+            "burst 100"
+          ]
+        },
+        {
+          "id": "auth-p9",
+          "depth": 3,
+          "type": "thread-lineage",
+          "question": "What two threads did `auth-token-issuance` split into?",
+          "expectedAnswer": "auth-validation-middleware and auth-mfa-flow",
+          "acceptableAnswers": [
+            "auth-validation-middleware",
+            "auth-mfa-flow",
+            "validation-middleware",
+            "mfa-flow"
+          ]
+        },
+        {
+          "id": "auth-p10",
+          "depth": "current",
+          "type": "long-range-recall",
+          "question": "What was the medium-severity finding from the pen-test?",
+          "expectedAnswer": "CSRF risk on /api/v2/auth/revoke",
+          "acceptableAnswers": [
+            "CSRF",
+            "revoke",
+            "double-submit"
+          ]
+        },
+        {
+          "id": "auth-p11",
+          "depth": "current",
+          "type": "long-range-recall",
+          "question": "What is the v1 sunset date?",
+          "expectedAnswer": "2026-08-01",
+          "acceptableAnswers": [
+            "2026-08-01",
+            "August 1",
+            "aug 1"
+          ]
+        },
+        {
+          "id": "auth-p12",
+          "depth": "current",
+          "type": "trajectory",
+          "question": "What is the most active thread right now?",
+          "expectedAnswer": "auth-deprecation-comms",
+          "acceptableAnswers": [
+            "auth-deprecation-comms",
+            "deprecation-comms",
+            "deprecation comms"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "conv-data-pipeline",
+      "topic": "Customer Acme Corp onboarding — data pipeline build",
+      "segments": [
+        {
+          "compactionDepth": 1,
+          "facts": {
+            "customer_name": "Acme Corp",
+            "contact_email": "jane.smith@acmecorp.io",
+            "decision_pipeline": "Airflow on MWAA (chose over self-hosted Argo Workflows)",
+            "decision_pipeline_reason": "Managed service reduces ops burden; Acme has SOC2 requirement we satisfy via MWAA inheritance",
+            "thread_orig_name": "acme-pipeline-design",
+            "s3_intake_bucket": "s3://acme-intake-prod-492372",
+            "sla": "data freshness 6h, 99.5% uptime"
+          },
+          "narrative": [
+            [
+              "user",
+              "New customer: Acme Corp. Primary contact?"
+            ],
+            [
+              "assistant",
+              "Jane Smith, jane.smith@acmecorp.io. Director of Data Eng. Procurement closed yesterday."
+            ],
+            [
+              "user",
+              "Pipeline architecture decision: Airflow MWAA or self-hosted Argo Workflows?"
+            ],
+            [
+              "assistant",
+              "Recommend MWAA. Managed reduces our ops burden, and Acme has a SOC 2 requirement that we satisfy via AWS's MWAA SOC 2 inheritance. Argo would require us to attest separately."
+            ],
+            [
+              "user",
+              "Confirmed. Decision: MWAA over Argo because of SOC 2 inheritance and ops burden."
+            ],
+            [
+              "assistant",
+              "Logged."
+            ],
+            [
+              "user",
+              "S3 setup for their intake?"
+            ],
+            [
+              "assistant",
+              "Created s3://acme-intake-prod-492372. KMS-encrypted, versioning on, lifecycle to Glacier at 90d."
+            ],
+            [
+              "user",
+              "Track this as `acme-pipeline-design`."
+            ],
+            [
+              "assistant",
+              "Tracking thread `acme-pipeline-design`. Subtasks: schema mapping, DAG authoring, monitoring."
+            ],
+            [
+              "user",
+              "SLA?"
+            ],
+            [
+              "assistant",
+              "Data freshness 6 hours, 99.5% uptime. Standard tier — no premium add-on."
+            ],
+            [
+              "user",
+              "What's their data volume?"
+            ],
+            [
+              "assistant",
+              "~40GB/day, peak 80GB. Mostly transactional CSVs, some Avro. Total at steady state ~12TB/year."
+            ],
+            [
+              "user",
+              "Any compliance flags?"
+            ],
+            [
+              "assistant",
+              "PII present: emails and phone numbers. Tokenization required at ingest. SOC 2 Type II attestation needed by Q3."
+            ],
+            [
+              "user",
+              "How are we handling schema drift?"
+            ],
+            [
+              "assistant",
+              "Great Expectations validations on every DAG run. Schema changes flag a Slack alert and pause downstream DAGs."
+            ],
+            [
+              "user",
+              "Backfill strategy?"
+            ],
+            [
+              "assistant",
+              "DAG-level catchup=False; backfills triggered manually with explicit date range. Acme historical data was a 30-day backfill done over a weekend."
+            ],
+            [
+              "user",
+              "How do we handle source side changes?"
+            ],
+            [
+              "assistant",
+              "They notify us via a webhook to /internal/acme/source-change. We pause affected DAGs, alert, and require human ack to resume."
+            ],
+            [
+              "user",
+              "Test environment?"
+            ],
+            [
+              "assistant",
+              "A separate MWAA small environment in the dev account, mirroring the prod DAG layout. Synthetic data generator runs nightly."
+            ],
+            [
+              "user",
+              "Cost reporting cadence — internal?"
+            ],
+            [
+              "assistant",
+              "Weekly review by our team in #data-pipelines. Costs are tagged `customer:acme` for clean attribution."
+            ],
+            [
+              "user",
+              "Cross-team dependencies?"
+            ],
+            [
+              "assistant",
+              "Platform team owns the underlying MWAA service; we own the Acme-specific DAGs. They review breaking changes via PR."
+            ],
+            [
+              "user",
+              "Any open tickets on this?"
+            ],
+            [
+              "assistant",
+              "Two: schema drift alert tuning (false-positive rate is high) and Macie cost optimization (running 2x/day is enough, was running every hour)."
+            ],
+            [
+              "user",
+              "OK, low priority. What's the runbook location?"
+            ],
+            [
+              "assistant",
+              "docs/runbooks/acme-pipeline.md. Includes on-call playbook for SLA breach, schema drift response, and cost spike response."
+            ],
+            [
+              "user",
+              "Anything customer-facing about runbooks?"
+            ],
+            [
+              "assistant",
+              "No — runbooks are internal. Acme has a customer-facing status page at status.acme.example.com."
+            ],
+            [
+              "user",
+              "Got it. Continue."
+            ],
+            [
+              "assistant",
+              "Continuing."
+            ],
+            [
+              "user",
+              "How are we handling schema drift?"
+            ],
+            [
+              "assistant",
+              "Great Expectations validations on every DAG run. Schema changes flag a Slack alert and pause downstream DAGs."
+            ],
+            [
+              "user",
+              "Backfill strategy?"
+            ],
+            [
+              "assistant",
+              "DAG-level catchup=False; backfills triggered manually with explicit date range. Acme historical data was a 30-day backfill done over a weekend."
+            ],
+            [
+              "user",
+              "How do we handle source side changes?"
+            ],
+            [
+              "assistant",
+              "They notify us via a webhook to /internal/acme/source-change. We pause affected DAGs, alert, and require human ack to resume."
+            ],
+            [
+              "user",
+              "Test environment?"
+            ],
+            [
+              "assistant",
+              "A separate MWAA small environment in the dev account, mirroring the prod DAG layout. Synthetic data generator runs nightly."
+            ],
+            [
+              "user",
+              "Cost reporting cadence — internal?"
+            ],
+            [
+              "assistant",
+              "Weekly review by our team in #data-pipelines. Costs are tagged `customer:acme` for clean attribution."
+            ],
+            [
+              "user",
+              "Cross-team dependencies?"
+            ],
+            [
+              "assistant",
+              "Platform team owns the underlying MWAA service; we own the Acme-specific DAGs. They review breaking changes via PR."
+            ],
+            [
+              "user",
+              "Any open tickets on this?"
+            ],
+            [
+              "assistant",
+              "Two: schema drift alert tuning (false-positive rate is high) and Macie cost optimization (running 2x/day is enough, was running every hour)."
+            ],
+            [
+              "user",
+              "OK, low priority. What's the runbook location?"
+            ],
+            [
+              "assistant",
+              "docs/runbooks/acme-pipeline.md. Includes on-call playbook for SLA breach, schema drift response, and cost spike response."
+            ],
+            [
+              "user",
+              "Anything customer-facing about runbooks?"
+            ],
+            [
+              "assistant",
+              "No — runbooks are internal. Acme has a customer-facing status page at status.acme.example.com."
+            ],
+            [
+              "user",
+              "Got it. Continue."
+            ],
+            [
+              "assistant",
+              "Continuing."
+            ],
+            [
+              "user",
+              "How are we handling schema drift?"
+            ],
+            [
+              "assistant",
+              "Great Expectations validations on every DAG run. Schema changes flag a Slack alert and pause downstream DAGs."
+            ],
+            [
+              "user",
+              "Backfill strategy?"
+            ],
+            [
+              "assistant",
+              "DAG-level catchup=False; backfills triggered manually with explicit date range. Acme historical data was a 30-day backfill done over a weekend."
+            ],
+            [
+              "user",
+              "How do we handle source side changes?"
+            ],
+            [
+              "assistant",
+              "They notify us via a webhook to /internal/acme/source-change. We pause affected DAGs, alert, and require human ack to resume."
+            ],
+            [
+              "user",
+              "Test environment?"
+            ],
+            [
+              "assistant",
+              "A separate MWAA small environment in the dev account, mirroring the prod DAG layout. Synthetic data generator runs nightly."
+            ],
+            [
+              "user",
+              "Cost reporting cadence — internal?"
+            ],
+            [
+              "assistant",
+              "Weekly review by our team in #data-pipelines. Costs are tagged `customer:acme` for clean attribution."
+            ],
+            [
+              "user",
+              "Cross-team dependencies?"
+            ],
+            [
+              "assistant",
+              "Platform team owns the underlying MWAA service; we own the Acme-specific DAGs. They review breaking changes via PR."
+            ],
+            [
+              "user",
+              "Any open tickets on this?"
+            ],
+            [
+              "assistant",
+              "Two: schema drift alert tuning (false-positive rate is high) and Macie cost optimization (running 2x/day is enough, was running every hour)."
+            ],
+            [
+              "user",
+              "OK, low priority. What's the runbook location?"
+            ],
+            [
+              "assistant",
+              "docs/runbooks/acme-pipeline.md. Includes on-call playbook for SLA breach, schema drift response, and cost spike response."
+            ],
+            [
+              "user",
+              "Anything customer-facing about runbooks?"
+            ],
+            [
+              "assistant",
+              "No — runbooks are internal. Acme has a customer-facing status page at status.acme.example.com."
+            ],
+            [
+              "user",
+              "Got it. Continue."
+            ],
+            [
+              "assistant",
+              "Continuing."
+            ],
+            [
+              "user",
+              "How are we handling schema drift?"
+            ],
+            [
+              "assistant",
+              "Great Expectations validations on every DAG run. Schema changes flag a Slack alert and pause downstream DAGs."
+            ],
+            [
+              "user",
+              "Backfill strategy?"
+            ],
+            [
+              "assistant",
+              "DAG-level catchup=False; backfills triggered manually with explicit date range. Acme historical data was a 30-day backfill done over a weekend."
+            ],
+            [
+              "user",
+              "How do we handle source side changes?"
+            ],
+            [
+              "assistant",
+              "They notify us via a webhook to /internal/acme/source-change. We pause affected DAGs, alert, and require human ack to resume."
+            ],
+            [
+              "user",
+              "Test environment?"
+            ],
+            [
+              "assistant",
+              "A separate MWAA small environment in the dev account, mirroring the prod DAG layout. Synthetic data generator runs nightly."
+            ],
+            [
+              "user",
+              "Cost reporting cadence — internal?"
+            ],
+            [
+              "assistant",
+              "Weekly review by our team in #data-pipelines. Costs are tagged `customer:acme` for clean attribution."
+            ],
+            [
+              "user",
+              "Cross-team dependencies?"
+            ],
+            [
+              "assistant",
+              "Platform team owns the underlying MWAA service; we own the Acme-specific DAGs. They review breaking changes via PR."
+            ],
+            [
+              "user",
+              "Any open tickets on this?"
+            ],
+            [
+              "assistant",
+              "Two: schema drift alert tuning (false-positive rate is high) and Macie cost optimization (running 2x/day is enough, was running every hour)."
+            ],
+            [
+              "user",
+              "OK, low priority. What's the runbook location?"
+            ],
+            [
+              "assistant",
+              "docs/runbooks/acme-pipeline.md. Includes on-call playbook for SLA breach, schema drift response, and cost spike response."
+            ],
+            [
+              "user",
+              "Anything customer-facing about runbooks?"
+            ],
+            [
+              "assistant",
+              "No — runbooks are internal. Acme has a customer-facing status page at status.acme.example.com."
+            ],
+            [
+              "user",
+              "Got it. Continue."
+            ],
+            [
+              "assistant",
+              "Continuing."
+            ],
+            [
+              "user",
+              "How are we handling schema drift?"
+            ],
+            [
+              "assistant",
+              "Great Expectations validations on every DAG run. Schema changes flag a Slack alert and pause downstream DAGs."
+            ],
+            [
+              "user",
+              "Backfill strategy?"
+            ],
+            [
+              "assistant",
+              "DAG-level catchup=False; backfills triggered manually with explicit date range. Acme historical data was a 30-day backfill done over a weekend."
+            ]
+          ]
+        },
+        {
+          "compactionDepth": 2,
+          "facts": {
+            "thread_renamed_to": "acme-pipeline-build",
+            "dag_path": "dags/acme/main.py",
+            "decision_orchestration": "one DAG per data source (transactions, customers, products)",
+            "decision_orch_reason": "Failure isolation — one source failing shouldn't block others",
+            "kms_key": "arn:aws:kms:us-east-1:492372116065:key/abc-def-ghi-jkl",
+            "airflow_iam_role": "arn:aws:iam::492372116065:role/mwaa-acme-execution"
+          },
+          "narrative": [
+            [
+              "user",
+              "Design done. Building now. Rename to `acme-pipeline-build`."
+            ],
+            [
+              "assistant",
+              "Renamed thread: `acme-pipeline-design` → `acme-pipeline-build`."
+            ],
+            [
+              "user",
+              "Where's the DAG?"
+            ],
+            [
+              "assistant",
+              "dags/acme/main.py. Imports DAG factory from utils.dag_factory."
+            ],
+            [
+              "user",
+              "One DAG or many?"
+            ],
+            [
+              "assistant",
+              "Decision: one DAG per data source. Three DAGs total: transactions, customers, products. Failure isolation — one source failing shouldn't block others."
+            ],
+            [
+              "user",
+              "Confirmed and logged."
+            ],
+            [
+              "assistant",
+              "Logged."
+            ],
+            [
+              "user",
+              "KMS key for the encryption?"
+            ],
+            [
+              "assistant",
+              "arn:aws:kms:us-east-1:492372116065:key/abc-def-ghi-jkl. Same key for the S3 bucket and the MWAA secrets."
+            ],
+            [
+              "user",
+              "MWAA execution role?"
+            ],
+            [
+              "assistant",
+              "arn:aws:iam::492372116065:role/mwaa-acme-execution. S3 read/write on the intake bucket, Secrets Manager read on /acme/*, KMS decrypt on the project key."
+            ],
+            [
+              "user",
+              "Tokenization?"
+            ],
+            [
+              "assistant",
+              "Using AWS Macie for PII detection in the staging zone, then a Python custom function (Format-Preserving Encryption via cryptography lib) for tokenization. Keys in /acme/tokenization."
+            ],
+            [
+              "user",
+              "When does the first DAG run?"
+            ],
+            [
+              "assistant",
+              "Transactions DAG goes live tomorrow morning, hourly schedule. Customers DAG day-after, daily."
+            ],
+            [
+              "user",
+              "How are we handling schema drift?"
+            ],
+            [
+              "assistant",
+              "Great Expectations validations on every DAG run. Schema changes flag a Slack alert and pause downstream DAGs."
+            ],
+            [
+              "user",
+              "Backfill strategy?"
+            ],
+            [
+              "assistant",
+              "DAG-level catchup=False; backfills triggered manually with explicit date range. Acme historical data was a 30-day backfill done over a weekend."
+            ],
+            [
+              "user",
+              "How do we handle source side changes?"
+            ],
+            [
+              "assistant",
+              "They notify us via a webhook to /internal/acme/source-change. We pause affected DAGs, alert, and require human ack to resume."
+            ],
+            [
+              "user",
+              "Test environment?"
+            ],
+            [
+              "assistant",
+              "A separate MWAA small environment in the dev account, mirroring the prod DAG layout. Synthetic data generator runs nightly."
+            ],
+            [
+              "user",
+              "Cost reporting cadence — internal?"
+            ],
+            [
+              "assistant",
+              "Weekly review by our team in #data-pipelines. Costs are tagged `customer:acme` for clean attribution."
+            ],
+            [
+              "user",
+              "Cross-team dependencies?"
+            ],
+            [
+              "assistant",
+              "Platform team owns the underlying MWAA service; we own the Acme-specific DAGs. They review breaking changes via PR."
+            ],
+            [
+              "user",
+              "Any open tickets on this?"
+            ],
+            [
+              "assistant",
+              "Two: schema drift alert tuning (false-positive rate is high) and Macie cost optimization (running 2x/day is enough, was running every hour)."
+            ],
+            [
+              "user",
+              "OK, low priority. What's the runbook location?"
+            ],
+            [
+              "assistant",
+              "docs/runbooks/acme-pipeline.md. Includes on-call playbook for SLA breach, schema drift response, and cost spike response."
+            ],
+            [
+              "user",
+              "Anything customer-facing about runbooks?"
+            ],
+            [
+              "assistant",
+              "No — runbooks are internal. Acme has a customer-facing status page at status.acme.example.com."
+            ],
+            [
+              "user",
+              "Got it. Continue."
+            ],
+            [
+              "assistant",
+              "Continuing."
+            ],
+            [
+              "user",
+              "How are we handling schema drift?"
+            ],
+            [
+              "assistant",
+              "Great Expectations validations on every DAG run. Schema changes flag a Slack alert and pause downstream DAGs."
+            ],
+            [
+              "user",
+              "Backfill strategy?"
+            ],
+            [
+              "assistant",
+              "DAG-level catchup=False; backfills triggered manually with explicit date range. Acme historical data was a 30-day backfill done over a weekend."
+            ],
+            [
+              "user",
+              "How do we handle source side changes?"
+            ],
+            [
+              "assistant",
+              "They notify us via a webhook to /internal/acme/source-change. We pause affected DAGs, alert, and require human ack to resume."
+            ],
+            [
+              "user",
+              "Test environment?"
+            ],
+            [
+              "assistant",
+              "A separate MWAA small environment in the dev account, mirroring the prod DAG layout. Synthetic data generator runs nightly."
+            ],
+            [
+              "user",
+              "Cost reporting cadence — internal?"
+            ],
+            [
+              "assistant",
+              "Weekly review by our team in #data-pipelines. Costs are tagged `customer:acme` for clean attribution."
+            ],
+            [
+              "user",
+              "Cross-team dependencies?"
+            ],
+            [
+              "assistant",
+              "Platform team owns the underlying MWAA service; we own the Acme-specific DAGs. They review breaking changes via PR."
+            ],
+            [
+              "user",
+              "Any open tickets on this?"
+            ],
+            [
+              "assistant",
+              "Two: schema drift alert tuning (false-positive rate is high) and Macie cost optimization (running 2x/day is enough, was running every hour)."
+            ],
+            [
+              "user",
+              "OK, low priority. What's the runbook location?"
+            ],
+            [
+              "assistant",
+              "docs/runbooks/acme-pipeline.md. Includes on-call playbook for SLA breach, schema drift response, and cost spike response."
+            ],
+            [
+              "user",
+              "Anything customer-facing about runbooks?"
+            ],
+            [
+              "assistant",
+              "No — runbooks are internal. Acme has a customer-facing status page at status.acme.example.com."
+            ],
+            [
+              "user",
+              "Got it. Continue."
+            ],
+            [
+              "assistant",
+              "Continuing."
+            ],
+            [
+              "user",
+              "How are we handling schema drift?"
+            ],
+            [
+              "assistant",
+              "Great Expectations validations on every DAG run. Schema changes flag a Slack alert and pause downstream DAGs."
+            ],
+            [
+              "user",
+              "Backfill strategy?"
+            ],
+            [
+              "assistant",
+              "DAG-level catchup=False; backfills triggered manually with explicit date range. Acme historical data was a 30-day backfill done over a weekend."
+            ],
+            [
+              "user",
+              "How do we handle source side changes?"
+            ],
+            [
+              "assistant",
+              "They notify us via a webhook to /internal/acme/source-change. We pause affected DAGs, alert, and require human ack to resume."
+            ],
+            [
+              "user",
+              "Test environment?"
+            ],
+            [
+              "assistant",
+              "A separate MWAA small environment in the dev account, mirroring the prod DAG layout. Synthetic data generator runs nightly."
+            ],
+            [
+              "user",
+              "Cost reporting cadence — internal?"
+            ],
+            [
+              "assistant",
+              "Weekly review by our team in #data-pipelines. Costs are tagged `customer:acme` for clean attribution."
+            ],
+            [
+              "user",
+              "Cross-team dependencies?"
+            ],
+            [
+              "assistant",
+              "Platform team owns the underlying MWAA service; we own the Acme-specific DAGs. They review breaking changes via PR."
+            ],
+            [
+              "user",
+              "Any open tickets on this?"
+            ],
+            [
+              "assistant",
+              "Two: schema drift alert tuning (false-positive rate is high) and Macie cost optimization (running 2x/day is enough, was running every hour)."
+            ],
+            [
+              "user",
+              "OK, low priority. What's the runbook location?"
+            ],
+            [
+              "assistant",
+              "docs/runbooks/acme-pipeline.md. Includes on-call playbook for SLA breach, schema drift response, and cost spike response."
+            ],
+            [
+              "user",
+              "Anything customer-facing about runbooks?"
+            ],
+            [
+              "assistant",
+              "No — runbooks are internal. Acme has a customer-facing status page at status.acme.example.com."
+            ],
+            [
+              "user",
+              "Got it. Continue."
+            ],
+            [
+              "assistant",
+              "Continuing."
+            ],
+            [
+              "user",
+              "How are we handling schema drift?"
+            ],
+            [
+              "assistant",
+              "Great Expectations validations on every DAG run. Schema changes flag a Slack alert and pause downstream DAGs."
+            ],
+            [
+              "user",
+              "Backfill strategy?"
+            ],
+            [
+              "assistant",
+              "DAG-level catchup=False; backfills triggered manually with explicit date range. Acme historical data was a 30-day backfill done over a weekend."
+            ],
+            [
+              "user",
+              "How do we handle source side changes?"
+            ],
+            [
+              "assistant",
+              "They notify us via a webhook to /internal/acme/source-change. We pause affected DAGs, alert, and require human ack to resume."
+            ],
+            [
+              "user",
+              "Test environment?"
+            ],
+            [
+              "assistant",
+              "A separate MWAA small environment in the dev account, mirroring the prod DAG layout. Synthetic data generator runs nightly."
+            ],
+            [
+              "user",
+              "Cost reporting cadence — internal?"
+            ],
+            [
+              "assistant",
+              "Weekly review by our team in #data-pipelines. Costs are tagged `customer:acme` for clean attribution."
+            ],
+            [
+              "user",
+              "Cross-team dependencies?"
+            ],
+            [
+              "assistant",
+              "Platform team owns the underlying MWAA service; we own the Acme-specific DAGs. They review breaking changes via PR."
+            ],
+            [
+              "user",
+              "Any open tickets on this?"
+            ],
+            [
+              "assistant",
+              "Two: schema drift alert tuning (false-positive rate is high) and Macie cost optimization (running 2x/day is enough, was running every hour)."
+            ],
+            [
+              "user",
+              "OK, low priority. What's the runbook location?"
+            ],
+            [
+              "assistant",
+              "docs/runbooks/acme-pipeline.md. Includes on-call playbook for SLA breach, schema drift response, and cost spike response."
+            ],
+            [
+              "user",
+              "Anything customer-facing about runbooks?"
+            ],
+            [
+              "assistant",
+              "No — runbooks are internal. Acme has a customer-facing status page at status.acme.example.com."
+            ],
+            [
+              "user",
+              "Got it. Continue."
+            ],
+            [
+              "assistant",
+              "Continuing."
+            ],
+            [
+              "user",
+              "How are we handling schema drift?"
+            ],
+            [
+              "assistant",
+              "Great Expectations validations on every DAG run. Schema changes flag a Slack alert and pause downstream DAGs."
+            ],
+            [
+              "user",
+              "Backfill strategy?"
+            ],
+            [
+              "assistant",
+              "DAG-level catchup=False; backfills triggered manually with explicit date range. Acme historical data was a 30-day backfill done over a weekend."
+            ]
+          ]
+        },
+        {
+          "compactionDepth": 3,
+          "facts": {
+            "thread_split": [
+              "acme-monitoring",
+              "acme-cost-optimization"
+            ],
+            "decision_monitoring": "Datadog for runtime metrics, CloudWatch for AWS infra; alerts via PagerDuty integration `acme-pipeline-prod`",
+            "cost_per_month": "~$3400/mo (compute $2100, storage $700, transfer $400, Macie $200)",
+            "cost_optimization_target": "Reduce to <$2500/mo by switching to MWAA small environment after 60 days steady",
+            "sla_breach_count": 1,
+            "breach_root_cause": "Source system held a 4-hour batch on Friday — exceeded our 6h freshness SLA"
+          },
+          "narrative": [
+            [
+              "user",
+              "Pipelines running. Now we need monitoring and cost work. Split the thread."
+            ],
+            [
+              "assistant",
+              "Splitting `acme-pipeline-build` into: `acme-monitoring` and `acme-cost-optimization`."
+            ],
+            [
+              "user",
+              "Monitoring strategy?"
+            ],
+            [
+              "assistant",
+              "Datadog for runtime metrics (DAG duration, task success/failure), CloudWatch for AWS infra (S3, MWAA, Lambda). Alerts via PagerDuty integration `acme-pipeline-prod`."
+            ],
+            [
+              "user",
+              "Logged."
+            ],
+            [
+              "assistant",
+              "Logged."
+            ],
+            [
+              "user",
+              "Current monthly cost?"
+            ],
+            [
+              "assistant",
+              "About $3400/mo: compute $2100, storage $700, transfer $400, Macie $200."
+            ],
+            [
+              "user",
+              "Cost optimization target?"
+            ],
+            [
+              "assistant",
+              "Goal: reduce to under $2500/mo. Plan: switch to MWAA small environment (mw1.small) after 60 days of steady-state validation, save ~$900/mo."
+            ],
+            [
+              "user",
+              "Any SLA breaches yet?"
+            ],
+            [
+              "assistant",
+              "One. Friday — the source system held a 4-hour batch, exceeded our 6h freshness SLA. Acme acknowledged the source-side cause, no penalty."
+            ],
+            [
+              "user",
+              "Document the root cause."
+            ],
+            [
+              "assistant",
+              "Documented in incident log: source-side 4h batch on Friday → 6h SLA breach. Root cause: source system maintenance window not communicated."
+            ],
+            [
+              "user",
+              "How are we handling schema drift?"
+            ],
+            [
+              "assistant",
+              "Great Expectations validations on every DAG run. Schema changes flag a Slack alert and pause downstream DAGs."
+            ],
+            [
+              "user",
+              "Backfill strategy?"
+            ],
+            [
+              "assistant",
+              "DAG-level catchup=False; backfills triggered manually with explicit date range. Acme historical data was a 30-day backfill done over a weekend."
+            ],
+            [
+              "user",
+              "How do we handle source side changes?"
+            ],
+            [
+              "assistant",
+              "They notify us via a webhook to /internal/acme/source-change. We pause affected DAGs, alert, and require human ack to resume."
+            ],
+            [
+              "user",
+              "Test environment?"
+            ],
+            [
+              "assistant",
+              "A separate MWAA small environment in the dev account, mirroring the prod DAG layout. Synthetic data generator runs nightly."
+            ],
+            [
+              "user",
+              "Cost reporting cadence — internal?"
+            ],
+            [
+              "assistant",
+              "Weekly review by our team in #data-pipelines. Costs are tagged `customer:acme` for clean attribution."
+            ],
+            [
+              "user",
+              "Cross-team dependencies?"
+            ],
+            [
+              "assistant",
+              "Platform team owns the underlying MWAA service; we own the Acme-specific DAGs. They review breaking changes via PR."
+            ],
+            [
+              "user",
+              "Any open tickets on this?"
+            ],
+            [
+              "assistant",
+              "Two: schema drift alert tuning (false-positive rate is high) and Macie cost optimization (running 2x/day is enough, was running every hour)."
+            ],
+            [
+              "user",
+              "OK, low priority. What's the runbook location?"
+            ],
+            [
+              "assistant",
+              "docs/runbooks/acme-pipeline.md. Includes on-call playbook for SLA breach, schema drift response, and cost spike response."
+            ],
+            [
+              "user",
+              "Anything customer-facing about runbooks?"
+            ],
+            [
+              "assistant",
+              "No — runbooks are internal. Acme has a customer-facing status page at status.acme.example.com."
+            ],
+            [
+              "user",
+              "Got it. Continue."
+            ],
+            [
+              "assistant",
+              "Continuing."
+            ],
+            [
+              "user",
+              "How are we handling schema drift?"
+            ],
+            [
+              "assistant",
+              "Great Expectations validations on every DAG run. Schema changes flag a Slack alert and pause downstream DAGs."
+            ],
+            [
+              "user",
+              "Backfill strategy?"
+            ],
+            [
+              "assistant",
+              "DAG-level catchup=False; backfills triggered manually with explicit date range. Acme historical data was a 30-day backfill done over a weekend."
+            ],
+            [
+              "user",
+              "How do we handle source side changes?"
+            ],
+            [
+              "assistant",
+              "They notify us via a webhook to /internal/acme/source-change. We pause affected DAGs, alert, and require human ack to resume."
+            ],
+            [
+              "user",
+              "Test environment?"
+            ],
+            [
+              "assistant",
+              "A separate MWAA small environment in the dev account, mirroring the prod DAG layout. Synthetic data generator runs nightly."
+            ],
+            [
+              "user",
+              "Cost reporting cadence — internal?"
+            ],
+            [
+              "assistant",
+              "Weekly review by our team in #data-pipelines. Costs are tagged `customer:acme` for clean attribution."
+            ],
+            [
+              "user",
+              "Cross-team dependencies?"
+            ],
+            [
+              "assistant",
+              "Platform team owns the underlying MWAA service; we own the Acme-specific DAGs. They review breaking changes via PR."
+            ],
+            [
+              "user",
+              "Any open tickets on this?"
+            ],
+            [
+              "assistant",
+              "Two: schema drift alert tuning (false-positive rate is high) and Macie cost optimization (running 2x/day is enough, was running every hour)."
+            ],
+            [
+              "user",
+              "OK, low priority. What's the runbook location?"
+            ],
+            [
+              "assistant",
+              "docs/runbooks/acme-pipeline.md. Includes on-call playbook for SLA breach, schema drift response, and cost spike response."
+            ],
+            [
+              "user",
+              "Anything customer-facing about runbooks?"
+            ],
+            [
+              "assistant",
+              "No — runbooks are internal. Acme has a customer-facing status page at status.acme.example.com."
+            ],
+            [
+              "user",
+              "Got it. Continue."
+            ],
+            [
+              "assistant",
+              "Continuing."
+            ],
+            [
+              "user",
+              "How are we handling schema drift?"
+            ],
+            [
+              "assistant",
+              "Great Expectations validations on every DAG run. Schema changes flag a Slack alert and pause downstream DAGs."
+            ],
+            [
+              "user",
+              "Backfill strategy?"
+            ],
+            [
+              "assistant",
+              "DAG-level catchup=False; backfills triggered manually with explicit date range. Acme historical data was a 30-day backfill done over a weekend."
+            ],
+            [
+              "user",
+              "How do we handle source side changes?"
+            ],
+            [
+              "assistant",
+              "They notify us via a webhook to /internal/acme/source-change. We pause affected DAGs, alert, and require human ack to resume."
+            ],
+            [
+              "user",
+              "Test environment?"
+            ],
+            [
+              "assistant",
+              "A separate MWAA small environment in the dev account, mirroring the prod DAG layout. Synthetic data generator runs nightly."
+            ],
+            [
+              "user",
+              "Cost reporting cadence — internal?"
+            ],
+            [
+              "assistant",
+              "Weekly review by our team in #data-pipelines. Costs are tagged `customer:acme` for clean attribution."
+            ],
+            [
+              "user",
+              "Cross-team dependencies?"
+            ],
+            [
+              "assistant",
+              "Platform team owns the underlying MWAA service; we own the Acme-specific DAGs. They review breaking changes via PR."
+            ],
+            [
+              "user",
+              "Any open tickets on this?"
+            ],
+            [
+              "assistant",
+              "Two: schema drift alert tuning (false-positive rate is high) and Macie cost optimization (running 2x/day is enough, was running every hour)."
+            ],
+            [
+              "user",
+              "OK, low priority. What's the runbook location?"
+            ],
+            [
+              "assistant",
+              "docs/runbooks/acme-pipeline.md. Includes on-call playbook for SLA breach, schema drift response, and cost spike response."
+            ],
+            [
+              "user",
+              "Anything customer-facing about runbooks?"
+            ],
+            [
+              "assistant",
+              "No — runbooks are internal. Acme has a customer-facing status page at status.acme.example.com."
+            ],
+            [
+              "user",
+              "Got it. Continue."
+            ],
+            [
+              "assistant",
+              "Continuing."
+            ],
+            [
+              "user",
+              "How are we handling schema drift?"
+            ],
+            [
+              "assistant",
+              "Great Expectations validations on every DAG run. Schema changes flag a Slack alert and pause downstream DAGs."
+            ],
+            [
+              "user",
+              "Backfill strategy?"
+            ],
+            [
+              "assistant",
+              "DAG-level catchup=False; backfills triggered manually with explicit date range. Acme historical data was a 30-day backfill done over a weekend."
+            ],
+            [
+              "user",
+              "How do we handle source side changes?"
+            ],
+            [
+              "assistant",
+              "They notify us via a webhook to /internal/acme/source-change. We pause affected DAGs, alert, and require human ack to resume."
+            ],
+            [
+              "user",
+              "Test environment?"
+            ],
+            [
+              "assistant",
+              "A separate MWAA small environment in the dev account, mirroring the prod DAG layout. Synthetic data generator runs nightly."
+            ],
+            [
+              "user",
+              "Cost reporting cadence — internal?"
+            ],
+            [
+              "assistant",
+              "Weekly review by our team in #data-pipelines. Costs are tagged `customer:acme` for clean attribution."
+            ],
+            [
+              "user",
+              "Cross-team dependencies?"
+            ],
+            [
+              "assistant",
+              "Platform team owns the underlying MWAA service; we own the Acme-specific DAGs. They review breaking changes via PR."
+            ],
+            [
+              "user",
+              "Any open tickets on this?"
+            ],
+            [
+              "assistant",
+              "Two: schema drift alert tuning (false-positive rate is high) and Macie cost optimization (running 2x/day is enough, was running every hour)."
+            ],
+            [
+              "user",
+              "OK, low priority. What's the runbook location?"
+            ],
+            [
+              "assistant",
+              "docs/runbooks/acme-pipeline.md. Includes on-call playbook for SLA breach, schema drift response, and cost spike response."
+            ],
+            [
+              "user",
+              "Anything customer-facing about runbooks?"
+            ],
+            [
+              "assistant",
+              "No — runbooks are internal. Acme has a customer-facing status page at status.acme.example.com."
+            ],
+            [
+              "user",
+              "Got it. Continue."
+            ],
+            [
+              "assistant",
+              "Continuing."
+            ],
+            [
+              "user",
+              "How are we handling schema drift?"
+            ],
+            [
+              "assistant",
+              "Great Expectations validations on every DAG run. Schema changes flag a Slack alert and pause downstream DAGs."
+            ],
+            [
+              "user",
+              "Backfill strategy?"
+            ],
+            [
+              "assistant",
+              "DAG-level catchup=False; backfills triggered manually with explicit date range. Acme historical data was a 30-day backfill done over a weekend."
+            ],
+            [
+              "user",
+              "How do we handle source side changes?"
+            ],
+            [
+              "assistant",
+              "They notify us via a webhook to /internal/acme/source-change. We pause affected DAGs, alert, and require human ack to resume."
+            ]
+          ]
+        },
+        {
+          "compactionDepth": "current",
+          "facts": {
+            "current_status": "all 3 DAGs steady-state, monitoring live, cost optimization in progress",
+            "next_milestone": "switch to mw1.small in 30 days, requires 30 more days of stability",
+            "soc2_status": "evidence collection complete for Acme inheritance scope",
+            "new_decision": "Add automated cost dashboard sent to Acme weekly via SES"
+          },
+          "narrative": [
+            [
+              "user",
+              "Status check on the whole thing."
+            ],
+            [
+              "assistant",
+              "All 3 DAGs running steady. Monitoring is live (Datadog + CloudWatch + PagerDuty). Cost optimization in progress — 30 days from MWAA small switchover."
+            ],
+            [
+              "user",
+              "SOC 2 status?"
+            ],
+            [
+              "assistant",
+              "Evidence collection complete for the Acme inheritance scope. Auditor reviewed; we're clean."
+            ],
+            [
+              "user",
+              "New decision: send Acme a weekly cost dashboard. Automated, via SES."
+            ],
+            [
+              "assistant",
+              "Logged. Decision: weekly cost dashboard automated via SES to Jane Smith."
+            ],
+            [
+              "user",
+              "Active threads right now?"
+            ],
+            [
+              "assistant",
+              "`acme-monitoring` and `acme-cost-optimization` both still active. The original build thread is completed."
+            ],
+            [
+              "user",
+              "How are we handling schema drift?"
+            ],
+            [
+              "assistant",
+              "Great Expectations validations on every DAG run. Schema changes flag a Slack alert and pause downstream DAGs."
+            ],
+            [
+              "user",
+              "Backfill strategy?"
+            ],
+            [
+              "assistant",
+              "DAG-level catchup=False; backfills triggered manually with explicit date range. Acme historical data was a 30-day backfill done over a weekend."
+            ],
+            [
+              "user",
+              "How do we handle source side changes?"
+            ],
+            [
+              "assistant",
+              "They notify us via a webhook to /internal/acme/source-change. We pause affected DAGs, alert, and require human ack to resume."
+            ],
+            [
+              "user",
+              "Test environment?"
+            ],
+            [
+              "assistant",
+              "A separate MWAA small environment in the dev account, mirroring the prod DAG layout. Synthetic data generator runs nightly."
+            ],
+            [
+              "user",
+              "Cost reporting cadence — internal?"
+            ],
+            [
+              "assistant",
+              "Weekly review by our team in #data-pipelines. Costs are tagged `customer:acme` for clean attribution."
+            ],
+            [
+              "user",
+              "Cross-team dependencies?"
+            ],
+            [
+              "assistant",
+              "Platform team owns the underlying MWAA service; we own the Acme-specific DAGs. They review breaking changes via PR."
+            ],
+            [
+              "user",
+              "Any open tickets on this?"
+            ],
+            [
+              "assistant",
+              "Two: schema drift alert tuning (false-positive rate is high) and Macie cost optimization (running 2x/day is enough, was running every hour)."
+            ],
+            [
+              "user",
+              "OK, low priority. What's the runbook location?"
+            ],
+            [
+              "assistant",
+              "docs/runbooks/acme-pipeline.md. Includes on-call playbook for SLA breach, schema drift response, and cost spike response."
+            ],
+            [
+              "user",
+              "Anything customer-facing about runbooks?"
+            ],
+            [
+              "assistant",
+              "No — runbooks are internal. Acme has a customer-facing status page at status.acme.example.com."
+            ],
+            [
+              "user",
+              "Got it. Continue."
+            ],
+            [
+              "assistant",
+              "Continuing."
+            ],
+            [
+              "user",
+              "How are we handling schema drift?"
+            ],
+            [
+              "assistant",
+              "Great Expectations validations on every DAG run. Schema changes flag a Slack alert and pause downstream DAGs."
+            ],
+            [
+              "user",
+              "Backfill strategy?"
+            ],
+            [
+              "assistant",
+              "DAG-level catchup=False; backfills triggered manually with explicit date range. Acme historical data was a 30-day backfill done over a weekend."
+            ],
+            [
+              "user",
+              "How do we handle source side changes?"
+            ],
+            [
+              "assistant",
+              "They notify us via a webhook to /internal/acme/source-change. We pause affected DAGs, alert, and require human ack to resume."
+            ],
+            [
+              "user",
+              "Test environment?"
+            ],
+            [
+              "assistant",
+              "A separate MWAA small environment in the dev account, mirroring the prod DAG layout. Synthetic data generator runs nightly."
+            ],
+            [
+              "user",
+              "Cost reporting cadence — internal?"
+            ],
+            [
+              "assistant",
+              "Weekly review by our team in #data-pipelines. Costs are tagged `customer:acme` for clean attribution."
+            ],
+            [
+              "user",
+              "Cross-team dependencies?"
+            ],
+            [
+              "assistant",
+              "Platform team owns the underlying MWAA service; we own the Acme-specific DAGs. They review breaking changes via PR."
+            ],
+            [
+              "user",
+              "Any open tickets on this?"
+            ],
+            [
+              "assistant",
+              "Two: schema drift alert tuning (false-positive rate is high) and Macie cost optimization (running 2x/day is enough, was running every hour)."
+            ],
+            [
+              "user",
+              "OK, low priority. What's the runbook location?"
+            ],
+            [
+              "assistant",
+              "docs/runbooks/acme-pipeline.md. Includes on-call playbook for SLA breach, schema drift response, and cost spike response."
+            ],
+            [
+              "user",
+              "Anything customer-facing about runbooks?"
+            ],
+            [
+              "assistant",
+              "No — runbooks are internal. Acme has a customer-facing status page at status.acme.example.com."
+            ],
+            [
+              "user",
+              "Got it. Continue."
+            ],
+            [
+              "assistant",
+              "Continuing."
+            ],
+            [
+              "user",
+              "How are we handling schema drift?"
+            ],
+            [
+              "assistant",
+              "Great Expectations validations on every DAG run. Schema changes flag a Slack alert and pause downstream DAGs."
+            ],
+            [
+              "user",
+              "Backfill strategy?"
+            ],
+            [
+              "assistant",
+              "DAG-level catchup=False; backfills triggered manually with explicit date range. Acme historical data was a 30-day backfill done over a weekend."
+            ],
+            [
+              "user",
+              "How do we handle source side changes?"
+            ],
+            [
+              "assistant",
+              "They notify us via a webhook to /internal/acme/source-change. We pause affected DAGs, alert, and require human ack to resume."
+            ],
+            [
+              "user",
+              "Test environment?"
+            ],
+            [
+              "assistant",
+              "A separate MWAA small environment in the dev account, mirroring the prod DAG layout. Synthetic data generator runs nightly."
+            ],
+            [
+              "user",
+              "Cost reporting cadence — internal?"
+            ],
+            [
+              "assistant",
+              "Weekly review by our team in #data-pipelines. Costs are tagged `customer:acme` for clean attribution."
+            ],
+            [
+              "user",
+              "Cross-team dependencies?"
+            ],
+            [
+              "assistant",
+              "Platform team owns the underlying MWAA service; we own the Acme-specific DAGs. They review breaking changes via PR."
+            ],
+            [
+              "user",
+              "Any open tickets on this?"
+            ],
+            [
+              "assistant",
+              "Two: schema drift alert tuning (false-positive rate is high) and Macie cost optimization (running 2x/day is enough, was running every hour)."
+            ],
+            [
+              "user",
+              "OK, low priority. What's the runbook location?"
+            ],
+            [
+              "assistant",
+              "docs/runbooks/acme-pipeline.md. Includes on-call playbook for SLA breach, schema drift response, and cost spike response."
+            ],
+            [
+              "user",
+              "Anything customer-facing about runbooks?"
+            ],
+            [
+              "assistant",
+              "No — runbooks are internal. Acme has a customer-facing status page at status.acme.example.com."
+            ],
+            [
+              "user",
+              "Got it. Continue."
+            ],
+            [
+              "assistant",
+              "Continuing."
+            ],
+            [
+              "user",
+              "How are we handling schema drift?"
+            ],
+            [
+              "assistant",
+              "Great Expectations validations on every DAG run. Schema changes flag a Slack alert and pause downstream DAGs."
+            ],
+            [
+              "user",
+              "Backfill strategy?"
+            ],
+            [
+              "assistant",
+              "DAG-level catchup=False; backfills triggered manually with explicit date range. Acme historical data was a 30-day backfill done over a weekend."
+            ],
+            [
+              "user",
+              "How do we handle source side changes?"
+            ],
+            [
+              "assistant",
+              "They notify us via a webhook to /internal/acme/source-change. We pause affected DAGs, alert, and require human ack to resume."
+            ],
+            [
+              "user",
+              "Test environment?"
+            ],
+            [
+              "assistant",
+              "A separate MWAA small environment in the dev account, mirroring the prod DAG layout. Synthetic data generator runs nightly."
+            ],
+            [
+              "user",
+              "Cost reporting cadence — internal?"
+            ],
+            [
+              "assistant",
+              "Weekly review by our team in #data-pipelines. Costs are tagged `customer:acme` for clean attribution."
+            ],
+            [
+              "user",
+              "Cross-team dependencies?"
+            ],
+            [
+              "assistant",
+              "Platform team owns the underlying MWAA service; we own the Acme-specific DAGs. They review breaking changes via PR."
+            ],
+            [
+              "user",
+              "Any open tickets on this?"
+            ],
+            [
+              "assistant",
+              "Two: schema drift alert tuning (false-positive rate is high) and Macie cost optimization (running 2x/day is enough, was running every hour)."
+            ],
+            [
+              "user",
+              "OK, low priority. What's the runbook location?"
+            ],
+            [
+              "assistant",
+              "docs/runbooks/acme-pipeline.md. Includes on-call playbook for SLA breach, schema drift response, and cost spike response."
+            ],
+            [
+              "user",
+              "Anything customer-facing about runbooks?"
+            ],
+            [
+              "assistant",
+              "No — runbooks are internal. Acme has a customer-facing status page at status.acme.example.com."
+            ],
+            [
+              "user",
+              "Got it. Continue."
+            ],
+            [
+              "assistant",
+              "Continuing."
+            ],
+            [
+              "user",
+              "How are we handling schema drift?"
+            ],
+            [
+              "assistant",
+              "Great Expectations validations on every DAG run. Schema changes flag a Slack alert and pause downstream DAGs."
+            ],
+            [
+              "user",
+              "Backfill strategy?"
+            ],
+            [
+              "assistant",
+              "DAG-level catchup=False; backfills triggered manually with explicit date range. Acme historical data was a 30-day backfill done over a weekend."
+            ],
+            [
+              "user",
+              "How do we handle source side changes?"
+            ],
+            [
+              "assistant",
+              "They notify us via a webhook to /internal/acme/source-change. We pause affected DAGs, alert, and require human ack to resume."
+            ],
+            [
+              "user",
+              "Test environment?"
+            ],
+            [
+              "assistant",
+              "A separate MWAA small environment in the dev account, mirroring the prod DAG layout. Synthetic data generator runs nightly."
+            ],
+            [
+              "user",
+              "Cost reporting cadence — internal?"
+            ],
+            [
+              "assistant",
+              "Weekly review by our team in #data-pipelines. Costs are tagged `customer:acme` for clean attribution."
+            ],
+            [
+              "user",
+              "Cross-team dependencies?"
+            ],
+            [
+              "assistant",
+              "Platform team owns the underlying MWAA service; we own the Acme-specific DAGs. They review breaking changes via PR."
+            ]
+          ]
+        }
+      ],
+      "probes": [
+        {
+          "id": "data-p1",
+          "depth": 1,
+          "type": "long-range-recall",
+          "question": "Who is the primary contact at Acme Corp?",
+          "expectedAnswer": "Jane Smith, jane.smith@acmecorp.io",
+          "acceptableAnswers": [
+            "Jane Smith",
+            "jane.smith@acmecorp.io",
+            "jane.smith"
+          ]
+        },
+        {
+          "id": "data-p2",
+          "depth": 1,
+          "type": "decision-continuity",
+          "question": "Why did we choose MWAA over self-hosted Argo Workflows?",
+          "expectedAnswer": "Managed service reduces ops burden + SOC 2 inheritance via AWS",
+          "acceptableAnswers": [
+            "SOC 2",
+            "soc2",
+            "inheritance",
+            "ops burden",
+            "managed",
+            "aws"
+          ]
+        },
+        {
+          "id": "data-p3",
+          "depth": 1,
+          "type": "long-range-recall",
+          "question": "What is the S3 intake bucket for Acme?",
+          "expectedAnswer": "s3://acme-intake-prod-492372",
+          "acceptableAnswers": [
+            "acme-intake-prod-492372",
+            "s3://acme-intake"
+          ]
+        },
+        {
+          "id": "data-p4",
+          "depth": 2,
+          "type": "decision-continuity",
+          "question": "Why did we go with one DAG per data source instead of one DAG total?",
+          "expectedAnswer": "Failure isolation — one source failing shouldn't block others",
+          "acceptableAnswers": [
+            "failure isolation",
+            "isolation",
+            "block others",
+            "one failing"
+          ]
+        },
+        {
+          "id": "data-p5",
+          "depth": 2,
+          "type": "long-range-recall",
+          "question": "What is the MWAA execution role ARN?",
+          "expectedAnswer": "arn:aws:iam::492372116065:role/mwaa-acme-execution",
+          "acceptableAnswers": [
+            "mwaa-acme-execution",
+            "492372116065:role/mwaa-acme"
+          ]
+        },
+        {
+          "id": "data-p6",
+          "depth": 2,
+          "type": "thread-lineage",
+          "question": "What was the original name of the thread before it was renamed to `acme-pipeline-build`?",
+          "expectedAnswer": "acme-pipeline-design",
+          "acceptableAnswers": [
+            "acme-pipeline-design",
+            "acme pipeline design"
+          ]
+        },
+        {
+          "id": "data-p7",
+          "depth": 3,
+          "type": "decision-continuity",
+          "question": "What was the cost optimization plan to get below $2500/mo?",
+          "expectedAnswer": "Switch to MWAA mw1.small after 60 days of steady-state validation",
+          "acceptableAnswers": [
+            "mw1.small",
+            "small environment",
+            "60 days",
+            "small"
+          ]
+        },
+        {
+          "id": "data-p8",
+          "depth": 3,
+          "type": "long-range-recall",
+          "question": "What was the root cause of the SLA breach?",
+          "expectedAnswer": "Source system held a 4-hour batch on Friday",
+          "acceptableAnswers": [
+            "source system",
+            "4-hour batch",
+            "4 hour",
+            "maintenance window",
+            "batch"
+          ]
+        },
+        {
+          "id": "data-p9",
+          "depth": 3,
+          "type": "thread-lineage",
+          "question": "What two threads did `acme-pipeline-build` split into?",
+          "expectedAnswer": "acme-monitoring and acme-cost-optimization",
+          "acceptableAnswers": [
+            "acme-monitoring",
+            "acme-cost-optimization",
+            "monitoring",
+            "cost-optimization"
+          ]
+        },
+        {
+          "id": "data-p10",
+          "depth": "current",
+          "type": "trajectory",
+          "question": "What is the status of the `acme-pipeline-build` thread now?",
+          "expectedAnswer": "completed (split into monitoring and cost-optimization)",
+          "acceptableAnswers": [
+            "completed",
+            "done",
+            "split"
+          ]
+        },
+        {
+          "id": "data-p11",
+          "depth": "current",
+          "type": "long-range-recall",
+          "question": "What new decision did we just make about cost reporting to Acme?",
+          "expectedAnswer": "Send weekly cost dashboard via SES",
+          "acceptableAnswers": [
+            "weekly cost",
+            "cost dashboard",
+            "SES",
+            "weekly"
+          ]
+        },
+        {
+          "id": "data-p12",
+          "depth": "current",
+          "type": "trajectory",
+          "question": "How many days until the planned MWAA small switchover?",
+          "expectedAnswer": "30 days",
+          "acceptableAnswers": [
+            "30 days",
+            "30",
+            "thirty"
+          ]
+        }
+      ]
+    }
+  ]
+}
