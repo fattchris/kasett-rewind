@@ -21,8 +21,24 @@ Subagent kicked off 2026-05-12 19:15 UTC.
 - Outputs: `tier4-rerun-results.json`, `tier4-rerun-summary.md`.
 - Commit: `45af114` pushed to main.
 
-## ITEM 3 — Paper-ready writeup
-- [ ] In progress: drafting `PAPER-1-DRAFT.md`
+## ITEM 3 — Paper-ready writeup ✅
+- Drafted `research/phase2-results/PAPER-1-DRAFT.md` (≈20 KB).
+- Sections 3.1–3.7 + Appendix A (per-session table) + Appendix B (reproducibility pointers).
+- Headline numbers grounded in `tier4-rerun-summary.md` (Vanilla SY=0, Kasett mean SY=18.20, 100% compliance post-fix).
+- Construct-validity discussion includes the "SY rewards Kasett by construction" critique and our response.
+- Commit: `a5781d0` pushed to main.
+
+## Summary
+
+All three items shipped in one subagent run, ~20 minutes total:
+
+| Item | Result | Commit |
+|---|---|---|
+| 1. Validator lenient-truncate | 434/434 tests pass; tsc clean | `4a42da9` |
+| 2. Tier-4 re-run | Tier 4 compliance 40%→100%, SY 9.00→23.20 | `45af114` |
+| 3. Paper 1 draft | Methods + Results + Discussion ready for formal write-up | `a5781d0` |
+
+**Spend:** ~\$0.50 OpenRouter (10 calls).
 [2026-05-12T19:22:40.226Z] [tier4-rerun] Loading original results.json for Tier 1-3 carryover
 [2026-05-12T19:22:40.230Z] [tier4-rerun] Re-running 5 Tier-4 fixtures with lenient validator
 [2026-05-12T19:22:40.231Z] [tier4-rerun] [1/5] session-11 (Tier 4, 120 turns, 8 threads, 25 key state)
