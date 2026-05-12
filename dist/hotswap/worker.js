@@ -1,50 +1,49 @@
 /**
- * worker.ts — Background LLM call + hot-swap file rewrite logic.
+ * worker.ts — Background LLM call + sidecar write logic.
  *
  * After summarize() returns the stub immediately, this module runs the FULL
- * LLM summarization in the background, then waits for the inter-turn gap
- * (OC's session write lock to be absent) and atomically rewrites the JSONL,
- * replacing the stub compaction entry with the full LLM-generated summary.
+ * LLM summarization in the background, then appends the rich summary to the
+ * session's sidecar file (`<session>.jsonl.kasett-meta.jsonl`).
  *
- * ## Atomic rewrite pattern (matches OC's own pattern):
- *   1. Read current JSONL content
- *   2. Parse all lines, find the stub compaction entry by stubId
- *   3. Replace its summary field with the full LLM summary
- *   4. Write to `${sessionFile}.kasett-swap-tmp`
- *   5. `fs.rename(tmp, sessionFile)` — atomic on POSIX
- *   6. Release the lock
+ * ## Why a sidecar (vs. atomic JSONL rewrite)
  *
- * ## Stale result handling:
- *   If ANOTHER compaction fires before this hot-swap completes, the stub
- *   entry will have been replaced or truncated by OC's own compaction
- *   machinery. In that case, the stub ID will no longer be found in the
- *   JSONL and the background result is silently discarded.
+ * The previous design called `waitForLockAbsent(sessionFile, 30_000ms)` then
+ * `acquireLock` to perform an atomic rewrite of the OC session JSONL. In
+ * production this failed on every active session — OC holds the session
+ * write lock continuously while the user keeps working, so no 30s gap ever
+ * opens. Production compliance was 0% over 7 days (Phase A finding).
+ *
+ * The sidecar lives next to the session file and is written by kasett ONLY.
+ * Append-only — no rewrites — POSIX `O_APPEND` is atomic for short writes,
+ * and we never have concurrent writers anyway. We never fight OC's lock.
+ *
+ * The OC-stored stub remains in place in the JSONL. Reads prefer the sidecar
+ * (rich), fall back to the JSONL for legacy entries.
  */
-import { readFile, writeFile, rename, appendFile } from 'node:fs/promises';
-import { acquireLock, waitForLockAbsent } from './lock.js';
-import { KASETT_STUB_REGEX } from './constants.js';
-/**
- * Run the hot-swap background pipeline.
- *
- * This function is fire-and-forget — it should be called WITHOUT await
- * from summarize() so it runs after the stub has been returned to OC.
- *
- * All errors are caught and logged; they never propagate to the caller.
- */
+import { appendFile } from 'node:fs/promises';
+import { basename } from 'node:path';
+import { writeSidecarEntry, sidecarPathFor } from '../storage/sidecar.js';
+import { parseCompactionOutput } from '../threads/parser.js';
 const DIAG_LOG = '/home/node/.openclaw/workspace/repos/kasett-rewind/research/hotswap-diag.log';
 async function diag(msg) {
     const ts = new Date().toISOString();
     await appendFile(DIAG_LOG, `[${ts}] ${msg}\n`).catch(() => { });
 }
+/**
+ * Run the background sidecar pipeline.
+ *
+ * Fire-and-forget — call WITHOUT await from summarize() so the stub is
+ * returned to OC first. All errors are logged and swallowed.
+ */
 export async function runHotSwapWorker(params) {
-    const { sessionFile, stubId, messages, previousSummaries, steeringPrompt, customInstructions, signal, compactionModel, hotSwapTimeoutMs = 30_000, logger, callLLM, } = params;
+    const { sessionFile, stubId, messages, steeringPrompt, customInstructions, signal, compactionModel, logger, callLLM, onSidecarWritten, onSidecarFailed, } = params;
     try {
-        logger.debug(`[kasett-rewind:hotswap] Background worker started for stub ${stubId}`);
+        logger.debug(`[kasett-rewind:sidecar] Background worker started for stub ${stubId}`);
         await diag(`WORKER_START stub=${stubId} sessionFile=${sessionFile} signal_aborted=${signal?.aborted}`);
-        // Step 1: Call the LLM for the full summary
         if (signal?.aborted) {
-            logger.debug('[kasett-rewind:hotswap] Aborted before LLM call');
+            logger.debug('[kasett-rewind:sidecar] Aborted before LLM call');
             await diag(`ABORT_BEFORE_LLM stub=${stubId}`);
+            onSidecarFailed?.({ reason: 'aborted_before_llm' });
             return;
         }
         await diag(`LLM_CALL_START stub=${stubId} model=${compactionModel}`);
@@ -57,146 +56,68 @@ export async function runHotSwapWorker(params) {
             logger,
         });
         if (!fullSummary) {
-            logger.warn(`[kasett-rewind:hotswap] LLM returned empty summary for stub ${stubId} — stub remains in place`);
+            logger.warn(`[kasett-rewind:sidecar] LLM returned empty summary for stub ${stubId} — sidecar not written`);
             await diag(`LLM_EMPTY stub=${stubId}`);
+            onSidecarFailed?.({ reason: 'llm_empty' });
             return;
         }
         await diag(`LLM_DONE stub=${stubId} summary_len=${fullSummary.length}`);
         if (signal?.aborted) {
-            logger.debug('[kasett-rewind:hotswap] Aborted after LLM call, before file swap');
+            logger.debug('[kasett-rewind:sidecar] Aborted after LLM call');
+            await diag(`ABORT_AFTER_LLM stub=${stubId}`);
+            onSidecarFailed?.({ reason: 'aborted_after_llm' });
             return;
         }
-        // Step 2: Wait for the inter-turn gap (lock file absent)
-        logger.debug(`[kasett-rewind:hotswap] LLM done. Waiting for inter-turn gap (timeout: ${hotSwapTimeoutMs}ms)`);
-        const lockCleared = await waitForLockAbsent(sessionFile, hotSwapTimeoutMs);
-        if (!lockCleared) {
-            logger.warn(`[kasett-rewind:hotswap] Timed out waiting for session lock to clear for stub ${stubId} — stub remains`);
-            await diag(`LOCK_WAIT_TIMEOUT stub=${stubId} timeoutMs=${hotSwapTimeoutMs}`);
-            return;
-        }
-        if (signal?.aborted) {
-            logger.debug('[kasett-rewind:hotswap] Aborted after lock wait');
-            await diag(`ABORT_AFTER_LOCK_WAIT stub=${stubId}`);
-            return;
-        }
-        // Step 3: Acquire the lock ourselves before rewriting
-        let lockHandle;
+        // Parse the LLM output to extract structured thread meta.
+        // The summary text itself is stored verbatim in `summary_rich`; the
+        // parsed meta is denormalized into `thread_meta` for cheap reads.
+        const parsed = parseCompactionOutput(fullSummary);
+        const sessionId = basename(sessionFile, '.jsonl');
+        const entry = {
+            ts: new Date().toISOString(),
+            session_id: sessionId,
+            compaction_id: stubId,
+            stub_id: stubId,
+            summary_rich: fullSummary,
+            summary_chars: fullSummary.length,
+            ...(parsed.meta ? { thread_meta: parsed.meta } : {}),
+            ...(compactionModel ? { model: compactionModel } : {}),
+        };
+        let sidecarPath;
         try {
-            lockHandle = await acquireLock(sessionFile, { timeoutMs: hotSwapTimeoutMs });
+            sidecarPath = writeSidecarEntry(sessionFile, entry);
         }
         catch (err) {
-            logger.warn(`[kasett-rewind:hotswap] Could not acquire lock for swap: ${String(err)} — stub remains`);
-            await diag(`LOCK_ACQUIRE_FAIL stub=${stubId} err=${String(err).slice(0, 200)}`);
+            logger.error(`[kasett-rewind:sidecar] Sidecar write failed for stub ${stubId}: ${String(err)}`);
+            await diag(`SIDECAR_WRITE_FAIL stub=${stubId} err=${String(err).slice(0, 200)}`);
+            onSidecarFailed?.({ reason: 'write_failed', detail: String(err).slice(0, 200) });
             return;
         }
-        try {
-            // Step 4: Atomic file rewrite
-            await performAtomicSwap({
-                sessionFile,
-                stubId,
-                fullSummary,
-                logger,
-                diag,
-            });
-        }
-        finally {
-            await lockHandle.release();
-        }
-        logger.info(`[kasett-rewind:hotswap] Hot-swap complete for stub ${stubId}`);
-        await diag(`SWAP_COMPLETE stub=${stubId}`);
+        logger.info(`[kasett-rewind:sidecar] Sidecar entry written for stub ${stubId} (${fullSummary.length} chars, meta_main=${parsed.meta?.main ?? 'null'})`);
+        await diag(`SIDECAR_WRITTEN stub=${stubId} path=${sidecarPath} chars=${fullSummary.length} meta_main=${parsed.meta?.main ?? 'null'}`);
+        onSidecarWritten?.({
+            sidecarPath,
+            summaryChars: fullSummary.length,
+            metaMain: parsed.meta?.main ?? null,
+        });
     }
     catch (err) {
         if (isAbortError(err)) {
-            logger.debug(`[kasett-rewind:hotswap] Worker aborted for stub ${stubId}`);
+            logger.debug(`[kasett-rewind:sidecar] Worker aborted for stub ${stubId}`);
             await diag(`ABORT_ERROR stub=${stubId} err=${String(err)}`);
+            onSidecarFailed?.({ reason: 'aborted' });
             return;
         }
-        logger.error(`[kasett-rewind:hotswap] Worker failed for stub ${stubId}: ${String(err)}`);
+        logger.error(`[kasett-rewind:sidecar] Worker failed for stub ${stubId}: ${String(err)}`);
         await diag(`WORKER_ERROR stub=${stubId} err=${String(err)}`);
+        onSidecarFailed?.({ reason: 'worker_error', detail: String(err).slice(0, 200) });
     }
 }
 /**
- * Perform the atomic JSONL rewrite.
- *
- * Reads the current JSONL, finds the stub entry by stubId, replaces its
- * summary field with `fullSummary`, writes to a temp file, then renames
- * atomically over the original.
- *
- * If the stub entry is not found (e.g., another compaction already fired),
- * the swap is silently aborted (stale result).
+ * Re-export for back-compat: the sidecar path helper.
+ * Some integration code references this from the worker module.
  */
-async function performAtomicSwap(params) {
-    const { sessionFile, stubId, fullSummary, logger, diag } = params;
-    // Read current JSONL
-    let rawContent;
-    try {
-        rawContent = await readFile(sessionFile, 'utf-8');
-    }
-    catch (err) {
-        logger.warn(`[kasett-rewind:hotswap] Could not read session file for swap: ${String(err)}`);
-        return;
-    }
-    const lines = rawContent.split('\n');
-    let found = false;
-    const newLines = [];
-    for (const line of lines) {
-        const trimmed = line.trim();
-        if (!trimmed) {
-            newLines.push(line);
-            continue;
-        }
-        // Try to parse as a compaction entry and check for our stub ID
-        if (trimmed.includes('compaction') && trimmed.includes(stubId)) {
-            try {
-                const entry = JSON.parse(trimmed);
-                if (entry.type === 'compaction' &&
-                    typeof entry.data === 'object' &&
-                    entry.data !== null) {
-                    const data = entry.data;
-                    if (typeof data.summary === 'string' && containsStubId(data.summary, stubId)) {
-                        // Replace the summary with the full LLM output
-                        data.summary = fullSummary;
-                        found = true;
-                        newLines.push(JSON.stringify(entry));
-                        continue;
-                    }
-                }
-            }
-            catch {
-                // Not valid JSON or not what we're looking for — keep as-is
-            }
-        }
-        newLines.push(line);
-    }
-    if (!found) {
-        // The stub entry is gone — another compaction fired and rewrote the file.
-        // Discard the background result (it's stale).
-        logger.debug(`[kasett-rewind:hotswap] Stub ${stubId} not found in JSONL — ` +
-            'another compaction may have fired. Discarding stale result.');
-        await diag(`STUB_NOT_FOUND stub=${stubId} lines_scanned=${lines.length}`);
-        return;
-    }
-    // Write to temp file, then rename atomically
-    const tmpFile = `${sessionFile}.kasett-swap-tmp`;
-    const newContent = newLines.join('\n');
-    await diag(`ATOMIC_SWAP_START stub=${stubId} lines=${lines.length}`);
-    try {
-        await writeFile(tmpFile, newContent, 'utf-8');
-        await rename(tmpFile, sessionFile);
-    }
-    catch (err) {
-        await diag(`ATOMIC_SWAP_ERROR stub=${stubId} err=${String(err).slice(0, 200)}`);
-        throw err;
-    }
-    logger.debug(`[kasett-rewind:hotswap] Atomic swap complete — stub ${stubId} replaced with full summary`);
-}
-/**
- * Check if a summary string contains the given stub ID marker.
- */
-function containsStubId(summary, stubId) {
-    const match = summary.match(KASETT_STUB_REGEX);
-    return match !== null && match[1] === stubId;
-}
+export { sidecarPathFor };
 /**
  * Detect abort errors from various sources.
  */

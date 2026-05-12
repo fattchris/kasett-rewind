@@ -1,5 +1,7 @@
 import { createReadStream } from 'node:fs';
 import { createInterface } from 'node:readline';
+import { readSidecar, sidecarExists } from './sidecar.js';
+import { parseCompactionOutput } from '../threads/parser.js';
 /**
  * Error class for kasett-rewind operations.
  */
@@ -12,8 +14,26 @@ export class KasettError extends Error {
     }
 }
 /**
- * Reads session JSONL files and extracts compaction events with kaspiett thread meta.
- * Uses streaming for memory efficiency on large session files.
+ * Reads session JSONL files (and the kasett sidecar) and extracts compaction
+ * events with thread meta. Uses streaming for memory efficiency on large
+ * session files.
+ *
+ * ## Storage layout
+ *
+ * As of Phase B1 (2026-05-12), kasett stores rich compaction summaries in a
+ * sidecar file alongside the OC session JSONL:
+ *
+ *     <session>.jsonl                    ← OC stub stays here
+ *     <session>.jsonl.kasett-meta.jsonl  ← rich kasett meta lives here
+ *
+ * Reads prefer the sidecar. Legacy sessions that have rich `[THREAD_META]`
+ * inline in the OC JSONL `summary` field still work via fallback scanning.
+ *
+ * ## JSONL field path
+ *
+ * Real OC compaction events store the summary at TOP-LEVEL `summary`, not
+ * `data.summary` (Phase A audit, 2026-05-12). The reader supports both:
+ * top-level first, falling back to `data.summary` for legacy fixtures.
  */
 export class SessionReader {
     /**
@@ -50,51 +70,70 @@ export class SessionReader {
         return events;
     }
     /**
-     * Read the last N compaction events that have kaspiett thread meta.
-     * Falls back to events without kaspiett if fewer than N have it.
+     * Read the last N compaction events that have thread meta.
+     *
+     * Sidecar-first: if a sidecar exists, prefer its entries (most-recent-last)
+     * and fall back to JSONL-derived events for older slots.
      *
      * @param filePath - Absolute path to the session .jsonl file
      * @param count - Maximum number of events to return
-     * @returns The last N CompactionEvent objects with kaspiett (oldest first)
+     * @returns The last N CompactionEvent objects with thread meta (oldest first)
      */
     async readLastNWithMeta(filePath, count) {
         if (count <= 0)
             return [];
-        const all = await this.readCompactionEvents(filePath);
-        const withMeta = all.filter((e) => e.data.kaspiett != null);
+        const sidecarEvents = sidecarExists(filePath)
+            ? readSidecar(filePath).map(sidecarEntryToCompactionEvent)
+            : [];
+        const jsonlEvents = await this.readCompactionEvents(filePath);
+        // Merge: sidecar is authoritative for any events it contains. Legacy
+        // JSONL events without a sidecar match get appended (kept).
+        const merged = mergeSidecarAndJsonl(sidecarEvents, jsonlEvents);
+        const withMeta = merged.filter((e) => e.data.kaspiett != null);
         return withMeta.slice(-count);
     }
     /**
-     * Read the most recent thread meta from the session JSONL.
-     * Returns null if no compaction with kaspiett meta exists.
+     * Read the most recent thread meta from the session.
+     * Sidecar-first; falls back to JSONL.
      */
     async readLatestMeta(filePath) {
+        if (sidecarExists(filePath)) {
+            const entries = readSidecar(filePath);
+            for (let i = entries.length - 1; i >= 0; i--) {
+                if (entries[i].thread_meta)
+                    return entries[i].thread_meta;
+            }
+        }
+        // Fallback: scan JSONL
         const all = await this.readCompactionEvents(filePath);
         for (let i = all.length - 1; i >= 0; i--) {
-            if (all[i].data.kaspiett) {
+            if (all[i].data.kaspiett)
                 return all[i].data.kaspiett;
-            }
         }
         return null;
     }
     /**
-     * Read the most recent compaction summary string from the session JSONL.
-     * Returns the raw summary text (which may include a [THREAD_META] block)
-     * from the most recent compaction event, regardless of whether it has kaspiett.
-     *
-     * @param filePath - Absolute path to the session .jsonl file
-     * @returns The most recent summary string, or null if no compaction events exist
+     * Read the most recent compaction summary string.
+     * Sidecar-first; if a rich summary is in the sidecar, return that. Otherwise
+     * fall back to the most recent OC JSONL summary (which may be a stub).
      */
     async readLatestSummary(filePath) {
+        if (sidecarExists(filePath)) {
+            const entries = readSidecar(filePath);
+            if (entries.length > 0) {
+                return entries[entries.length - 1].summary_rich;
+            }
+        }
         const all = await this.readCompactionEvents(filePath);
         if (all.length === 0)
             return null;
         return all[all.length - 1].data.summary;
     }
     /**
-     * Read the last N compaction summary strings from the session JSONL.
-     * Returns raw summary texts (which may include [THREAD_META] blocks),
-     * in chronological order (oldest first), regardless of kaspiett presence.
+     * Read the last N compaction summary strings, oldest first.
+     *
+     * Sidecar-first per slot: for each compaction position we prefer the
+     * sidecar's rich summary over the JSONL stub.
      *
      * @param filePath - Absolute path to the session .jsonl file
      * @param count - Maximum number of summaries to return
@@ -103,12 +142,62 @@ export class SessionReader {
     async readLastNSummaries(filePath, count) {
         if (count <= 0)
             return [];
-        const all = await this.readCompactionEvents(filePath);
-        return all.slice(-count).map((e) => e.data.summary);
+        const sidecarEntries = sidecarExists(filePath) ? readSidecar(filePath) : [];
+        const jsonlEvents = await this.readCompactionEvents(filePath);
+        // If we have sidecar entries, they are ordered chronologically and are
+        // 1:1 with the kasett-handled compactions. Anything in the JSONL that
+        // isn't already covered by a sidecar entry (e.g. a vanilla OC compaction
+        // before kasett was active, or a stub that the worker never enriched)
+        // gets included as-is.
+        if (sidecarEntries.length === 0) {
+            return jsonlEvents.slice(-count).map((e) => e.data.summary);
+        }
+        // Map sidecar entries by stub_id / compaction_id for lookup
+        const sidecarByStub = new Map();
+        for (const e of sidecarEntries) {
+            if (e.stub_id)
+                sidecarByStub.set(e.stub_id, e);
+            sidecarByStub.set(e.compaction_id, e);
+        }
+        // Per-slot resolution: for each JSONL compaction, prefer sidecar rich
+        // summary if its stub id is present in the JSONL summary text.
+        const KASETT_STUB_ID_RE = /\[KASETT_STUB::([0-9a-f-]{36})\]/i;
+        const resolved = [];
+        for (const ev of jsonlEvents) {
+            const summary = ev.data.summary;
+            const m = summary.match(KASETT_STUB_ID_RE);
+            if (m) {
+                const stubId = m[1];
+                const sidecar = sidecarByStub.get(stubId);
+                if (sidecar) {
+                    resolved.push(sidecar.summary_rich);
+                    continue;
+                }
+            }
+            resolved.push(summary);
+        }
+        // Append any sidecar entries that don't have a matching JSONL slot
+        // (shouldn't happen in practice but safe-guards against drift).
+        const seenStubs = new Set();
+        for (const ev of jsonlEvents) {
+            const m = ev.data.summary.match(KASETT_STUB_ID_RE);
+            if (m)
+                seenStubs.add(m[1]);
+        }
+        for (const e of sidecarEntries) {
+            const id = e.stub_id ?? e.compaction_id;
+            if (!seenStubs.has(id)) {
+                resolved.push(e.summary_rich);
+            }
+        }
+        return resolved.slice(-count);
     }
     /**
      * Parse a single JSONL line into a CompactionEvent.
      * Returns undefined if the line is not a valid compaction event.
+     *
+     * Supports both real OC layout (top-level `summary`) and legacy fixtures
+     * (`data.summary`). Real production data uses the top-level layout.
      */
     parseLine(line) {
         try {
@@ -116,32 +205,42 @@ export class SessionReader {
             if (typeof parsed === 'object' &&
                 parsed !== null &&
                 'type' in parsed &&
-                parsed.type === 'compaction' &&
-                'data' in parsed) {
+                parsed.type === 'compaction') {
                 const obj = parsed;
-                const data = obj.data;
-                if (typeof data?.summary !== 'string')
-                    return undefined;
-                // Extract kaspiett if present
-                let kaspiett;
-                if (data.kaspiett && typeof data.kaspiett === 'object') {
-                    const k = data.kaspiett;
-                    if (typeof k.main === 'string' &&
-                        Array.isArray(k.sub) &&
-                        k.sub.length === 3 &&
-                        k.sub.every((s) => typeof s === 'string')) {
-                        kaspiett = {
-                            main: k.main,
-                            sub: k.sub,
-                        };
+                // Try top-level `summary` first (real OC layout)
+                let summary;
+                let kaspiettRaw;
+                if (typeof obj.summary === 'string') {
+                    summary = obj.summary;
+                    kaspiettRaw = obj.kaspiett;
+                }
+                else if ('data' in obj &&
+                    typeof obj.data === 'object' &&
+                    obj.data !== null) {
+                    const data = obj.data;
+                    if (typeof data.summary === 'string') {
+                        summary = data.summary;
+                        kaspiettRaw = data.kaspiett;
                     }
+                }
+                if (typeof summary !== 'string')
+                    return undefined;
+                // Extract kaspiett if present as a structured field
+                let kaspiett = parseKaspiett(kaspiettRaw);
+                // If no structured field, try parsing [THREAD_META] from the summary
+                // text itself (legacy + fixture layout). This is what enables backward
+                // compatibility for sessions that pre-date the sidecar.
+                if (!kaspiett) {
+                    const fromText = parseCompactionOutput(summary).meta;
+                    if (fromText)
+                        kaspiett = fromText;
                 }
                 return {
                     type: 'compaction',
                     id: typeof obj.id === 'string' ? obj.id : undefined,
                     timestamp: typeof obj.timestamp === 'string' ? obj.timestamp : undefined,
                     data: {
-                        summary: data.summary,
+                        summary,
                         kaspiett,
                     },
                 };
@@ -153,5 +252,82 @@ export class SessionReader {
             return undefined;
         }
     }
+}
+/**
+ * Coerce an unknown kaspiett raw object into a typed ThreadMeta, or undefined.
+ */
+function parseKaspiett(raw) {
+    if (!raw || typeof raw !== 'object')
+        return undefined;
+    const k = raw;
+    if (typeof k.main === 'string' &&
+        Array.isArray(k.sub) &&
+        k.sub.length === 3 &&
+        k.sub.every((s) => typeof s === 'string')) {
+        return {
+            main: k.main,
+            sub: k.sub,
+        };
+    }
+    return undefined;
+}
+/**
+ * Convert a sidecar entry into a CompactionEvent for backward-compatible APIs.
+ */
+function sidecarEntryToCompactionEvent(entry) {
+    const meta = entry.thread_meta
+        ? {
+            main: entry.thread_meta.main,
+            sub: entry.thread_meta.sub,
+        }
+        : undefined;
+    return {
+        type: 'compaction',
+        id: entry.stub_id ?? entry.compaction_id,
+        timestamp: entry.ts,
+        data: {
+            summary: entry.summary_rich,
+            kaspiett: meta,
+        },
+    };
+}
+/**
+ * Merge sidecar-derived events with JSONL events. Sidecar wins per stub_id.
+ *
+ * Strategy:
+ *   - Walk JSONL events oldest-first
+ *   - For each, if its summary contains a [KASETT_STUB::<id>] marker AND a
+ *     sidecar entry with that id exists, replace it with the sidecar event
+ *   - Otherwise keep the JSONL event
+ *   - Append any sidecar events not represented in the JSONL (defensive)
+ */
+function mergeSidecarAndJsonl(sidecarEvents, jsonlEvents) {
+    const KASETT_STUB_ID_RE = /\[KASETT_STUB::([0-9a-f-]{36})\]/i;
+    const sidecarById = new Map();
+    for (const e of sidecarEvents) {
+        if (e.id)
+            sidecarById.set(e.id, e);
+    }
+    const merged = [];
+    const claimed = new Set();
+    for (const ev of jsonlEvents) {
+        const m = ev.data.summary.match(KASETT_STUB_ID_RE);
+        if (m) {
+            const stubId = m[1];
+            const sidecar = sidecarById.get(stubId);
+            if (sidecar) {
+                merged.push(sidecar);
+                claimed.add(stubId);
+                continue;
+            }
+        }
+        merged.push(ev);
+    }
+    // Append any sidecar events not already claimed
+    for (const e of sidecarEvents) {
+        if (e.id && !claimed.has(e.id))
+            merged.push(e);
+    }
+    return merged;
 }
 //# sourceMappingURL=reader.js.map

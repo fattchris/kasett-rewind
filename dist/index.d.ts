@@ -139,6 +139,8 @@ export type { GenerateConfigOptions } from './cli/generate-config.js';
 export { generateStub } from './hotswap/stub.js';
 export { runHotSwapWorker } from './hotswap/worker.js';
 export { acquireLock, waitForLockAbsent } from './hotswap/lock.js';
+export { writeSidecarEntry, readSidecar, findEntryForCompaction, sidecarPathFor, sidecarExists, } from './storage/sidecar.js';
+export type { SidecarEntry } from './storage/sidecar.js';
 export type { KasettConfig, CompactionEvent, ThreadMeta, ConversationTurn, } from './types.js';
 export { DEFAULT_CONFIG } from './types.js';
 //# sourceMappingURL=index.d.ts.map

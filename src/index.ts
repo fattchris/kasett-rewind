@@ -591,6 +591,8 @@ async function summarizeWithHotSwap(p: SummarizeWithHotSwapParams): Promise<stri
       // NOTE: Do NOT pass params.signal to the worker.
       // OC aborts that signal once summarize() returns the stub,
       // which would kill the background LLM call immediately.
+      const sessionKey = capturedCtx?.sessionKey;
+      const agentId = capturedCtx?.agentId;
       runHotSwapWorker({
         sessionFile,
         stubId,
@@ -603,9 +605,40 @@ async function summarizeWithHotSwap(p: SummarizeWithHotSwapParams): Promise<stri
         hotSwapTimeoutMs: config.compaction.hotSwapTimeoutMs,
         logger: api.logger,
         callLLM: callLLMForCompaction,
+        onSidecarWritten: (info) => {
+          void logHookEvent({
+            hook: 'after_compaction',
+            sessionId: sessionKey,
+            agentId,
+            action: 'sidecar_written',
+            parsed: true,
+            charCount: info.summaryChars,
+            metaMain: info.metaMain,
+            detail: {
+              stubId,
+              sidecarPath: info.sidecarPath,
+              sidecarWritten: true,
+            },
+          });
+        },
+        onSidecarFailed: (info) => {
+          void logHookEvent({
+            hook: 'after_compaction',
+            sessionId: sessionKey,
+            agentId,
+            action: 'sidecar_failed',
+            parsed: false,
+            error: info.reason,
+            detail: {
+              stubId,
+              sidecarWritten: false,
+              ...(info.detail ? { detail: info.detail } : {}),
+            },
+          });
+        },
       }).catch((err: unknown) => {
         // Background errors are logged but never propagate
-        api.logger.error(`[kasett-rewind] Hot-swap background worker threw: ${String(err)}`);
+        api.logger.error(`[kasett-rewind] Sidecar worker threw: ${String(err)}`);
       });
     } else {
       api.logger.warn(
@@ -1146,6 +1179,14 @@ export type { GenerateConfigOptions } from './cli/generate-config.js';
 export { generateStub } from './hotswap/stub.js';
 export { runHotSwapWorker } from './hotswap/worker.js';
 export { acquireLock, waitForLockAbsent } from './hotswap/lock.js';
+export {
+  writeSidecarEntry,
+  readSidecar,
+  findEntryForCompaction,
+  sidecarPathFor,
+  sidecarExists,
+} from './storage/sidecar.js';
+export type { SidecarEntry } from './storage/sidecar.js';
 
 export type {
   KasettConfig,

@@ -1,36 +1,37 @@
 /**
- * worker.ts — Background LLM call + hot-swap file rewrite logic.
+ * worker.ts — Background LLM call + sidecar write logic.
  *
  * After summarize() returns the stub immediately, this module runs the FULL
- * LLM summarization in the background, then waits for the inter-turn gap
- * (OC's session write lock to be absent) and atomically rewrites the JSONL,
- * replacing the stub compaction entry with the full LLM-generated summary.
+ * LLM summarization in the background, then appends the rich summary to the
+ * session's sidecar file (`<session>.jsonl.kasett-meta.jsonl`).
  *
- * ## Atomic rewrite pattern (matches OC's own pattern):
- *   1. Read current JSONL content
- *   2. Parse all lines, find the stub compaction entry by stubId
- *   3. Replace its summary field with the full LLM summary
- *   4. Write to `${sessionFile}.kasett-swap-tmp`
- *   5. `fs.rename(tmp, sessionFile)` — atomic on POSIX
- *   6. Release the lock
+ * ## Why a sidecar (vs. atomic JSONL rewrite)
  *
- * ## Stale result handling:
- *   If ANOTHER compaction fires before this hot-swap completes, the stub
- *   entry will have been replaced or truncated by OC's own compaction
- *   machinery. In that case, the stub ID will no longer be found in the
- *   JSONL and the background result is silently discarded.
+ * The previous design called `waitForLockAbsent(sessionFile, 30_000ms)` then
+ * `acquireLock` to perform an atomic rewrite of the OC session JSONL. In
+ * production this failed on every active session — OC holds the session
+ * write lock continuously while the user keeps working, so no 30s gap ever
+ * opens. Production compliance was 0% over 7 days (Phase A finding).
+ *
+ * The sidecar lives next to the session file and is written by kasett ONLY.
+ * Append-only — no rewrites — POSIX `O_APPEND` is atomic for short writes,
+ * and we never have concurrent writers anyway. We never fight OC's lock.
+ *
+ * The OC-stored stub remains in place in the JSONL. Reads prefer the sidecar
+ * (rich), fall back to the JSONL for legacy entries.
  */
+import { sidecarPathFor } from '../storage/sidecar.js';
 export interface WorkerParams {
-    /** Absolute path to the session `.jsonl` file to rewrite */
+    /** Absolute path to the session `.jsonl` file. The sidecar is derived from this. */
     sessionFile: string;
-    /** The stub ID embedded in the compaction entry to replace */
+    /** The stub ID — used as compaction_id in the sidecar entry */
     stubId: string;
     /** Messages passed to summarize() — forwarded to the LLM */
     messages: Array<{
         role: string;
         content: unknown;
     }>;
-    /** Previous summary text for continuity blending */
+    /** Previous summary text for continuity blending (currently unused at this layer) */
     previousSummaries: string[];
     /** Steering prompt already built for this compaction */
     steeringPrompt: string;
@@ -41,8 +42,8 @@ export interface WorkerParams {
     /** Model identifier override */
     compactionModel?: string;
     /**
-     * Maximum time (ms) to wait for the session lock to be absent before
-     * attempting the swap. Default: 30_000
+     * Maximum time (ms) to wait for the session lock to be absent. Retained for
+     * backward compatibility with config; the sidecar path does NOT need it.
      */
     hotSwapTimeoutMs?: number;
     /** Logger (plugin API logger) */
@@ -54,6 +55,23 @@ export interface WorkerParams {
     };
     /** The callLLMForCompaction function — injected to avoid circular deps */
     callLLM: (params: CallLLMParams) => Promise<string | undefined>;
+    /**
+     * Optional callback invoked after a successful sidecar write. Used by the
+     * Phase A hook logger to record success/failure of the sidecar pipeline.
+     */
+    onSidecarWritten?: (info: {
+        sidecarPath: string;
+        summaryChars: number;
+        metaMain: string | null;
+    }) => void;
+    /**
+     * Optional callback invoked on sidecar pipeline failure (LLM empty, write
+     * error, etc.). Mirrors onSidecarWritten for observability.
+     */
+    onSidecarFailed?: (info: {
+        reason: string;
+        detail?: string;
+    }) => void;
 }
 export interface CallLLMParams {
     messages: Array<{
@@ -70,5 +88,16 @@ export interface CallLLMParams {
         info(msg: string): void;
     };
 }
+/**
+ * Run the background sidecar pipeline.
+ *
+ * Fire-and-forget — call WITHOUT await from summarize() so the stub is
+ * returned to OC first. All errors are logged and swallowed.
+ */
 export declare function runHotSwapWorker(params: WorkerParams): Promise<void>;
+/**
+ * Re-export for back-compat: the sidecar path helper.
+ * Some integration code references this from the worker module.
+ */
+export { sidecarPathFor };
 //# sourceMappingURL=worker.d.ts.map

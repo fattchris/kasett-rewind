@@ -374,15 +374,16 @@ function buildTestJsonl(stubId: string, stubSummary: string): string {
   return [header, msg1, compaction, msg2].join('\n') + '\n';
 }
 
-describe('runHotSwapWorker: atomic JSONL swap', () => {
-  test('replaces stub summary with full LLM output', async () => {
+describe('runHotSwapWorker: sidecar write', () => {
+  test('writes rich summary to sidecar and leaves session JSONL untouched', async () => {
     const sessionFile = join(tmpDir, `session-${randomUUID()}.jsonl`);
     const stubId = randomUUID();
     const stubSummary = `[KASETT_STUB::${stubId}]\n\nCompaction in progress.\n\n[THREAD_META]\nmain: test\nsub1: idle\nsub2: idle\nsub3: idle\n[/THREAD_META]`;
     const fullSummary = `Full LLM summary of the session.\n\n[THREAD_META]\nmain: finished the work\nsub1: deployed to prod\nsub2: idle\nsub3: idle\n[/THREAD_META]`;
 
     // Write test JSONL
-    await writeFile(sessionFile, buildTestJsonl(stubId, stubSummary), 'utf-8');
+    const originalJsonl = buildTestJsonl(stubId, stubSummary);
+    await writeFile(sessionFile, originalJsonl, 'utf-8');
 
     let callCount = 0;
     const mockCallLLM = async (): Promise<string | undefined> => {
@@ -397,6 +398,7 @@ describe('runHotSwapWorker: atomic JSONL swap', () => {
       debug: (_: string) => {},
     };
 
+    let writtenInfo: { sidecarPath: string; summaryChars: number; metaMain: string | null } | null = null;
     await runHotSwapWorker({
       sessionFile,
       stubId,
@@ -405,75 +407,78 @@ describe('runHotSwapWorker: atomic JSONL swap', () => {
       steeringPrompt: 'Steering prompt text',
       customInstructions: undefined,
       signal: undefined,
-      compactionModel: undefined,
+      compactionModel: 'test-model',
       hotSwapTimeoutMs: 5000,
       logger,
       callLLM: mockCallLLM,
+      onSidecarWritten: (info) => {
+        writtenInfo = info;
+      },
     });
 
     // Verify LLM was called
     assert.equal(callCount, 1);
 
-    // Read the result JSONL
-    const content = await readFile(sessionFile, 'utf-8');
-    const lines = content.split('\n').filter((l) => l.trim());
-    const compactionLine = lines.find((l) => l.includes('"compaction"'));
-    assert.ok(compactionLine, 'compaction entry should still exist');
+    // Session JSONL should be UNCHANGED — we never touch OC's territory
+    const sessionContent = await readFile(sessionFile, 'utf-8');
+    assert.equal(sessionContent, originalJsonl, 'session JSONL must remain byte-identical');
 
-    const entry = JSON.parse(compactionLine) as { type: string; data: { summary: string } };
-    assert.equal(entry.type, 'compaction');
-    assert.equal(entry.data.summary, fullSummary, 'summary should be replaced with full LLM output');
+    // Sidecar should exist with one entry
+    assert.ok(writtenInfo, 'onSidecarWritten callback should fire');
+    const info = writtenInfo as { sidecarPath: string; summaryChars: number; metaMain: string | null };
+    assert.equal(info.sidecarPath, `${sessionFile}.kasett-meta.jsonl`);
+    assert.equal(info.summaryChars, fullSummary.length);
+    assert.equal(info.metaMain, 'finished the work');
 
-    // Stub marker should be gone
-    assert.ok(!entry.data.summary.includes(`[KASETT_STUB::${stubId}]`));
+    const sidecarContent = await readFile(info.sidecarPath, 'utf-8');
+    const sidecarLines = sidecarContent.split('\n').filter((l) => l.trim());
+    assert.equal(sidecarLines.length, 1, 'sidecar should have exactly one entry');
+    const entry = JSON.parse(sidecarLines[0]) as {
+      compaction_id: string;
+      stub_id?: string;
+      summary_rich: string;
+      thread_meta?: { main: string; sub: string[] };
+      model?: string;
+    };
+    assert.equal(entry.compaction_id, stubId);
+    assert.equal(entry.stub_id, stubId);
+    assert.equal(entry.summary_rich, fullSummary);
+    assert.equal(entry.thread_meta?.main, 'finished the work');
+    assert.equal(entry.model, 'test-model');
   });
 
-  test('discards stale result when stub entry not found', async () => {
+  test('multiple compactions append to the same sidecar in order', async () => {
     const sessionFile = join(tmpDir, `session-${randomUUID()}.jsonl`);
-    const stubId = randomUUID();
+    const stubId1 = randomUUID();
+    const stubId2 = randomUUID();
+    const stubSummary1 = `[KASETT_STUB::${stubId1}]\n[THREAD_META]\nmain: a\nsub1: idle\nsub2: idle\nsub3: idle\n[/THREAD_META]`;
+    await writeFile(sessionFile, buildTestJsonl(stubId1, stubSummary1), 'utf-8');
 
-    // Write a JSONL that has a DIFFERENT compaction (no stub with our ID)
-    const differentSummary = 'A different compaction summary that OC wrote.';
-    const content = [
-      JSON.stringify({ type: 'session', id: 'test', cwd: '/tmp' }),
-      JSON.stringify({
-        type: 'compaction',
-        id: 'cmp_new',
-        data: { summary: differentSummary },
-      }),
-    ].join('\n') + '\n';
+    const logger = { info: () => {}, warn: () => {}, error: () => {}, debug: () => {} };
 
-    await writeFile(sessionFile, content, 'utf-8');
-
-    let llmCalled = false;
-    const mockCallLLM = async (): Promise<string | undefined> => {
-      llmCalled = true;
-      return 'Full summary that should be discarded';
-    };
-
-    const logger = {
-      info: (_: string) => {},
-      warn: (_: string) => {},
-      error: (_: string) => {},
-      debug: (_: string) => {},
-    };
+    const summary1 = 'first rich [THREAD_META]\nmain: first\nsub1: idle\nsub2: idle\nsub3: idle\n[/THREAD_META]';
+    const summary2 = 'second rich [THREAD_META]\nmain: second\nsub1: idle\nsub2: idle\nsub3: idle\n[/THREAD_META]';
 
     await runHotSwapWorker({
-      sessionFile,
-      stubId,
-      messages: [],
-      previousSummaries: [],
-      steeringPrompt: '',
-      hotSwapTimeoutMs: 5000,
-      logger,
-      callLLM: mockCallLLM,
+      sessionFile, stubId: stubId1,
+      messages: [], previousSummaries: [],
+      steeringPrompt: '', hotSwapTimeoutMs: 5000, logger,
+      callLLM: async () => summary1,
+    });
+    await runHotSwapWorker({
+      sessionFile, stubId: stubId2,
+      messages: [], previousSummaries: [],
+      steeringPrompt: '', hotSwapTimeoutMs: 5000, logger,
+      callLLM: async () => summary2,
     });
 
-    assert.ok(llmCalled, 'LLM should still be called (we check for stale after LLM finishes)');
-
-    // JSONL should be UNCHANGED — the different compaction entry should remain
-    const result = await readFile(sessionFile, 'utf-8');
-    assert.ok(result.includes(differentSummary), 'different summary should remain untouched');
+    const sidecarContent = await readFile(`${sessionFile}.kasett-meta.jsonl`, 'utf-8');
+    const lines = sidecarContent.split('\n').filter((l) => l.trim());
+    assert.equal(lines.length, 2);
+    const e1 = JSON.parse(lines[0]) as { compaction_id: string };
+    const e2 = JSON.parse(lines[1]) as { compaction_id: string };
+    assert.equal(e1.compaction_id, stubId1);
+    assert.equal(e2.compaction_id, stubId2);
   });
 
   test('handles LLM returning undefined gracefully', async () => {
@@ -512,13 +517,14 @@ describe('runHotSwapWorker: atomic JSONL swap', () => {
     assert.ok(content.includes(stubId));
   });
 
-  test('preserves non-compaction entries in JSONL after swap', async () => {
+  test('preserves session JSONL byte-for-byte (sidecar approach never touches it)', async () => {
     const sessionFile = join(tmpDir, `session-${randomUUID()}.jsonl`);
     const stubId = randomUUID();
     const stubSummary = `[KASETT_STUB::${stubId}]\n\nCompaction in progress.\n\n[THREAD_META]\nmain: x\nsub1: idle\nsub2: idle\nsub3: idle\n[/THREAD_META]`;
     const fullSummary = 'Full summary after swap.';
 
-    await writeFile(sessionFile, buildTestJsonl(stubId, stubSummary), 'utf-8');
+    const originalContent = buildTestJsonl(stubId, stubSummary);
+    await writeFile(sessionFile, originalContent, 'utf-8');
 
     const mockCallLLM = async (): Promise<string | undefined> => fullSummary;
 
@@ -535,15 +541,13 @@ describe('runHotSwapWorker: atomic JSONL swap', () => {
       callLLM: mockCallLLM,
     });
 
+    // Session JSONL must be byte-identical to what we wrote
     const content = await readFile(sessionFile, 'utf-8');
-    const lines = content.split('\n').filter((l) => l.trim());
+    assert.equal(content, originalContent, 'session JSONL must be untouched');
 
-    // Header, msg1, compaction, msg2 should all be present
-    assert.ok(lines.some((l) => l.includes('"session"')), 'header should remain');
-    assert.ok(lines.some((l) => l.includes('"msg_001"')), 'msg_001 should remain');
-    assert.ok(lines.some((l) => l.includes('"msg_002"')), 'msg_002 should remain');
-    assert.ok(lines.some((l) => l.includes('"compaction"')), 'compaction should remain');
-    assert.equal(lines.length, 4, 'should have exactly 4 entries');
+    // And the sidecar should exist with the rich summary
+    const sidecarContent = await readFile(`${sessionFile}.kasett-meta.jsonl`, 'utf-8');
+    assert.ok(sidecarContent.includes(fullSummary));
   });
 
   test('respects abort signal before LLM call', async () => {
@@ -753,15 +757,27 @@ describe('Integration: generateStub + runHotSwapWorker end-to-end', () => {
       callLLM: mockCallLLM,
     });
 
-    // Verify the stub was replaced
+    // The session JSONL must be untouched (sidecar approach).
+    // The compaction entry should still contain the original stub.
     const result = await readFile(sessionFile, 'utf-8');
     const lines = result.split('\n').filter((l) => l.trim());
     const cmpLine = lines.find((l) => l.includes('"compaction"'));
     assert.ok(cmpLine);
-
     const entry = JSON.parse(cmpLine) as { data: { summary: string } };
-    assert.equal(entry.data.summary, richSummary);
-    assert.ok(!entry.data.summary.includes(`[KASETT_STUB::${stubId}]`));
-    assert.ok(entry.data.summary.includes('hot-swap compaction feature complete'));
+    assert.ok(entry.data.summary.includes(`[KASETT_STUB::${stubId}]`), 'stub must remain in JSONL');
+
+    // The sidecar should have the rich summary instead.
+    const sidecarPath = `${sessionFile}.kasett-meta.jsonl`;
+    const sidecarContent = await readFile(sidecarPath, 'utf-8');
+    const sidecarLines = sidecarContent.split('\n').filter((l) => l.trim());
+    assert.equal(sidecarLines.length, 1);
+    const sidecarEntry = JSON.parse(sidecarLines[0]) as {
+      compaction_id: string;
+      summary_rich: string;
+      thread_meta?: { main: string };
+    };
+    assert.equal(sidecarEntry.compaction_id, stubId);
+    assert.equal(sidecarEntry.summary_rich, richSummary);
+    assert.equal(sidecarEntry.thread_meta?.main, 'hot-swap compaction feature complete');
   });
 });
