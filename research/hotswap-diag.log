@@ -986,3 +986,93 @@
 [2026-05-12T16:04:59.430Z] LLM_DONE stub=27e9dc65-7240-48cf-9327-307b3af4da35 summary_len=188
 [2026-05-12T16:04:59.431Z] PARSE_V1_FALLBACK stub=27e9dc65-7240-48cf-9327-307b3af4da35 reason=no fenced ```json``` block found
 [2026-05-12T16:04:59.431Z] SIDECAR_WRITTEN stub=27e9dc65-7240-48cf-9327-307b3af4da35 path=/tmp/kasett-hotswap-test-vzIafz/session-1b4ae3ca-a4fe-43ec-aac3-c09a4c77ae78.jsonl.kasett-meta.jsonl chars=188 schema=v1 meta_main=hot-swap compaction feature complete key_state=0 detected=0
+[2026-05-12T16:17:32.207Z] WORKER_START stub=47cbac34-5316-4a4d-8f50-97940166e9a3 sessionFile=/tmp/kasett-hotswap-test-NC4c1B/session-41277eb6-41c3-4ff6-a5c4-b478995ed2cf.jsonl signal_aborted=undefined
+[2026-05-12T16:17:32.207Z] LLM_CALL_START stub=47cbac34-5316-4a4d-8f50-97940166e9a3 model=test-model
+[2026-05-12T16:17:32.207Z] LLM_DONE stub=47cbac34-5316-4a4d-8f50-97940166e9a3 summary_len=131
+[2026-05-12T16:17:32.209Z] PARSE_V1_FALLBACK stub=47cbac34-5316-4a4d-8f50-97940166e9a3 reason=no fenced ```json``` block found
+[2026-05-12T16:17:32.211Z] SIDECAR_WRITTEN stub=47cbac34-5316-4a4d-8f50-97940166e9a3 path=/tmp/kasett-hotswap-test-NC4c1B/session-41277eb6-41c3-4ff6-a5c4-b478995ed2cf.jsonl.kasett-meta.jsonl chars=131 schema=v1 meta_main=finished the work key_state=0 detected=0
+[2026-05-12T16:17:32.212Z] WORKER_START stub=8cf55898-9aa8-453f-b1d2-896d709f9b38 sessionFile=/tmp/kasett-hotswap-test-NC4c1B/session-ec36634f-a43c-480e-968d-ba36d6649c91.jsonl signal_aborted=undefined
+[2026-05-12T16:17:32.212Z] LLM_CALL_START stub=8cf55898-9aa8-453f-b1d2-896d709f9b38 model=undefined
+[2026-05-12T16:17:32.212Z] LLM_DONE stub=8cf55898-9aa8-453f-b1d2-896d709f9b38 summary_len=84
+[2026-05-12T16:17:32.212Z] PARSE_V1_FALLBACK stub=8cf55898-9aa8-453f-b1d2-896d709f9b38 reason=no fenced ```json``` block found
+[2026-05-12T16:17:32.213Z] SIDECAR_WRITTEN stub=8cf55898-9aa8-453f-b1d2-896d709f9b38 path=/tmp/kasett-hotswap-test-NC4c1B/session-ec36634f-a43c-480e-968d-ba36d6649c91.jsonl.kasett-meta.jsonl chars=84 schema=v1 meta_main=first key_state=0 detected=0
+[2026-05-12T16:17:32.214Z] WORKER_START stub=82edc8cf-5dcb-49ba-9ea6-1373b95de282 sessionFile=/tmp/kasett-hotswap-test-NC4c1B/session-ec36634f-a43c-480e-968d-ba36d6649c91.jsonl signal_aborted=undefined
+[2026-05-12T16:17:32.214Z] LLM_CALL_START stub=82edc8cf-5dcb-49ba-9ea6-1373b95de282 model=undefined
+[2026-05-12T16:17:32.214Z] LLM_DONE stub=82edc8cf-5dcb-49ba-9ea6-1373b95de282 summary_len=86
+[2026-05-12T16:17:32.214Z] PARSE_V1_FALLBACK stub=82edc8cf-5dcb-49ba-9ea6-1373b95de282 reason=no fenced ```json``` block found
+[2026-05-12T16:17:32.214Z] SIDECAR_WRITTEN stub=82edc8cf-5dcb-49ba-9ea6-1373b95de282 path=/tmp/kasett-hotswap-test-NC4c1B/session-ec36634f-a43c-480e-968d-ba36d6649c91.jsonl.kasett-meta.jsonl chars=86 schema=v1 meta_main=second key_state=0 detected=0
+[2026-05-12T16:17:32.215Z] WORKER_START stub=ffac4973-857c-4234-ab79-d78d2c3b8fdf sessionFile=/tmp/kasett-hotswap-test-NC4c1B/session-246af9fc-c670-4ab2-9417-0560106f2406.jsonl signal_aborted=undefined
+[2026-05-12T16:17:32.215Z] LLM_CALL_START stub=ffac4973-857c-4234-ab79-d78d2c3b8fdf model=undefined
+[2026-05-12T16:17:32.215Z] LLM_EMPTY stub=ffac4973-857c-4234-ab79-d78d2c3b8fdf
+[2026-05-12T16:17:32.216Z] WORKER_START stub=60fa1cb9-c035-4a3f-aeaa-f8b22edeb6f7 sessionFile=/tmp/kasett-hotswap-test-NC4c1B/session-20b67fb1-b9cb-4ca7-8b32-c29b4199609c.jsonl signal_aborted=undefined
+[2026-05-12T16:17:32.216Z] LLM_CALL_START stub=60fa1cb9-c035-4a3f-aeaa-f8b22edeb6f7 model=undefined
+[2026-05-12T16:17:32.216Z] LLM_DONE stub=60fa1cb9-c035-4a3f-aeaa-f8b22edeb6f7 summary_len=24
+[2026-05-12T16:17:32.217Z] PARSE_NONE stub=60fa1cb9-c035-4a3f-aeaa-f8b22edeb6f7 v3_errors=no fenced ```json``` block found
+[2026-05-12T16:17:32.217Z] SIDECAR_WRITTEN stub=60fa1cb9-c035-4a3f-aeaa-f8b22edeb6f7 path=/tmp/kasett-hotswap-test-NC4c1B/session-20b67fb1-b9cb-4ca7-8b32-c29b4199609c.jsonl.kasett-meta.jsonl chars=24 schema=none meta_main=null key_state=0 detected=0
+[2026-05-12T16:17:32.217Z] WORKER_START stub=b29c15b4-36cd-40c9-9016-69e610f79c7a sessionFile=/tmp/kasett-hotswap-test-NC4c1B/session-e15edb67-b84e-48c1-ab27-f8a09d9e9a3d.jsonl signal_aborted=true
+[2026-05-12T16:17:32.217Z] ABORT_BEFORE_LLM stub=b29c15b4-36cd-40c9-9016-69e610f79c7a
+[2026-05-12T16:17:32.226Z] WORKER_START stub=da287fdc-e10d-4150-ad32-f1cac233ab67 sessionFile=/tmp/kasett-hotswap-test-NC4c1B/session-713ca95e-0974-4ece-a5ab-90324b20d172.jsonl signal_aborted=undefined
+[2026-05-12T16:17:32.226Z] LLM_CALL_START stub=da287fdc-e10d-4150-ad32-f1cac233ab67 model=undefined
+[2026-05-12T16:17:32.226Z] LLM_DONE stub=da287fdc-e10d-4150-ad32-f1cac233ab67 summary_len=188
+[2026-05-12T16:17:32.227Z] PARSE_V1_FALLBACK stub=da287fdc-e10d-4150-ad32-f1cac233ab67 reason=no fenced ```json``` block found
+[2026-05-12T16:17:32.227Z] SIDECAR_WRITTEN stub=da287fdc-e10d-4150-ad32-f1cac233ab67 path=/tmp/kasett-hotswap-test-NC4c1B/session-713ca95e-0974-4ece-a5ab-90324b20d172.jsonl.kasett-meta.jsonl chars=188 schema=v1 meta_main=hot-swap compaction feature complete key_state=0 detected=0
+[2026-05-12T16:17:46.610Z] WORKER_START stub=c6d4104e-5088-417a-8020-4d5fd234d871 sessionFile=/tmp/kasett-hotswap-test-xIsgQA/session-1334206f-199d-410b-81cd-842a9452b921.jsonl signal_aborted=undefined
+[2026-05-12T16:17:46.611Z] LLM_CALL_START stub=c6d4104e-5088-417a-8020-4d5fd234d871 model=test-model
+[2026-05-12T16:17:46.611Z] LLM_DONE stub=c6d4104e-5088-417a-8020-4d5fd234d871 summary_len=131
+[2026-05-12T16:17:46.614Z] PARSE_V1_FALLBACK stub=c6d4104e-5088-417a-8020-4d5fd234d871 reason=no fenced ```json``` block found
+[2026-05-12T16:17:46.614Z] SIDECAR_WRITTEN stub=c6d4104e-5088-417a-8020-4d5fd234d871 path=/tmp/kasett-hotswap-test-xIsgQA/session-1334206f-199d-410b-81cd-842a9452b921.jsonl.kasett-meta.jsonl chars=131 schema=v1 meta_main=finished the work key_state=0 detected=0
+[2026-05-12T16:17:46.615Z] WORKER_START stub=c3c848e1-24ce-4902-b85d-8e1dc2836b28 sessionFile=/tmp/kasett-hotswap-test-xIsgQA/session-d3ad0c36-0220-4a8e-967c-41baac7719a6.jsonl signal_aborted=undefined
+[2026-05-12T16:17:46.615Z] LLM_CALL_START stub=c3c848e1-24ce-4902-b85d-8e1dc2836b28 model=undefined
+[2026-05-12T16:17:46.616Z] LLM_DONE stub=c3c848e1-24ce-4902-b85d-8e1dc2836b28 summary_len=84
+[2026-05-12T16:17:46.616Z] PARSE_V1_FALLBACK stub=c3c848e1-24ce-4902-b85d-8e1dc2836b28 reason=no fenced ```json``` block found
+[2026-05-12T16:17:46.616Z] SIDECAR_WRITTEN stub=c3c848e1-24ce-4902-b85d-8e1dc2836b28 path=/tmp/kasett-hotswap-test-xIsgQA/session-d3ad0c36-0220-4a8e-967c-41baac7719a6.jsonl.kasett-meta.jsonl chars=84 schema=v1 meta_main=first key_state=0 detected=0
+[2026-05-12T16:17:46.617Z] WORKER_START stub=df2a533e-1e87-48d8-b67e-205761b94155 sessionFile=/tmp/kasett-hotswap-test-xIsgQA/session-d3ad0c36-0220-4a8e-967c-41baac7719a6.jsonl signal_aborted=undefined
+[2026-05-12T16:17:46.617Z] LLM_CALL_START stub=df2a533e-1e87-48d8-b67e-205761b94155 model=undefined
+[2026-05-12T16:17:46.617Z] LLM_DONE stub=df2a533e-1e87-48d8-b67e-205761b94155 summary_len=86
+[2026-05-12T16:17:46.618Z] PARSE_V1_FALLBACK stub=df2a533e-1e87-48d8-b67e-205761b94155 reason=no fenced ```json``` block found
+[2026-05-12T16:17:46.618Z] SIDECAR_WRITTEN stub=df2a533e-1e87-48d8-b67e-205761b94155 path=/tmp/kasett-hotswap-test-xIsgQA/session-d3ad0c36-0220-4a8e-967c-41baac7719a6.jsonl.kasett-meta.jsonl chars=86 schema=v1 meta_main=second key_state=0 detected=0
+[2026-05-12T16:17:46.618Z] WORKER_START stub=4440af55-9200-4084-81c2-438d87023749 sessionFile=/tmp/kasett-hotswap-test-xIsgQA/session-1b0f2205-38d5-4173-b986-8c92c7d721d2.jsonl signal_aborted=undefined
+[2026-05-12T16:17:46.618Z] LLM_CALL_START stub=4440af55-9200-4084-81c2-438d87023749 model=undefined
+[2026-05-12T16:17:46.619Z] LLM_EMPTY stub=4440af55-9200-4084-81c2-438d87023749
+[2026-05-12T16:17:46.619Z] WORKER_START stub=99b4523b-8c0e-4c8f-ac1a-1322111e984d sessionFile=/tmp/kasett-hotswap-test-xIsgQA/session-2fdb40e3-8046-450d-88a5-bfcb2cfbcbdf.jsonl signal_aborted=undefined
+[2026-05-12T16:17:46.620Z] LLM_CALL_START stub=99b4523b-8c0e-4c8f-ac1a-1322111e984d model=undefined
+[2026-05-12T16:17:46.620Z] LLM_DONE stub=99b4523b-8c0e-4c8f-ac1a-1322111e984d summary_len=24
+[2026-05-12T16:17:46.620Z] PARSE_NONE stub=99b4523b-8c0e-4c8f-ac1a-1322111e984d v3_errors=no fenced ```json``` block found
+[2026-05-12T16:17:46.620Z] SIDECAR_WRITTEN stub=99b4523b-8c0e-4c8f-ac1a-1322111e984d path=/tmp/kasett-hotswap-test-xIsgQA/session-2fdb40e3-8046-450d-88a5-bfcb2cfbcbdf.jsonl.kasett-meta.jsonl chars=24 schema=none meta_main=null key_state=0 detected=0
+[2026-05-12T16:17:46.621Z] WORKER_START stub=16c87d2e-e8d0-4862-bf25-e9b5754a676f sessionFile=/tmp/kasett-hotswap-test-xIsgQA/session-7c435d4a-59da-4862-9882-5e964164d665.jsonl signal_aborted=true
+[2026-05-12T16:17:46.621Z] ABORT_BEFORE_LLM stub=16c87d2e-e8d0-4862-bf25-e9b5754a676f
+[2026-05-12T16:17:46.628Z] WORKER_START stub=745cb73f-27de-4998-8bea-e8bac452687f sessionFile=/tmp/kasett-hotswap-test-xIsgQA/session-816ff945-ee25-4a61-a304-a0ef4f04fda0.jsonl signal_aborted=undefined
+[2026-05-12T16:17:46.629Z] LLM_CALL_START stub=745cb73f-27de-4998-8bea-e8bac452687f model=undefined
+[2026-05-12T16:17:46.629Z] LLM_DONE stub=745cb73f-27de-4998-8bea-e8bac452687f summary_len=188
+[2026-05-12T16:17:46.629Z] PARSE_V1_FALLBACK stub=745cb73f-27de-4998-8bea-e8bac452687f reason=no fenced ```json``` block found
+[2026-05-12T16:17:46.629Z] SIDECAR_WRITTEN stub=745cb73f-27de-4998-8bea-e8bac452687f path=/tmp/kasett-hotswap-test-xIsgQA/session-816ff945-ee25-4a61-a304-a0ef4f04fda0.jsonl.kasett-meta.jsonl chars=188 schema=v1 meta_main=hot-swap compaction feature complete key_state=0 detected=0
+[2026-05-12T16:20:44.330Z] WORKER_START stub=3b16507d-58f3-46a5-b3d8-4ebf099c56ea sessionFile=/tmp/kasett-hotswap-test-sltYbT/session-ceed43f8-0a98-4f08-beb5-ef2b1634c307.jsonl signal_aborted=undefined
+[2026-05-12T16:20:44.330Z] LLM_CALL_START stub=3b16507d-58f3-46a5-b3d8-4ebf099c56ea model=test-model
+[2026-05-12T16:20:44.332Z] LLM_DONE stub=3b16507d-58f3-46a5-b3d8-4ebf099c56ea summary_len=131
+[2026-05-12T16:20:44.334Z] PARSE_V1_FALLBACK stub=3b16507d-58f3-46a5-b3d8-4ebf099c56ea reason=no fenced ```json``` block found
+[2026-05-12T16:20:44.334Z] SIDECAR_WRITTEN stub=3b16507d-58f3-46a5-b3d8-4ebf099c56ea path=/tmp/kasett-hotswap-test-sltYbT/session-ceed43f8-0a98-4f08-beb5-ef2b1634c307.jsonl.kasett-meta.jsonl chars=131 schema=v1 meta_main=finished the work key_state=0 detected=0
+[2026-05-12T16:20:44.335Z] WORKER_START stub=6bd9b88c-f397-4425-ad36-713223586a52 sessionFile=/tmp/kasett-hotswap-test-sltYbT/session-a8c1dccb-2ac2-4d65-9ba6-f747331967ab.jsonl signal_aborted=undefined
+[2026-05-12T16:20:44.335Z] LLM_CALL_START stub=6bd9b88c-f397-4425-ad36-713223586a52 model=undefined
+[2026-05-12T16:20:44.336Z] LLM_DONE stub=6bd9b88c-f397-4425-ad36-713223586a52 summary_len=84
+[2026-05-12T16:20:44.336Z] PARSE_V1_FALLBACK stub=6bd9b88c-f397-4425-ad36-713223586a52 reason=no fenced ```json``` block found
+[2026-05-12T16:20:44.337Z] SIDECAR_WRITTEN stub=6bd9b88c-f397-4425-ad36-713223586a52 path=/tmp/kasett-hotswap-test-sltYbT/session-a8c1dccb-2ac2-4d65-9ba6-f747331967ab.jsonl.kasett-meta.jsonl chars=84 schema=v1 meta_main=first key_state=0 detected=0
+[2026-05-12T16:20:44.337Z] WORKER_START stub=40db3e72-d19e-42de-bee0-afffb798aa15 sessionFile=/tmp/kasett-hotswap-test-sltYbT/session-a8c1dccb-2ac2-4d65-9ba6-f747331967ab.jsonl signal_aborted=undefined
+[2026-05-12T16:20:44.338Z] LLM_CALL_START stub=40db3e72-d19e-42de-bee0-afffb798aa15 model=undefined
+[2026-05-12T16:20:44.338Z] LLM_DONE stub=40db3e72-d19e-42de-bee0-afffb798aa15 summary_len=86
+[2026-05-12T16:20:44.338Z] PARSE_V1_FALLBACK stub=40db3e72-d19e-42de-bee0-afffb798aa15 reason=no fenced ```json``` block found
+[2026-05-12T16:20:44.338Z] SIDECAR_WRITTEN stub=40db3e72-d19e-42de-bee0-afffb798aa15 path=/tmp/kasett-hotswap-test-sltYbT/session-a8c1dccb-2ac2-4d65-9ba6-f747331967ab.jsonl.kasett-meta.jsonl chars=86 schema=v1 meta_main=second key_state=0 detected=0
+[2026-05-12T16:20:44.339Z] WORKER_START stub=0b9732a1-6129-4a0f-bc0c-577f95b7e329 sessionFile=/tmp/kasett-hotswap-test-sltYbT/session-1cf0834c-7ad5-416e-98a6-589d35d3ecb0.jsonl signal_aborted=undefined
+[2026-05-12T16:20:44.339Z] LLM_CALL_START stub=0b9732a1-6129-4a0f-bc0c-577f95b7e329 model=undefined
+[2026-05-12T16:20:44.339Z] LLM_EMPTY stub=0b9732a1-6129-4a0f-bc0c-577f95b7e329
+[2026-05-12T16:20:44.340Z] WORKER_START stub=9c263b2f-679b-4d2b-bed6-37aef8cbd0ab sessionFile=/tmp/kasett-hotswap-test-sltYbT/session-c8d4b919-6bb1-4d28-b4cb-29dcfaf216db.jsonl signal_aborted=undefined
+[2026-05-12T16:20:44.340Z] LLM_CALL_START stub=9c263b2f-679b-4d2b-bed6-37aef8cbd0ab model=undefined
+[2026-05-12T16:20:44.340Z] LLM_DONE stub=9c263b2f-679b-4d2b-bed6-37aef8cbd0ab summary_len=24
+[2026-05-12T16:20:44.340Z] PARSE_NONE stub=9c263b2f-679b-4d2b-bed6-37aef8cbd0ab v3_errors=no fenced ```json``` block found
+[2026-05-12T16:20:44.340Z] SIDECAR_WRITTEN stub=9c263b2f-679b-4d2b-bed6-37aef8cbd0ab path=/tmp/kasett-hotswap-test-sltYbT/session-c8d4b919-6bb1-4d28-b4cb-29dcfaf216db.jsonl.kasett-meta.jsonl chars=24 schema=none meta_main=null key_state=0 detected=0
+[2026-05-12T16:20:44.340Z] WORKER_START stub=6cc26e67-b701-4f34-b2a6-a3bd5ff848c8 sessionFile=/tmp/kasett-hotswap-test-sltYbT/session-71cb181c-7692-45bb-8b75-5e5111ffe602.jsonl signal_aborted=true
+[2026-05-12T16:20:44.341Z] ABORT_BEFORE_LLM stub=6cc26e67-b701-4f34-b2a6-a3bd5ff848c8
+[2026-05-12T16:20:44.348Z] WORKER_START stub=2c3e6970-152d-42a8-8595-bd6fca2e36c6 sessionFile=/tmp/kasett-hotswap-test-sltYbT/session-1d9fdf8c-87b6-463d-a42e-e3241003ddc3.jsonl signal_aborted=undefined
+[2026-05-12T16:20:44.348Z] LLM_CALL_START stub=2c3e6970-152d-42a8-8595-bd6fca2e36c6 model=undefined
+[2026-05-12T16:20:44.348Z] LLM_DONE stub=2c3e6970-152d-42a8-8595-bd6fca2e36c6 summary_len=188
+[2026-05-12T16:20:44.349Z] PARSE_V1_FALLBACK stub=2c3e6970-152d-42a8-8595-bd6fca2e36c6 reason=no fenced ```json``` block found
+[2026-05-12T16:20:44.349Z] SIDECAR_WRITTEN stub=2c3e6970-152d-42a8-8595-bd6fca2e36c6 path=/tmp/kasett-hotswap-test-sltYbT/session-1d9fdf8c-87b6-463d-a42e-e3241003ddc3.jsonl.kasett-meta.jsonl chars=188 schema=v1 meta_main=hot-swap compaction feature complete key_state=0 detected=0

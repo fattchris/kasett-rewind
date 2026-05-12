@@ -27,6 +27,7 @@ import type {
 import { schemaV3AsPromptString } from './schema.js';
 import type { WeightedSummary } from './weight.js';
 import type { LifecycleEvent } from './lifecycle.js';
+import type { CrossSessionContext } from '../global/orientation.js';
 
 /** Steering output mode — controls how the prompt instructs the LLM to format the meta. */
 export type StructuredOutputMode = 'json' | 'tool' | 'markdown';
@@ -212,6 +213,7 @@ export function buildOrientationPromptV2(
 export function buildOrientationPromptV3(
   metas: Array<{ v1?: ThreadMeta; v2?: ThreadMetaV2; v3?: ThreadMetaV3 }>,
   recentLifecycle?: ReadonlyArray<LifecycleEvent>,
+  crossSessionContext?: CrossSessionContext,
 ): string | null {
   if (metas.length === 0) return null;
 
@@ -261,8 +263,44 @@ export function buildOrientationPromptV3(
     }
   }
 
+  // Phase E: surface threads still active in OTHER sessions so the agent
+  // doesn't lose multi-session continuity when reorienting in a fresh
+  // session.
+  if (
+    crossSessionContext &&
+    crossSessionContext.active_other_sessions.length > 0
+  ) {
+    lines.push('');
+    lines.push('## Active threads in other sessions');
+    for (const t of crossSessionContext.active_other_sessions) {
+      const where = t.last_topic_name ?? t.last_session;
+      const ago = formatRelativeAgo(t.last_seen);
+      const statusTag = t.status === 'blocked' ? ', blocked' : '';
+      lines.push(
+        `  - ${t.label} (last seen ${ago} in ${where}${statusTag})`,
+      );
+    }
+  }
+
   if (lines.length === 1) return base;
   return lines.join('\n');
+}
+
+/**
+ * Render an ISO timestamp as a coarse relative ago string for orientation
+ * ("3h ago", "2d ago"). Internal — not exported.
+ */
+function formatRelativeAgo(iso: string): string {
+  const ms = Date.parse(iso);
+  if (Number.isNaN(ms)) return 'recently';
+  const delta = Math.max(0, Date.now() - ms);
+  const min = Math.floor(delta / 60_000);
+  if (min < 1) return 'just now';
+  if (min < 60) return `${min}m ago`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `${hr}h ago`;
+  const d = Math.floor(hr / 24);
+  return `${d}d ago`;
 }
 
 /**

@@ -139,7 +139,7 @@ export function buildOrientationPromptV2(metas) {
  * @param metas — Most-recent-first list. Each entry can be V1, V2, V3, or any
  *                 mix. V3 wins when both V2 and V3 are present.
  */
-export function buildOrientationPromptV3(metas, recentLifecycle) {
+export function buildOrientationPromptV3(metas, recentLifecycle, crossSessionContext) {
     if (metas.length === 0)
         return null;
     // Project V3 → V2 for the V2 builder so we don't duplicate that logic.
@@ -182,9 +182,43 @@ export function buildOrientationPromptV3(metas, recentLifecycle) {
             }
         }
     }
+    // Phase E: surface threads still active in OTHER sessions so the agent
+    // doesn't lose multi-session continuity when reorienting in a fresh
+    // session.
+    if (crossSessionContext &&
+        crossSessionContext.active_other_sessions.length > 0) {
+        lines.push('');
+        lines.push('## Active threads in other sessions');
+        for (const t of crossSessionContext.active_other_sessions) {
+            const where = t.last_topic_name ?? t.last_session;
+            const ago = formatRelativeAgo(t.last_seen);
+            const statusTag = t.status === 'blocked' ? ', blocked' : '';
+            lines.push(`  - ${t.label} (last seen ${ago} in ${where}${statusTag})`);
+        }
+    }
     if (lines.length === 1)
         return base;
     return lines.join('\n');
+}
+/**
+ * Render an ISO timestamp as a coarse relative ago string for orientation
+ * ("3h ago", "2d ago"). Internal — not exported.
+ */
+function formatRelativeAgo(iso) {
+    const ms = Date.parse(iso);
+    if (Number.isNaN(ms))
+        return 'recently';
+    const delta = Math.max(0, Date.now() - ms);
+    const min = Math.floor(delta / 60_000);
+    if (min < 1)
+        return 'just now';
+    if (min < 60)
+        return `${min}m ago`;
+    const hr = Math.floor(min / 60);
+    if (hr < 24)
+        return `${hr}h ago`;
+    const d = Math.floor(hr / 24);
+    return `${d}d ago`;
 }
 /**
  * Build the pre-compaction steering prompt.

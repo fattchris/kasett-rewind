@@ -31,7 +31,7 @@
   "scripts": {
     "build": "npx tsc && cp -r src/tests/fixtures dist/tests/",
     "dev": "npx tsc --watch",
-    "test": "node --test dist/tests/window.test.js dist/tests/weight.test.js dist/tests/weight-v2.test.js dist/tests/weight-keystate.test.js dist/tests/weight-identity.test.js dist/tests/parser.test.js dist/tests/parser-v2.test.js dist/tests/parser-v3.test.js dist/tests/schema.test.js dist/tests/schema-v3.test.js dist/tests/keystate-detector.test.js dist/tests/steering.test.js dist/tests/steering-v2.test.js dist/tests/steering-v3.test.js dist/tests/reader.test.js dist/tests/config.test.js dist/tests/integration.test.js dist/tests/hotswap.test.js dist/tests/sidecar.test.js dist/tests/identity.test.js dist/tests/embedding.test.js dist/tests/lifecycle.test.js",
+    "test": "node --test dist/tests/window.test.js dist/tests/weight.test.js dist/tests/weight-v2.test.js dist/tests/weight-keystate.test.js dist/tests/weight-identity.test.js dist/tests/parser.test.js dist/tests/parser-v2.test.js dist/tests/parser-v3.test.js dist/tests/schema.test.js dist/tests/schema-v3.test.js dist/tests/keystate-detector.test.js dist/tests/steering.test.js dist/tests/steering-v2.test.js dist/tests/steering-v3.test.js dist/tests/reader.test.js dist/tests/config.test.js dist/tests/integration.test.js dist/tests/hotswap.test.js dist/tests/sidecar.test.js dist/tests/identity.test.js dist/tests/embedding.test.js dist/tests/lifecycle.test.js dist/tests/global-types.test.js dist/tests/global-index-writer.test.js dist/tests/global-matcher.test.js dist/tests/global-snapshot.test.js dist/tests/global-orientation.test.js",
     "lint": "npx tsc --noEmit"
   },
   "keywords": [

@@ -142,14 +142,40 @@ Worker integration (`hotswap/worker.ts`) is wired and unit-tested. Production se
 
 **Goal:** Threads that span topics/sessions — a feature spanning multiple chats keeps a single canonical identity across them. Builds directly on Phase D's identity machinery, projecting it from per-session to cross-session scope.
 
-**Status:** 🔵 QUEUED — next phase after Phase D.
+**Status:** ✅ COMPLETE (2026-05-12) — global index + cross-session matcher + snapshot + worker integration + V3 orientation hook + 65 new tests; **386/386 passing**.
 
-### Tasks (preview)
-- [ ] E1. Cross-session thread index (JSONL log of canonical thread IDs + per-session occurrence rows). Use D's matcher for cross-session match.
-- [ ] E2. Migration / continuity when topics merge or fork (sibling Telegram topics, OC session reset, intentional thread rebadging).
-- [ ] E3. Aggregation view: "this thread has been worked on across N sessions over M days; latest compaction sidecar links".
-- [ ] E4. CLI: `kasett-rewind threads list --canonical <id>` to inspect cross-session continuity.
-- [ ] E5. Identity report extended to cross-session aggregates (renames detected across session boundaries are a higher-cost continuity miss than within-session renames).
+### Tasks
+- [x] E1. `src/global/types.ts` — `GlobalThreadRecord`, `GlobalThreadSnapshot`, `GlobalThreadSummary`, validators with schema-version hooks.
+- [x] E2. `src/global/index-writer.ts` — `appendGlobalRecord` (atomic O_APPEND, never throws), `readGlobalRecords` (filters by ts/thread_id/canonical_id/session/agent), file living at `~/.openclaw/agents/<agent>/sessions/.kasett-global-threads.jsonl`.
+- [x] E3. `src/global/matcher.ts` — `findCanonicalThread` reuses Phase D's tokenize/jaccard + embedding cosine. Defends against the “deploy” false-positive problem via `minLexicalTokens` (default 3); semantic tier off by default for cross-session due to label sparsity.
+- [x] E4. `src/global/snapshot.ts` — `buildSnapshot` groups records by canonical_id with per-session contribution; `writeSnapshot` is atomic temp+fsync+rename; `readSnapshot` returns null on absence/corruption.
+- [x] E5. Worker integration (`src/hotswap/worker.ts`) — after sidecar write, batch-resolve canonical_ids for sub-threads + main, append to global index, refresh snapshot. Failures are best-effort (logged via `GLOBAL_INDEX_FAIL`/`GLOBAL_INDEX_ERROR`); per-session sidecar always wins. New `agentId` and `topicName` worker params wired from `index.ts`.
+- [x] E6. `src/global/orientation.ts` — `getCrossSessionContext` returns active/blocked threads from OTHER sessions, sorted by recency, capped to topThreads (default 5), 7-day default lookback. Accepts a pre-built snapshot or pre-loaded records for tests.
+- [x] E7. `src/threads/steering.ts` — `buildOrientationPromptV3` accepts an optional `crossSessionContext`; renders `## Active threads in other sessions` block with relative-time-ago suffix.
+- [x] E8. Tests — 65 new across `global-types`, `global-index-writer`, `global-matcher`, `global-snapshot`, `global-orientation`. All 321 pre-existing tests still pass.
+- [x] E9. `scripts/global-thread-report.js` — standalone CLI. Reads index, builds snapshot, prints summary + cross-session work + per-thread detail. Filters: `--status`, `--since 7d`, `--agent`.
+- [x] E10. `scripts/daily-compaction-review.sh` — added “Cross-Session Threads” section with global record count, today-bucket counts, and threads spanning ≥2 sessions today (top 5 by spread).
+- [x] E11. `scripts/build-global-index.js` — idempotent migration. Walks every existing sidecar, replays sub-threads + main thread into the global index, dedups by `(ts, session_id, thread_id, is_main)`. Resolves canonicals at replay time. `--dry-run` supported.
+- [x] E12. PHASES-TRACKER updated.
+
+### Headline
+
+Memory now spans sessions. The global index lives next to the session files (`<sessions>/.kasett-global-threads.jsonl`), is append-only, and is written by the worker after the per-session sidecar succeeds. Reorienting in a fresh session can pull “Active threads in other sessions” from the snapshot, so context that lives in topic-A doesn’t evaporate when you open topic-B.
+
+The cross-session matcher is intentionally conservative: bare 1-2 token labels (“deploy”, “infra”) cannot fire lexical cross-session matches. The LLM’s stable `id` remains the strong path. Lexical kicks in only when the label has ≥3 meaningful tokens. Semantic is opt-in.
+
+### Pending real-world data
+
+- Worker integration is wired and unit-tested. Awaiting the first organic compaction with kasett enabled to populate the production global index. (Same gating as Phase B1 — sidecar + global index both need that first real compaction to land before we can measure.)
+- Migration script is ready: `node scripts/build-global-index.js --agent main --dry-run` reports 0 sidecars today (Phase A finding). Once sidecars start landing, this becomes the bootstrap path for retroactive cross-session visibility.
+- **Phase B1 verification still pending** — unchanged from prior tracker state.
+
+### Edge cases acknowledged
+
+- **Same label, different work** (`deploy` in topic-A vs topic-B): defended via `minLexicalTokens=3` and exact-id-first ordering. The LLM owns assigning stable ids; if it does, exact-id wins regardless of label drift.
+- **Concurrent appends across sessions:** O_APPEND is atomic for our line size; lines never interleave.
+- **Snapshot staleness:** worker refreshes snapshot after every batch of writes, so reads of the snapshot file are at most one compaction stale. `getCrossSessionContext` falls back to building from records if the snapshot file is missing.
+- **Index growth:** append-only — file grows forever. Future retention policy (archive >30 days) is documented but not implemented; would be a small Phase F task if the file becomes unwieldy.
 
 ---
 
@@ -170,6 +196,9 @@ Worker integration (`hotswap/worker.ts`) is wired and unit-tested. Production se
 | 2026-05-12 | Phase D: hash-fingerprint pseudo-embedding instead of a real semantic model | Zero external deps. Honest heuristic. Catches drift exact-id and Jaccard miss. If we later need real semantics, the public API (`fingerprint`, `fingerprintCosine`) is small enough to swap. |
 | 2026-05-12 | Lifecycle events advisory-only — detector failure logged but never blocks sidecar write | Continuity hints are useful when correct, but never worth dropping the actual rich summary over. False positives at this layer cost a few prompt tokens; missed rich summaries cost everything. |
 | 2026-05-12 | classifyThreadsWithIdentity walks OLDEST-first to anchor canonical IDs | Canonical id = oldest known id for the chain. Stable across multiple compactions even if the LLM drifts every step. The tracker.label tracks the newest label for display. |
+| 2026-05-12 | Phase E global index lives at `~/.openclaw/agents/<agent>/sessions/.kasett-global-threads.jsonl` | Same dir as session files, dot-prefixed so it doesn’t collide with OC’s session glob. Append-only — multiple sessions can write concurrently and POSIX `O_APPEND` keeps lines whole. Snapshot file is atomic temp+rename so readers never see torn JSON. |
+| 2026-05-12 | Cross-session lexical matcher requires ≥3 meaningful tokens; semantic tier off by default | Defends against “deploy” in topic-A merging into “deploy” in topic-B. The LLM’s stable `id` is the strong cross-session path; fuzz-matching short labels across topics is far worse than under-matching. If two topics genuinely share a thread, the LLM has the context to use the same `id`. |
+| 2026-05-12 | Global indexing failures are best-effort, never block the per-session sidecar write | Phase A lesson: any cross-cutting failure that propagates up the worker can mask a successful sidecar write. The global index is a derived layer; if it can’t write, log `GLOBAL_INDEX_FAIL` and continue. |
 
 ---
 

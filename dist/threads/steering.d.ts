@@ -20,6 +20,7 @@ import type { ThreadMeta } from '../types.js';
 import type { KeyStateEntry, ThreadMetaV2, ThreadMetaV3 } from './schema.js';
 import type { WeightedSummary } from './weight.js';
 import type { LifecycleEvent } from './lifecycle.js';
+import type { CrossSessionContext } from '../global/orientation.js';
 /** Steering output mode — controls how the prompt instructs the LLM to format the meta. */
 export type StructuredOutputMode = 'json' | 'tool' | 'markdown';
 /**
@@ -103,7 +104,7 @@ export declare function buildOrientationPromptV3(metas: Array<{
     v1?: ThreadMeta;
     v2?: ThreadMetaV2;
     v3?: ThreadMetaV3;
-}>, recentLifecycle?: ReadonlyArray<LifecycleEvent>): string | null;
+}>, recentLifecycle?: ReadonlyArray<LifecycleEvent>, crossSessionContext?: CrossSessionContext): string | null;
 /**
  * Build the pre-compaction steering prompt.
  *

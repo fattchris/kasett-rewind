@@ -337,6 +337,53 @@ fi
 echo "" >> "$OUTPUT"
 echo "_For per-session detail, run \`node scripts/identity-report.js\`._" >> "$OUTPUT"
 
+# Phase E — Cross-session threads. Pull aggregate from the global index.
+echo "" >> "$OUTPUT"
+echo "### Cross-Session Threads (Phase E)" >> "$OUTPUT"
+echo "" >> "$OUTPUT"
+GLOBAL_INDEX="$SESSIONS_DIR/.kasett-global-threads.jsonl"
+if [ -f "$GLOBAL_INDEX" ]; then
+  TOTAL_GLOBAL_RECORDS=$(wc -l < "$GLOBAL_INDEX" 2>/dev/null || echo 0)
+  # Records written today (UTC date prefix match against ts).
+  TODAY_RECORDS=$(grep -c "\"ts\":\"$TODAY" "$GLOBAL_INDEX" 2>/dev/null || echo 0)
+  # Threads with ≥2 distinct sessions today (cross-cutting work).
+  CROSS_SESSION_TODAY=$(grep "\"ts\":\"$TODAY" "$GLOBAL_INDEX" 2>/dev/null \
+    | python3 -c "
+import sys, json
+from collections import defaultdict
+threads = defaultdict(set)
+for line in sys.stdin:
+    line = line.strip()
+    if not line: continue
+    try:
+        r = json.loads(line)
+    except Exception:
+        continue
+    canon = r.get('canonical_id') or r.get('thread_id')
+    sess = r.get('session_id')
+    if canon and sess:
+        threads[canon].add(sess)
+spread = [(c, len(s)) for c, s in threads.items() if len(s) >= 2]
+spread.sort(key=lambda x: -x[1])
+print(len(spread))
+for c, n in spread[:5]:
+    print(f'  - {c}: {n} sessions')
+" 2>/dev/null || echo 0)
+  echo "- Global index records (all-time): $TOTAL_GLOBAL_RECORDS" >> "$OUTPUT"
+  echo "- Records written today: $TODAY_RECORDS" >> "$OUTPUT"
+  if [ -n "$CROSS_SESSION_TODAY" ]; then
+    echo "$CROSS_SESSION_TODAY" | head -1 | xargs -I{} echo "- Threads spanning ≥2 sessions today: {}" >> "$OUTPUT"
+    TAIL_LINES=$(echo "$CROSS_SESSION_TODAY" | tail -n +2)
+    if [ -n "$TAIL_LINES" ]; then
+      echo "$TAIL_LINES" >> "$OUTPUT"
+    fi
+  fi
+else
+  echo "_Global index not yet populated (no cross-session writes yet)._" >> "$OUTPUT"
+fi
+echo "" >> "$OUTPUT"
+echo "_For full cross-session report, run \`node scripts/global-thread-report.js\`._" >> "$OUTPUT"
+
 echo "" >> "$OUTPUT"
 echo "## Observations" >> "$OUTPUT"
 echo "" >> "$OUTPUT"

@@ -42,6 +42,17 @@ export interface WorkerParams {
     /** Model identifier override */
     compactionModel?: string;
     /**
+     * Agent identifier (e.g. "main", "alpha"). Used for the cross-session
+     * global index records. When absent, global index writes are skipped
+     * (per-session sidecar still works).
+     */
+    agentId?: string;
+    /**
+     * Human-readable topic/session name (e.g. "topic-20751"). Optional;
+     * surfaces in cross-session orientation when present.
+     */
+    topicName?: string;
+    /**
      * Maximum time (ms) to wait for the session lock to be absent. Retained for
      * backward compatibility with config; the sidecar path does NOT need it.
      */
@@ -77,6 +88,22 @@ export interface WorkerParams {
      * error, etc.). Mirrors onSidecarWritten for observability.
      */
     onSidecarFailed?: (info: {
+        reason: string;
+        detail?: string;
+    }) => void;
+    /**
+     * Optional callback invoked after a global-index write. Used by the hook
+     * logger to track cross-session indexing health. Phase E.
+     */
+    onGlobalIndexed?: (info: {
+        recordsWritten: number;
+        threadsResolved: number;
+    }) => void;
+    /**
+     * Optional callback invoked on global-index write failure. Failures here
+     * MUST NOT block the per-session sidecar write. Phase E.
+     */
+    onGlobalIndexFailed?: (info: {
         reason: string;
         detail?: string;
     }) => void;

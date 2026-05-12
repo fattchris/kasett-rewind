@@ -22,13 +22,17 @@
  */
 
 import { appendFile } from 'node:fs/promises';
-import { basename } from 'node:path';
+import { basename, dirname } from 'node:path';
 import { writeSidecarEntry, sidecarPathFor, readSidecar, type SidecarEntry } from '../storage/sidecar.js';
 import { parseCompactionOutputBestEffort } from '../threads/parser.js';
 import { detectCandidateKeyState } from '../keystate/detector.js';
-import type { KeyStateEntry, ThreadMetaV2, ThreadMetaV3 } from '../threads/schema.js';
+import type { KeyStateEntry, ThreadMetaV2, ThreadMetaV3, ThreadSubV2 } from '../threads/schema.js';
 import { matchAllThreads } from '../threads/identity.js';
 import { detectLifecycleEvents, type LifecycleEvent } from '../threads/lifecycle.js';
+import { appendGlobalRecord, readGlobalRecords } from '../global/index-writer.js';
+import { findCanonicalThread } from '../global/matcher.js';
+import { refreshSnapshot } from '../global/snapshot.js';
+import type { GlobalThreadRecord } from '../global/types.js';
 
 export interface WorkerParams {
   /** Absolute path to the session `.jsonl` file. The sidecar is derived from this. */
@@ -47,6 +51,17 @@ export interface WorkerParams {
   signal?: AbortSignal;
   /** Model identifier override */
   compactionModel?: string;
+  /**
+   * Agent identifier (e.g. "main", "alpha"). Used for the cross-session
+   * global index records. When absent, global index writes are skipped
+   * (per-session sidecar still works).
+   */
+  agentId?: string;
+  /**
+   * Human-readable topic/session name (e.g. "topic-20751"). Optional;
+   * surfaces in cross-session orientation when present.
+   */
+  topicName?: string;
   /**
    * Maximum time (ms) to wait for the session lock to be absent. Retained for
    * backward compatibility with config; the sidecar path does NOT need it.
@@ -83,6 +98,19 @@ export interface WorkerParams {
    * error, etc.). Mirrors onSidecarWritten for observability.
    */
   onSidecarFailed?: (info: { reason: string; detail?: string }) => void;
+  /**
+   * Optional callback invoked after a global-index write. Used by the hook
+   * logger to track cross-session indexing health. Phase E.
+   */
+  onGlobalIndexed?: (info: {
+    recordsWritten: number;
+    threadsResolved: number;
+  }) => void;
+  /**
+   * Optional callback invoked on global-index write failure. Failures here
+   * MUST NOT block the per-session sidecar write. Phase E.
+   */
+  onGlobalIndexFailed?: (info: { reason: string; detail?: string }) => void;
 }
 
 export interface CallLLMParams {
@@ -291,6 +319,131 @@ export async function runHotSwapWorker(params: WorkerParams): Promise<void> {
       keyStateCount,
       keyStateDetectedCount,
     });
+
+    // Phase E: cross-session global index. Best-effort; never blocks the
+    // per-session sidecar (which has already been written above).
+    if (params.agentId) {
+      try {
+        const sessionsDir = dirname(sessionFile);
+        const agentRoot = dirname(sessionsDir); // .../agents/<agent>/
+        const currentMeta: ThreadMetaV3 | ThreadMetaV2 | undefined =
+          parsed.metaV3 ?? parsed.metaV2 ?? undefined;
+
+        let recordsWritten = 0;
+        let threadsResolved = 0;
+
+        if (currentMeta && currentMeta.sub.length > 0) {
+          const existingRecords = readGlobalRecords(agentRoot);
+          const ts = entry.ts;
+
+          // Sub-threads first.
+          const recordsForThisCompaction: GlobalThreadRecord[] = [];
+          for (const sub of currentMeta.sub as ReadonlyArray<ThreadSubV2>) {
+            const candidate = { thread_id: sub.id, label: sub.label };
+            const seedRecords = [
+              ...existingRecords,
+              ...recordsForThisCompaction,
+            ];
+            const m = findCanonicalThread(candidate, seedRecords);
+            const canonical = m.canonical_id ?? sub.id;
+            const tsFirstSeen =
+              m.contributing_record?.ts_first_seen ??
+              m.contributing_record?.ts;
+            if (m.canonical_id) threadsResolved += 1;
+
+            const rec: GlobalThreadRecord = {
+              ts,
+              agent_id: params.agentId,
+              session_id: sessionId,
+              ...(params.topicName ? { topic_name: params.topicName } : {}),
+              thread_id: sub.id,
+              canonical_id: canonical,
+              label: sub.label,
+              status: sub.status,
+              schema_version: sidecarSchemaVersion,
+              ...(tsFirstSeen ? { ts_first_seen: tsFirstSeen } : {}),
+            };
+            const result = appendGlobalRecord(agentRoot, rec);
+            if (result.written) {
+              recordsWritten += 1;
+              recordsForThisCompaction.push(rec);
+            } else {
+              await diag(
+                `GLOBAL_INDEX_FAIL stub=${stubId} reason=${result.error ?? 'unknown'}`,
+              );
+            }
+          }
+
+          // Main thread as a synthetic record (is_main=true). Lifts the
+          // session's `main` into cross-session visibility.
+          if (currentMeta.main) {
+            const mainCandidate = {
+              thread_id: `${sessionId}::main`,
+              label: currentMeta.main,
+            };
+            const m = findCanonicalThread(
+              mainCandidate,
+              [...existingRecords, ...recordsForThisCompaction],
+            );
+            const canonical = m.canonical_id ?? mainCandidate.thread_id;
+            const tsFirstSeen =
+              m.contributing_record?.ts_first_seen ??
+              m.contributing_record?.ts;
+            const rec: GlobalThreadRecord = {
+              ts,
+              agent_id: params.agentId,
+              session_id: sessionId,
+              ...(params.topicName ? { topic_name: params.topicName } : {}),
+              thread_id: mainCandidate.thread_id,
+              canonical_id: canonical,
+              label: currentMeta.main,
+              status: 'active',
+              schema_version: sidecarSchemaVersion,
+              is_main: true,
+              ...(tsFirstSeen ? { ts_first_seen: tsFirstSeen } : {}),
+            };
+            const result = appendGlobalRecord(agentRoot, rec);
+            if (result.written) {
+              recordsWritten += 1;
+              if (m.canonical_id) threadsResolved += 1;
+            } else {
+              await diag(
+                `GLOBAL_INDEX_FAIL stub=${stubId} reason=${result.error ?? 'unknown'} (main)`,
+              );
+            }
+          }
+
+          // Refresh the snapshot so cross-session orientation reads see the
+          // new state. This is not on the hot path of the agent's response
+          // (we're already past the stub return), so the cost is acceptable.
+          if (recordsWritten > 0) {
+            try {
+              refreshSnapshot(agentRoot);
+            } catch (err) {
+              await diag(
+                `GLOBAL_SNAPSHOT_FAIL stub=${stubId} err=${String(err).slice(0, 150)}`,
+              );
+            }
+          }
+        }
+
+        await diag(
+          `GLOBAL_INDEX_WRITTEN stub=${stubId} records=${recordsWritten} resolved=${threadsResolved}`,
+        );
+        params.onGlobalIndexed?.({
+          recordsWritten,
+          threadsResolved,
+        });
+      } catch (err) {
+        await diag(
+          `GLOBAL_INDEX_ERROR stub=${stubId} err=${String(err).slice(0, 200)}`,
+        );
+        params.onGlobalIndexFailed?.({
+          reason: 'global_index_threw',
+          detail: String(err).slice(0, 200),
+        });
+      }
+    }
   } catch (err: unknown) {
     if (isAbortError(err)) {
       logger.debug(`[kasett-rewind:sidecar] Worker aborted for stub ${stubId}`);

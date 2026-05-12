@@ -612,6 +612,8 @@ async function summarizeWithHotSwap(p: SummarizeWithHotSwapParams): Promise<stri
         hotSwapTimeoutMs: config.compaction.hotSwapTimeoutMs,
         logger: api.logger,
         callLLM: callLLMForCompaction,
+        agentId: agentId ?? undefined,
+        topicName: typeof sessionKey === 'string' ? sessionKey : undefined,
         onSidecarWritten: (info) => {
           void logHookEvent({
             hook: 'after_compaction',

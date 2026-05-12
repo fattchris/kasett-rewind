@@ -21,12 +21,15 @@
  * (rich), fall back to the JSONL for legacy entries.
  */
 import { appendFile } from 'node:fs/promises';
-import { basename } from 'node:path';
+import { basename, dirname } from 'node:path';
 import { writeSidecarEntry, sidecarPathFor, readSidecar } from '../storage/sidecar.js';
 import { parseCompactionOutputBestEffort } from '../threads/parser.js';
 import { detectCandidateKeyState } from '../keystate/detector.js';
 import { matchAllThreads } from '../threads/identity.js';
 import { detectLifecycleEvents } from '../threads/lifecycle.js';
+import { appendGlobalRecord, readGlobalRecords } from '../global/index-writer.js';
+import { findCanonicalThread } from '../global/matcher.js';
+import { refreshSnapshot } from '../global/snapshot.js';
 const DIAG_LOG = '/home/node/.openclaw/workspace/repos/kasett-rewind/research/hotswap-diag.log';
 async function diag(msg) {
     const ts = new Date().toISOString();
@@ -176,6 +179,113 @@ export async function runHotSwapWorker(params) {
             keyStateCount,
             keyStateDetectedCount,
         });
+        // Phase E: cross-session global index. Best-effort; never blocks the
+        // per-session sidecar (which has already been written above).
+        if (params.agentId) {
+            try {
+                const sessionsDir = dirname(sessionFile);
+                const agentRoot = dirname(sessionsDir); // .../agents/<agent>/
+                const currentMeta = parsed.metaV3 ?? parsed.metaV2 ?? undefined;
+                let recordsWritten = 0;
+                let threadsResolved = 0;
+                if (currentMeta && currentMeta.sub.length > 0) {
+                    const existingRecords = readGlobalRecords(agentRoot);
+                    const ts = entry.ts;
+                    // Sub-threads first.
+                    const recordsForThisCompaction = [];
+                    for (const sub of currentMeta.sub) {
+                        const candidate = { thread_id: sub.id, label: sub.label };
+                        const seedRecords = [
+                            ...existingRecords,
+                            ...recordsForThisCompaction,
+                        ];
+                        const m = findCanonicalThread(candidate, seedRecords);
+                        const canonical = m.canonical_id ?? sub.id;
+                        const tsFirstSeen = m.contributing_record?.ts_first_seen ??
+                            m.contributing_record?.ts;
+                        if (m.canonical_id)
+                            threadsResolved += 1;
+                        const rec = {
+                            ts,
+                            agent_id: params.agentId,
+                            session_id: sessionId,
+                            ...(params.topicName ? { topic_name: params.topicName } : {}),
+                            thread_id: sub.id,
+                            canonical_id: canonical,
+                            label: sub.label,
+                            status: sub.status,
+                            schema_version: sidecarSchemaVersion,
+                            ...(tsFirstSeen ? { ts_first_seen: tsFirstSeen } : {}),
+                        };
+                        const result = appendGlobalRecord(agentRoot, rec);
+                        if (result.written) {
+                            recordsWritten += 1;
+                            recordsForThisCompaction.push(rec);
+                        }
+                        else {
+                            await diag(`GLOBAL_INDEX_FAIL stub=${stubId} reason=${result.error ?? 'unknown'}`);
+                        }
+                    }
+                    // Main thread as a synthetic record (is_main=true). Lifts the
+                    // session's `main` into cross-session visibility.
+                    if (currentMeta.main) {
+                        const mainCandidate = {
+                            thread_id: `${sessionId}::main`,
+                            label: currentMeta.main,
+                        };
+                        const m = findCanonicalThread(mainCandidate, [...existingRecords, ...recordsForThisCompaction]);
+                        const canonical = m.canonical_id ?? mainCandidate.thread_id;
+                        const tsFirstSeen = m.contributing_record?.ts_first_seen ??
+                            m.contributing_record?.ts;
+                        const rec = {
+                            ts,
+                            agent_id: params.agentId,
+                            session_id: sessionId,
+                            ...(params.topicName ? { topic_name: params.topicName } : {}),
+                            thread_id: mainCandidate.thread_id,
+                            canonical_id: canonical,
+                            label: currentMeta.main,
+                            status: 'active',
+                            schema_version: sidecarSchemaVersion,
+                            is_main: true,
+                            ...(tsFirstSeen ? { ts_first_seen: tsFirstSeen } : {}),
+                        };
+                        const result = appendGlobalRecord(agentRoot, rec);
+                        if (result.written) {
+                            recordsWritten += 1;
+                            if (m.canonical_id)
+                                threadsResolved += 1;
+                        }
+                        else {
+                            await diag(`GLOBAL_INDEX_FAIL stub=${stubId} reason=${result.error ?? 'unknown'} (main)`);
+                        }
+                    }
+                    // Refresh the snapshot so cross-session orientation reads see the
+                    // new state. This is not on the hot path of the agent's response
+                    // (we're already past the stub return), so the cost is acceptable.
+                    if (recordsWritten > 0) {
+                        try {
+                            refreshSnapshot(agentRoot);
+                        }
+                        catch (err) {
+                            await diag(`GLOBAL_SNAPSHOT_FAIL stub=${stubId} err=${String(err).slice(0, 150)}`);
+                        }
+                    }
+                }
+                await diag(`GLOBAL_INDEX_WRITTEN stub=${stubId} records=${recordsWritten} resolved=${threadsResolved}`);
+                params.onGlobalIndexed?.({
+                    recordsWritten,
+                    threadsResolved,
+                });
+            }
+            catch (err) {
+                await diag(`GLOBAL_INDEX_ERROR stub=${stubId} err=${String(err).slice(0, 200)}`);
+                params.onGlobalIndexFailed?.({
+                    reason: 'global_index_threw',
+                    detail: String(err).slice(0, 200),
+                });
+            }
+        }
     }
     catch (err) {
         if (isAbortError(err)) {
