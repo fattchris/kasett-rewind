@@ -313,6 +313,7 @@ export function register(api) {
                     customInstructions: params.customInstructions,
                     steeringPrompt,
                     compactionModel: config.compaction.model,
+                    maxTokens: config.compaction.compactionMaxTokens,
                     logger: api.logger,
                 });
                 if (!summary) {
@@ -408,6 +409,7 @@ async function summarizeWithHotSwap(p) {
                 customInstructions: params.customInstructions,
                 signal: undefined,
                 compactionModel: config.compaction.model,
+                compactionMaxTokens: config.compaction.compactionMaxTokens,
                 hotSwapTimeoutMs: config.compaction.hotSwapTimeoutMs,
                 logger: api.logger,
                 callLLM: callLLMForCompaction,
@@ -559,7 +561,8 @@ function resolveModel(compactionModel, provider, defaultModel) {
     return compactionModel;
 }
 async function callLLMForCompaction(params) {
-    const { messages, signal, customInstructions, steeringPrompt, compactionModel, logger } = params;
+    const { messages, signal, customInstructions, steeringPrompt, compactionModel, maxTokens, logger } = params;
+    const effectiveMaxTokens = typeof maxTokens === 'number' && maxTokens > 0 ? maxTokens : 8192;
     // Build system prompt: steering + OC custom instructions
     const systemParts = [steeringPrompt];
     if (customInstructions?.trim()) {
@@ -586,7 +589,7 @@ async function callLLMForCompaction(params) {
     if (openrouterKey) {
         const model = resolveModel(compactionModel, 'openrouter', 'anthropic/claude-sonnet-4-5');
         logger.debug(`[kasett-rewind] Using model for OpenRouter: ${model}`);
-        await diagWrite(`openrouter_start model=${model} prompt_chars=${systemPrompt.length}+${userPrompt.length}`);
+        await diagWrite(`openrouter_start model=${model} prompt_chars=${systemPrompt.length}+${userPrompt.length} max_tokens=${effectiveMaxTokens}`);
         try {
             const result = await callOpenRouter({
                 apiKey: openrouterKey,
@@ -594,6 +597,7 @@ async function callLLMForCompaction(params) {
                 systemPrompt,
                 userPrompt,
                 signal,
+                maxTokens: effectiveMaxTokens,
             });
             await diagWrite(`openrouter_result length=${result?.length ?? 0} empty=${!result} preview=${JSON.stringify((result ?? '').slice(0, 120))}`);
             if (result) {
@@ -616,7 +620,7 @@ async function callLLMForCompaction(params) {
     if (anthropicKey) {
         const model = resolveModel(compactionModel, 'anthropic', 'claude-sonnet-4-5');
         logger.debug(`[kasett-rewind] Using model for Anthropic: ${model}`);
-        await diagWrite(`anthropic_fallback_start model=${model}`);
+        await diagWrite(`anthropic_fallback_start model=${model} max_tokens=${effectiveMaxTokens}`);
         try {
             const result = await callAnthropic({
                 apiKey: anthropicKey,
@@ -624,6 +628,7 @@ async function callLLMForCompaction(params) {
                 systemPrompt,
                 userPrompt,
                 signal,
+                maxTokens: effectiveMaxTokens,
             });
             await diagWrite(`anthropic_fallback_result length=${result?.length ?? 0} empty=${!result}`);
             if (result) {
@@ -657,7 +662,7 @@ async function callAnthropic(params) {
         },
         body: JSON.stringify({
             model: params.model,
-            max_tokens: 4096,
+            max_tokens: params.maxTokens ?? 4096,
             system: params.systemPrompt,
             messages: [{ role: 'user', content: params.userPrompt }],
         }),
@@ -683,7 +688,7 @@ async function callOpenRouter(params) {
         },
         body: JSON.stringify({
             model: params.model,
-            max_tokens: 4096,
+            max_tokens: params.maxTokens ?? 4096,
             messages: [
                 { role: 'system', content: params.systemPrompt },
                 { role: 'user', content: params.userPrompt },
@@ -866,12 +871,15 @@ function resolveConfig(api) {
         const hotSwapTimeoutMs = rawCompaction['hotSwapTimeoutMs'] ??
             raw['hotSwapTimeoutMs'] ??
             DEFAULT_CONFIG.compaction.hotSwapTimeoutMs;
+        const compactionMaxTokens = rawCompaction['compactionMaxTokens'] ??
+            raw['compactionMaxTokens'] ??
+            DEFAULT_CONFIG.compaction.compactionMaxTokens;
         const threadTracking = rawSteering['threadTracking'] ??
             raw['threadTracking'] ??
             DEFAULT_CONFIG.steering.threadTracking;
         return {
             enabled: raw['enabled'] ?? true,
-            compaction: { model, hotSwap, hotSwapTimeoutMs, windowSize, weights },
+            compaction: { model, hotSwap, hotSwapTimeoutMs, windowSize, weights, compactionMaxTokens },
             steering: { threadTracking },
         };
     }

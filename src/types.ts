@@ -28,6 +28,19 @@ export interface KasettCompactionConfig {
   windowSize: number;
   /** Weight per compaction slot, most recent first (default: [1.0, 0.6, 0.3]) */
   weights: number[];
+  /**
+   * Maximum tokens for the compaction LLM call output.
+   *
+   * Phase F: increased from the previous 4096 default to 32000. Sonnet 4.5
+   * supports 64k output; the V3 structured JSON block (5 sub-threads, 20
+   * key_state entries, decisions, open_questions) plus a 2-3k word prose
+   * summary regularly produces 12-18k chars (~4-6k tokens). Truncation
+   * around 14k chars (Phase F live evidence) loses the closing JSON fence
+   * and breaks the parser. 32000 leaves comfortable headroom.
+   *
+   * Default: 32000
+   */
+  compactionMaxTokens: number;
 }
 
 export interface KasettSteeringConfig {
@@ -49,6 +62,7 @@ export const DEFAULT_CONFIG: KasettConfig = {
     hotSwapTimeoutMs: 30_000,
     windowSize: 3,
     weights: [1.0, 0.6, 0.3],
+    compactionMaxTokens: 32000,
   },
   steering: {
     threadTracking: true,

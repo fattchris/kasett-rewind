@@ -46,6 +46,20 @@ export interface ParseResultV2 {
     errors: string[];
 }
 /**
+ * Repair a truncated JSON string by:
+ *  - terminating any open string literal
+ *  - balancing open arrays, objects with appropriate closers
+ *  - dropping a trailing comma if the last token was the start of a new value
+ *
+ * This is best-effort — callers must still JSON.parse the result and handle
+ * failure. Phase F: introduced because Sonnet 4.5 truncated mid-JSON at max
+ * tokens and the strict parser dropped 14k chars of structured output.
+ */
+export declare function repairTruncatedJson(text: string): {
+    repaired: string;
+    repairsMade: string[];
+};
+/**
  * Parse a v1 compaction output string, extracting thread meta and clean summary.
  *
  * @param raw - Raw compaction LLM output containing both narrative and thread meta
@@ -86,6 +100,20 @@ export interface ParseResultV3 {
  * inner object is validated against the v3 schema (v2 + optional
  * key_state[]). Invalid `key_state` entries are silently dropped by the
  * validator rather than failing the whole parse.
+ *
+ * Phase F: now also tolerates **truncated** JSON output (LLM hit max_tokens
+ * mid-block, no closing fence). Falls through to:
+ *   1. closed-fence parse (the original strict path)
+ *   2. open-fence + raw parse  — in case the LLM emitted bare JSON without
+ *      bothering to close the fence even though the JSON itself is whole
+ *   3. open-fence + bracket-balancing repair  — closes unterminated string,
+ *      drops trailing comma, balances brackets, then JSON.parse
+ *   4. open-fence + lenient field-by-field regex extraction (last resort)
+ *
+ * In repair paths the result carries `_partial: true` on the meta object so
+ * downstream consumers can flag the entry for review. Validation runs in
+ * "lenient" mode after a repair: if the repaired object lacks required v3
+ * fields the validator failures are surfaced via `errors`.
  */
 export declare function parseCompactionOutputV3(raw: string): ParseResultV3;
 /**

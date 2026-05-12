@@ -106,6 +106,7 @@ function buildConfig(options: GenerateConfigOptions): KasettConfig {
       weights,
       hotSwap: DEFAULT_CONFIG.compaction.hotSwap,
       hotSwapTimeoutMs: DEFAULT_CONFIG.compaction.hotSwapTimeoutMs,
+      compactionMaxTokens: DEFAULT_CONFIG.compaction.compactionMaxTokens,
     },
     steering: {
       threadTracking,

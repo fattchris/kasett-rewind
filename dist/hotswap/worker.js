@@ -21,8 +21,9 @@
  * (rich), fall back to the JSONL for legacy entries.
  */
 import { appendFile } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
 import { basename, dirname } from 'node:path';
-import { writeSidecarEntry, sidecarPathFor, readSidecar } from '../storage/sidecar.js';
+import { writeSidecarEntry, sidecarPathFor, readSidecar, resolveSessionFilePath, } from '../storage/sidecar.js';
 import { parseCompactionOutputBestEffort } from '../threads/parser.js';
 import { detectCandidateKeyState } from '../keystate/detector.js';
 import { matchAllThreads } from '../threads/identity.js';
@@ -42,7 +43,7 @@ async function diag(msg) {
  * returned to OC first. All errors are logged and swallowed.
  */
 export async function runHotSwapWorker(params) {
-    const { sessionFile, stubId, messages, steeringPrompt, customInstructions, signal, compactionModel, logger, callLLM, onSidecarWritten, onSidecarFailed, } = params;
+    const { sessionFile, stubId, messages, steeringPrompt, customInstructions, signal, compactionModel, compactionMaxTokens, logger, callLLM, onSidecarWritten, onSidecarFailed, } = params;
     try {
         logger.debug(`[kasett-rewind:sidecar] Background worker started for stub ${stubId}`);
         await diag(`WORKER_START stub=${stubId} sessionFile=${sessionFile} signal_aborted=${signal?.aborted}`);
@@ -52,13 +53,14 @@ export async function runHotSwapWorker(params) {
             onSidecarFailed?.({ reason: 'aborted_before_llm' });
             return;
         }
-        await diag(`LLM_CALL_START stub=${stubId} model=${compactionModel}`);
+        await diag(`LLM_CALL_START stub=${stubId} model=${compactionModel} max_tokens=${compactionMaxTokens ?? 'default'}`);
         const fullSummary = await callLLM({
             messages,
             signal,
             customInstructions,
             steeringPrompt,
             compactionModel,
+            maxTokens: compactionMaxTokens,
             logger,
         });
         if (!fullSummary) {
@@ -108,7 +110,48 @@ export async function runHotSwapWorker(params) {
         else if (schemaVersion === 'v3') {
             await diag(`PARSE_V3 stub=${stubId} subs=${parsed.metaV3?.sub.length ?? 0} key_state=${keyStateCount} detected=${keyStateDetectedCount}`);
         }
-        const sessionId = basename(sessionFile, '.jsonl');
+        // Phase F: the value passed in as `sessionFile` is sometimes a real
+        // filesystem path, sometimes a session-key string (e.g.
+        // `agent:main:telegram:group:-...:topic:12388`). Production sidecars
+        // landed at `<session-key>.jsonl.kasett-meta.jsonl` because the worker
+        // wrote `${sessionFile}.kasett-meta.jsonl` against the raw key. Resolve
+        // it to the real session JSONL before computing the sidecar path.
+        // Resolution: trust the input only if it's an absolute path that actually
+        // exists on disk. Otherwise treat it as a session-key (or stale path) and
+        // try to map it back to a real `<uuid>.jsonl` (or `<uuid>-topic-N.jsonl`).
+        let resolvedSessionFile = sessionFile;
+        try {
+            const fileExists = sessionFile.includes('/') && existsSync(sessionFile);
+            if (!fileExists) {
+                // Derive agentRoot. If the input is a path that doesn't exist, take
+                // its parent's parent. If it's a bare session-key with no path, we
+                // can't resolve here — the caller should have computed agentRoot.
+                let agentRootGuess = null;
+                if (sessionFile.includes('/')) {
+                    const sessionsDirGuess = dirname(sessionFile);
+                    if (sessionsDirGuess &&
+                        sessionsDirGuess !== '.' &&
+                        sessionsDirGuess !== '/') {
+                        agentRootGuess = dirname(sessionsDirGuess);
+                    }
+                }
+                if (agentRootGuess) {
+                    const resolved = resolveSessionFilePath(agentRootGuess, sessionFile);
+                    if (resolved) {
+                        resolvedSessionFile = resolved;
+                    }
+                }
+            }
+        }
+        catch (err) {
+            // Resolution failure must not break sidecar write — fall through with
+            // the original input.
+            await diag(`SIDECAR_PATH_RESOLVE_FAIL stub=${stubId} err=${String(err).slice(0, 150)}`);
+        }
+        if (resolvedSessionFile !== sessionFile) {
+            await diag(`SIDECAR_PATH_RESOLVED stub=${stubId} from=${sessionFile} to=${resolvedSessionFile}`);
+        }
+        const sessionId = basename(resolvedSessionFile, '.jsonl');
         const sidecarSchemaVersion = schemaVersion === 'v3' ? 'v3' : schemaVersion === 'v2' ? 'v2' : 'v1';
         // Phase D — lifecycle event detection against the previous compaction.
         // Advisory only: failure here MUST NOT stop the sidecar write.
@@ -116,7 +159,7 @@ export async function runHotSwapWorker(params) {
         try {
             const currentMeta = parsed.metaV3 ?? parsed.metaV2 ?? undefined;
             if (currentMeta && currentMeta.sub.length > 0) {
-                const existing = readSidecar(sessionFile);
+                const existing = readSidecar(resolvedSessionFile);
                 let prevMeta;
                 for (let i = existing.length - 1; i >= 0; i--) {
                     const e = existing[i];
@@ -160,7 +203,7 @@ export async function runHotSwapWorker(params) {
         };
         let sidecarPath;
         try {
-            sidecarPath = writeSidecarEntry(sessionFile, entry);
+            sidecarPath = writeSidecarEntry(resolvedSessionFile, entry);
         }
         catch (err) {
             logger.error(`[kasett-rewind:sidecar] Sidecar write failed for stub ${stubId}: ${String(err)}`);
@@ -183,7 +226,7 @@ export async function runHotSwapWorker(params) {
         // per-session sidecar (which has already been written above).
         if (params.agentId) {
             try {
-                const sessionsDir = dirname(sessionFile);
+                const sessionsDir = dirname(resolvedSessionFile);
                 const agentRoot = dirname(sessionsDir); // .../agents/<agent>/
                 const currentMeta = parsed.metaV3 ?? parsed.metaV2 ?? undefined;
                 let recordsWritten = 0;

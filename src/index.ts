@@ -491,6 +491,7 @@ export function register(api: PluginAPI): void {
           customInstructions: params.customInstructions,
           steeringPrompt,
           compactionModel: config.compaction.model,
+          maxTokens: config.compaction.compactionMaxTokens,
           logger: api.logger,
         });
 
@@ -609,6 +610,7 @@ async function summarizeWithHotSwap(p: SummarizeWithHotSwapParams): Promise<stri
         customInstructions: params.customInstructions,
         signal: undefined,
         compactionModel: config.compaction.model,
+        compactionMaxTokens: config.compaction.compactionMaxTokens,
         hotSwapTimeoutMs: config.compaction.hotSwapTimeoutMs,
         logger: api.logger,
         callLLM: callLLMForCompaction,
@@ -804,6 +806,12 @@ interface LLMCallParams {
    * Any other value = passed directly to the API as the model identifier.
    */
   compactionModel?: string;
+  /**
+   * Maximum output tokens. When unset, falls back to a conservative default
+   * (8192) for backward compat. Phase F: callers should pass
+   * config.compaction.compactionMaxTokens (default 32000).
+   */
+  maxTokens?: number;
   logger: {
     debug(msg: string): void;
     warn(msg: string): void;
@@ -826,7 +834,8 @@ function resolveModel(
 }
 
 async function callLLMForCompaction(params: LLMCallParams): Promise<string | undefined> {
-  const { messages, signal, customInstructions, steeringPrompt, compactionModel, logger } = params;
+  const { messages, signal, customInstructions, steeringPrompt, compactionModel, maxTokens, logger } = params;
+  const effectiveMaxTokens = typeof maxTokens === 'number' && maxTokens > 0 ? maxTokens : 8192;
 
   // Build system prompt: steering + OC custom instructions
   const systemParts: string[] = [steeringPrompt];
@@ -860,7 +869,7 @@ async function callLLMForCompaction(params: LLMCallParams): Promise<string | und
   if (openrouterKey) {
     const model = resolveModel(compactionModel, 'openrouter', 'anthropic/claude-sonnet-4-5');
     logger.debug(`[kasett-rewind] Using model for OpenRouter: ${model}`);
-    await diagWrite(`openrouter_start model=${model} prompt_chars=${systemPrompt.length}+${userPrompt.length}`);
+    await diagWrite(`openrouter_start model=${model} prompt_chars=${systemPrompt.length}+${userPrompt.length} max_tokens=${effectiveMaxTokens}`);
     try {
       const result = await callOpenRouter({
         apiKey: openrouterKey,
@@ -868,6 +877,7 @@ async function callLLMForCompaction(params: LLMCallParams): Promise<string | und
         systemPrompt,
         userPrompt,
         signal,
+        maxTokens: effectiveMaxTokens,
       });
       await diagWrite(`openrouter_result length=${result?.length ?? 0} empty=${!result} preview=${JSON.stringify((result ?? '').slice(0, 120))}`);
       if (result) {
@@ -888,7 +898,7 @@ async function callLLMForCompaction(params: LLMCallParams): Promise<string | und
   if (anthropicKey) {
     const model = resolveModel(compactionModel, 'anthropic', 'claude-sonnet-4-5');
     logger.debug(`[kasett-rewind] Using model for Anthropic: ${model}`);
-    await diagWrite(`anthropic_fallback_start model=${model}`);
+    await diagWrite(`anthropic_fallback_start model=${model} max_tokens=${effectiveMaxTokens}`);
     try {
       const result = await callAnthropic({
         apiKey: anthropicKey,
@@ -896,6 +906,7 @@ async function callLLMForCompaction(params: LLMCallParams): Promise<string | und
         systemPrompt,
         userPrompt,
         signal,
+        maxTokens: effectiveMaxTokens,
       });
       await diagWrite(`anthropic_fallback_result length=${result?.length ?? 0} empty=${!result}`);
       if (result) {
@@ -924,6 +935,7 @@ async function callAnthropic(params: {
   systemPrompt: string;
   userPrompt: string;
   signal?: AbortSignal;
+  maxTokens?: number;
 }): Promise<string | undefined> {
   const response = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
@@ -934,7 +946,7 @@ async function callAnthropic(params: {
     },
     body: JSON.stringify({
       model: params.model,
-      max_tokens: 4096,
+      max_tokens: params.maxTokens ?? 4096,
       system: params.systemPrompt,
       messages: [{ role: 'user', content: params.userPrompt }],
     }),
@@ -963,6 +975,7 @@ async function callOpenRouter(params: {
   systemPrompt: string;
   userPrompt: string;
   signal?: AbortSignal;
+  maxTokens?: number;
 }): Promise<string | undefined> {
   const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
     method: 'POST',
@@ -972,7 +985,7 @@ async function callOpenRouter(params: {
     },
     body: JSON.stringify({
       model: params.model,
-      max_tokens: 4096,
+      max_tokens: params.maxTokens ?? 4096,
       messages: [
         { role: 'system', content: params.systemPrompt },
         { role: 'user', content: params.userPrompt },
@@ -1193,6 +1206,10 @@ function resolveConfig(api: PluginAPI): KasettConfig & { enabled: boolean } {
       (rawCompaction['hotSwapTimeoutMs'] as number | undefined) ??
       (raw['hotSwapTimeoutMs'] as number | undefined) ??
       DEFAULT_CONFIG.compaction.hotSwapTimeoutMs;
+    const compactionMaxTokens =
+      (rawCompaction['compactionMaxTokens'] as number | undefined) ??
+      (raw['compactionMaxTokens'] as number | undefined) ??
+      DEFAULT_CONFIG.compaction.compactionMaxTokens;
     const threadTracking =
       (rawSteering['threadTracking'] as boolean | undefined) ??
       (raw['threadTracking'] as boolean | undefined) ??
@@ -1200,7 +1217,7 @@ function resolveConfig(api: PluginAPI): KasettConfig & { enabled: boolean } {
 
     return {
       enabled: raw['enabled'] as boolean ?? true,
-      compaction: { model, hotSwap, hotSwapTimeoutMs, windowSize, weights },
+      compaction: { model, hotSwap, hotSwapTimeoutMs, windowSize, weights, compactionMaxTokens },
       steering: { threadTracking },
     };
   } catch {

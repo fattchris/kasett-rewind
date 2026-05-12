@@ -42,6 +42,13 @@ export interface WorkerParams {
     /** Model identifier override */
     compactionModel?: string;
     /**
+     * Maximum output tokens for the compaction LLM call. Phase F: defaults
+     * to 32000 in the resolved config; Sonnet 4.5 supports up to 64k.
+     * Truncation around 14k chars (Phase F live evidence) breaks the
+     * structured JSON output, so we want comfortable headroom here.
+     */
+    compactionMaxTokens?: number;
+    /**
      * Agent identifier (e.g. "main", "alpha"). Used for the cross-session
      * global index records. When absent, global index writes are skipped
      * (per-session sidecar still works).
@@ -117,6 +124,8 @@ export interface CallLLMParams {
     customInstructions?: string;
     steeringPrompt: string;
     compactionModel?: string;
+    /** Maximum output tokens; forwarded to the LLM provider. Phase F. */
+    maxTokens?: number;
     logger: {
         debug(msg: string): void;
         warn(msg: string): void;

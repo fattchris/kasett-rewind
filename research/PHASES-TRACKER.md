@@ -179,6 +179,38 @@ The cross-session matcher is intentionally conservative: bare 1-2 token labels (
 
 ---
 
+## Phase F — Production bug fixes (post-restart verification)
+
+**Goal:** Fix the three production bugs found during the 2026-05-12 16:35 UTC live verification on topic-12388 (see `research/post-restart-verification.md`). Phases B1, B2, and C were verified working live; F is plumbing repair on top of that win.
+
+**Status:** ✅ COMPLETE (2026-05-12) — max_tokens bumped to 32k, V3 parser tolerates truncated JSON via bracket-balancing repair, sidecar path resolves session-key → UUID, production sidecar recovered with full structured data.
+
+### Tasks
+- [x] F1. `compactionMaxTokens` config (default 32000) wired through `KasettConfig` → `resolveConfig` → `LLMCallParams`/`CallLLMParams` → `callOpenRouter`/`callAnthropic`. Both API call sites now honour the explicit value (was hardcoded 4096). Sonnet 4.5 supports 64k output — 32k leaves comfortable headroom for 5 sub-threads + 20 key_state + decisions + open_questions + a 2-3k word prose summary.
+- [x] F2. `parseCompactionOutputV3` — strict path tried first; on failure, falls through an open-fence repair pipeline:
+  - 2a: open-fence + raw `JSON.parse` (LLM emitted whole JSON but no closing fence)
+  - 2b: open-fence + `repairTruncatedJson` (closes unterminated string, drops trailing comma/colon/orphan-key, balances brackets)
+  - 2c: open-fence + lenient field-by-field regex extract (`main`/`sub`/`key_state`/`decisions`/`open_questions`)
+  - All recovery paths annotate the meta with `_partial: true` and surface a `recovered:*` marker in `errors[]`.
+  - New helper: `repairTruncatedJson(text) → { repaired, repairsMade }` is exported for use by the migration script.
+- [x] F3. `resolveSessionFilePath(agentRoot, sessionKeyOrPath)` in `src/storage/sidecar.ts`. Worker now resolves the input before computing the sidecar path, so a session-key like `agent:main:telegram:group:-...:topic:12388` lands at `<uuid>-topic-12388.jsonl.kasett-meta.jsonl` (next to the real session file) instead of `<session-key>.jsonl.kasett-meta.jsonl`.
+  - Resolution order: existing-path → sessions.json store (by full key + by basename) → topic-id scan (skips `.checkpoint.` files) → exact filename match.
+- [x] F4. `scripts/recover-truncated-sidecars.js` (ESM). Idempotent migration: walks every `*.kasett-meta.jsonl`, runs the F2 repair on `summary_rich` for any entry without rich `thread_meta_v3.key_state`, appends a NEW entry with `schema_version: 'v3-recovered'` + `recovered_from`/`recovered_at`/`recovered_via`/`recovered_errors`. `--dry-run` and `--file <path>` supported.
+  - **Live result on production sidecar:** 5 sub-threads + **20 key_state entries** (schema max) extracted from the truncated 14,113-char JSON. `decisions` and `open_questions` recovered. The Sonnet 4.5 output that was lost to PARSE_NONE is now structured.
+- [x] F5. Tests — 25 new across `parser-repair.test.ts` (15 cases covering `repairTruncatedJson` primitives + `parseCompactionOutputV3` repair paths) and `sidecar-path-resolution.test.ts` (10 cases covering existing-path, sessions.json store, topic-id scan, failure modes). All 386 prior tests still pass. **Total: 411/411 passing.**
+- [x] F6. PHASES-TRACKER + phase-f-progress updated.
+- [x] F7. `daily-compaction-review.sh` re-run after fixes — see `phase-f-progress.md`.
+
+### Headline
+
+The LLM almost did the right thing on the first live verification. F fixed three mechanical bugs and recovered the lost data:
+
+1. **Token ceiling.** The default 4096-token output cap on the OpenRouter call truncated Sonnet 4.5 mid-string at 14,113 chars. Bumped to 32000 (configurable). Future compactions will not truncate at this volume of structure.
+2. **Strict parser.** A truncated JSON has no closing fence, so the parser bailed with `PARSE_NONE`. The new pipeline accepts an open fence and repairs the body via bracket balancing or, when even that fails, lenient field extraction. The 14k summary that was previously dead-stored as `summary_rich` is now structured.
+3. **Path resolution.** Session-keys with `:topic:N` suffixes now resolve to the correct `<uuid>-topic-N.jsonl` file, so the sidecar lands where the daily review and global index expect it.
+
+Production sidecar for topic-12388 now contains a `v3-recovered` entry with full structured data alongside the original v1 stub. Backward compat preserved — v1/v2/v3 readers all still function via projection.
+
 ## Decision Log
 
 | Date | Decision | Rationale |
@@ -199,6 +231,10 @@ The cross-session matcher is intentionally conservative: bare 1-2 token labels (
 | 2026-05-12 | Phase E global index lives at `~/.openclaw/agents/<agent>/sessions/.kasett-global-threads.jsonl` | Same dir as session files, dot-prefixed so it doesn’t collide with OC’s session glob. Append-only — multiple sessions can write concurrently and POSIX `O_APPEND` keeps lines whole. Snapshot file is atomic temp+rename so readers never see torn JSON. |
 | 2026-05-12 | Cross-session lexical matcher requires ≥3 meaningful tokens; semantic tier off by default | Defends against “deploy” in topic-A merging into “deploy” in topic-B. The LLM’s stable `id` is the strong cross-session path; fuzz-matching short labels across topics is far worse than under-matching. If two topics genuinely share a thread, the LLM has the context to use the same `id`. |
 | 2026-05-12 | Global indexing failures are best-effort, never block the per-session sidecar write | Phase A lesson: any cross-cutting failure that propagates up the worker can mask a successful sidecar write. The global index is a derived layer; if it can’t write, log `GLOBAL_INDEX_FAIL` and continue. |
+| 2026-05-12 | Phase F: V3 parser must repair truncated JSON, not reject it | Sonnet 4.5 produced 14k chars of structured output that PARSE_NONE’d only because the closing fence was lost to max_tokens. The content is the value; truncation is a plumbing problem. Bracket-balancing repair + lenient extract turn truncated input into salvaged structure. |
+| 2026-05-12 | Phase F: `compactionMaxTokens` defaults to 32000 (vs prior hardcoded 4096) | Production evidence shows 5-sub + 20-key_state + decisions + open_questions + 2-3k word prose regularly exceeds 14k chars (~5k tokens). 32k leaves headroom up to ~12k tokens of output — well clear of the failure mode. Sonnet 4.5 supports 64k; we deliberately sit below the ceiling. |
+| 2026-05-12 | Phase F: sidecar path resolves via `sessions.json` store first, topic-id scan second | The compaction hook gives kasett a session-key (`agent:main:...:topic:N`), but session JSONLs are named `<uuid>-topic-N.jsonl`. Strategy 1 reads sessions.json directly (most reliable). Strategy 2 scans for `*-topic-<id>.jsonl` files (skipping checkpoints) and picks the newest. Strategy 4 returns null instead of fabricating a path — a missing sidecar is better than one in the wrong place. |
+| 2026-05-12 | Phase F: recovery script appends `v3-recovered` entries, never modifies originals | Provenance preserved — the original truncated entry is left intact for future audit. The recovered entry carries `recovered_from` (original stub_id), `recovered_at`, `recovered_via` (which schema path matched), and `recovered_errors` (validator messages). Idempotent: re-runs are no-ops once a stub has been recovered. |
 
 ---
 

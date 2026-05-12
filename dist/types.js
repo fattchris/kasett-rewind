@@ -9,6 +9,7 @@ export const DEFAULT_CONFIG = {
         hotSwapTimeoutMs: 30_000,
         windowSize: 3,
         weights: [1.0, 0.6, 0.3],
+        compactionMaxTokens: 32000,
     },
     steering: {
         threadTracking: true,

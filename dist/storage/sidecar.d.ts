@@ -135,4 +135,31 @@ export declare function findEntryForCompaction(sessionFile: string, compactionId
  * Cheap stat-only check — does not parse the file.
  */
 export declare function sidecarExists(sessionFile: string): boolean;
+/**
+ * Resolve a session-key OR a session-file path to the actual session JSONL
+ * path on disk. (Phase F bug fix.)
+ *
+ * Background: OC's compaction hook gives kasett the session-key
+ * (`agent:main:telegram:group:-1003723465246:topic:12388`) but the worker
+ * historically used it as a filesystem path — producing a sidecar at
+ * `<session-key>.jsonl.kasett-meta.jsonl` instead of next to the real
+ * `<uuid>-topic-N.jsonl` file. Daily review and the global index then
+ * couldn't find the sidecar.
+ *
+ * Resolution order:
+ *   1. If `sessionKeyOrPath` is already an absolute path that ends in
+ *      `.jsonl` and exists — return it as-is.
+ *   2. If it looks like a session-key (no path separator, no `.jsonl`),
+ *      look it up in `<agentRoot>/sessions/sessions.json` and use the
+ *      `sessionFile` field if present.
+ *   3. As a fallback, scan `<agentRoot>/sessions/` for files matching
+ *      `*-topic-<topicId>.jsonl` (where topicId is parsed from the key)
+ *      and pick the most recently modified one.
+ *   4. Return null if none of the strategies resolve.
+ *
+ * `agentRoot` is the per-agent directory (e.g. `~/.openclaw/agents/main`),
+ * NOT the parent stateDir. Caller is responsible for joining stateDir +
+ * 'agents/' + agentId.
+ */
+export declare function resolveSessionFilePath(agentRoot: string, sessionKeyOrPath: string): string | null;
 //# sourceMappingURL=sidecar.d.ts.map
