@@ -1,0 +1,46 @@
+# Conversation Summary
+
+## Deployment Overview
+Successfully deployed **version v2.4.1** of the agent infrastructure to the staging environment.
+
+## Key Technical Details
+
+### Endpoints & Paths
+- **Deployment endpoint**: `https://api.staging.molt.ai/v2/agents/deploy`
+- **Health check path**: `/v2/health` (configured on ALB target group)
+- **Task definition location**: `/home/node/.openclaw/workspace/repos/molt-infra/ecs/task-def.json`
+
+### Infrastructure State
+- **ECS cluster**: 3 running tasks (all healthy)
+- **Deployment timeout**: 900 seconds
+- **Version deployed**: v2.4.1 (git tagged and pushed)
+
+## Critical Issue Resolved
+**Problem**: ImagePullBackoff error preventing v2.4.1 container from starting
+**Root cause**: Missing `ecr:GetAuthorizationToken` permission on ECS task execution role
+**Solution**: Added required IAM permissions:
+- `ecr:GetAuthorizationToken`
+- `ecr:BatchGetImage`
+- `ecr:GetDownloadUrlForLayer`
+
+After IAM fix, forced new deployment successfully pulled and started v2.4.1.
+
+## Completed Actions
+1. Deployed v2.4.1 to staging endpoint
+2. Fixed IAM permissions on task execution role
+3. Updated ALB health check path to `/v2/health`
+4. Ran and passed smoke test
+5. Updated task definition file to reflect v2.4.1
+6. Committed changes with message: "ecs: bump task definition to v2.4.1 — deployed to staging"
+7. Created and pushed git tag v2.4.1
+8. Documented deployment procedure and IAM prerequisites in runbook
+
+## Next Steps
+- **Production deployment scheduled**: Tomorrow at 9am MT
+- **Prod deployment plan**: Update task definition environment from staging to prod, follow same deployment flow, update prod ALB health check, run smoke test
+- **Reminder set**: 9am MT for prod promotion
+
+## Current Status
+✅ Staging environment stable with v2.4.1 running across all 3 ECS tasks
+✅ All health checks passing
+✅ Deployment fully documented in runbook

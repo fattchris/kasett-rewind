@@ -1,0 +1,73 @@
+We completed a full RDS migration for the agents database from the old db-primary.internal instance to a new db.r6g.xlarge instance at db-primary-new.internal. The process started with creating a safety snapshot (rds:db-primary-snap-20260505-120000), then restoring to the new instance class. Before cutover, we applied the pending schema migration 047, which adds an agent_metadata JSONB column to the agents table with a GIN index for metadata queries.
+
+After confirming the migration applied cleanly with zero errors, we tested connectivity to the new instance and verified replication lag was zero. We then switched the application connection string from the old to the new instance, updating all 7 config files that referenced the old connection. A final scan confirmed no remaining references to the old instance. The old db-primary.internal instance is now ready for decommission, with the snapshot retained for 30 days. A migration runbook was documented capturing the full procedure.
+
+```json
+{
+  "main": "RDS migration from db-primary.internal to new db.r6g.xlarge instance",
+  "sub": [
+    {
+      "id": "rds-snapshot-and-restore",
+      "label": "Create snapshot and restore to new r6g.xlarge instance",
+      "status": "completed"
+    },
+    {
+      "id": "schema-migration-047",
+      "label": "Apply migration 047 (agent_metadata column) to new instance",
+      "status": "completed"
+    },
+    {
+      "id": "connection-string-cutover",
+      "label": "Update all config files to point to new instance",
+      "status": "completed"
+    },
+    {
+      "id": "old-instance-decommission",
+      "label": "Decommission old db-primary.internal instance",
+      "status": "completed"
+    }
+  ],
+  "decisions": [
+    "Run schema migration before cutover rather than after",
+    "Retain snapshot for 30 days before cleanup",
+    "Upgrade to db.r6g.xlarge instance class"
+  ],
+  "key_state": [
+    {
+      "kind": "url",
+      "value": "postgresql://prod:xK9mP2rL@db-primary-new.internal:5432/agents",
+      "label": "new production database connection",
+      "context": "active connection after migration"
+    },
+    {
+      "kind": "url",
+      "value": "postgresql://prod:xK9mP2rL@db-primary.internal:5432/agents",
+      "label": "old database connection",
+      "context": "decommissioned"
+    },
+    {
+      "kind": "id",
+      "value": "rds:db-primary-snap-20260505-120000",
+      "label": "pre-migration snapshot",
+      "context": "30-day retention"
+    },
+    {
+      "kind": "path",
+      "value": "/home/node/.openclaw/workspace/repos/molt-infra/db/migrations/047_add_agent_metadata.sql",
+      "label": "schema migration 047",
+      "thread_id": "schema-migration-047"
+    },
+    {
+      "kind": "version",
+      "value": "schema-migration-v047",
+      "label": "applied migration version",
+      "thread_id": "schema-migration-047"
+    },
+    {
+      "kind": "config",
+      "value": "db.r6g.xlarge",
+      "label": "new RDS instance class"
+    }
+  ]
+}
+```

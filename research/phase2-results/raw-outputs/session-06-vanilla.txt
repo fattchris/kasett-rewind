@@ -1,0 +1,46 @@
+# Conversation Summary: E2E Encryption for Agent Message Bus
+
+## Service Details
+- **Service URL**: https://mbus.moltaicorp.com/v2/messages/publish
+- **Version**: v5.0.0 (upgraded from v5.0.0-rc2, now production-ready)
+- **Primary Module**: /home/node/.openclaw/workspace/repos/molt-infra/services/mbus/src/crypto/e2e.ts
+
+## Encryption Implementation
+
+### Cipher Suite & Architecture
+- **Message Encryption**: AES-256-GCM
+- **Authentication**: HMAC-SHA256 (covers: tenant_id + message_id + ciphertext + timestamp)
+- **Key Management**: AWS KMS envelope encryption pattern
+- **Asymmetric Option**: RSA-OAEP for key exchange if needed
+
+### KMS Configuration
+- **KMS Key ARN**: arn:aws:kms:us-east-1:843979154439:key/b2c3d4e5-f6a7-8901-b2c3-d4e5f6a78901
+- **Rotation Policy**: 90 days (application-level for data keys)
+- **Key Versioning**: Old key versions remain active for decrypting historical messages
+- **Audit Logging**: Rotation events logged to CloudWatch with 90-day retention
+
+### Data Key Caching
+- **Cache TTL**: 300 seconds (5 minutes) per tenant
+- **Max Cached Keys**: 1000
+- **Cache Invalidation**: Automatic flush on KMS key rotation (90-day cycle)
+- **Admin Endpoint**: POST /admin/crypto/flush-cache (admin-only, logs flush events)
+- **Metrics**: Cache hit/miss rates emitted
+
+## Performance Benchmarks
+- **Plaintext Baseline**: 12,400 messages/second, p99 latency 8ms
+- **With Caching**: 11,800 messages/second, p99 latency 12ms (5% throughput reduction)
+- **Without Caching**: 3,200 messages/second (KMS GenerateDataKey adds ~40ms per call)
+
+## Three Development Threads
+
+1. **E2E Encryption Module**: Implemented envelope encryption with AES-256-GCM + HMAC-SHA256, prevents tampering and replay attacks
+2. **Key Rotation Policy**: 90-day rotation with audit logging and backward compatibility for old messages
+3. **Throughput Benchmark**: Validated performance with data key caching solution
+
+## Security Features
+- Envelope encryption: GenerateDataKey from KMS, encrypt message with AES-256-GCM, store encrypted data key with ciphertext
+- Message authentication prevents tampering and replay attacks
+- Security design document completed covering all implementation details
+
+## Current Status
+**DEPLOYED** - v5.0.0 is live at https://mbus.moltaicorp.com/v2/messages/publish with E2E encryption active and 90-day key rotation enabled.

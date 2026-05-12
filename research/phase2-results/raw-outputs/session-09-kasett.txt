@@ -1,0 +1,115 @@
+We conducted SOC 2 Type II audit preparation across five parallel workstreams. The audit logging pipeline was upgraded to version 2.2.0 with immutable storage — events ingested at https://audit.moltaicorp.com/v1/events/ingest flow through Kinesis and Lambda into S3 bucket arn:aws:s3:::molt-audit-logs-prod-us-east-1, encrypted with KMS key arn:aws:kms:us-east-1:843979154439:key/c3d4e5f6-a7b8-9012-c3d4-e5f6a7b89012. We enabled S3 Object Lock in COMPLIANCE mode with 365-day retention to ensure tamper-proof audit trails. The Terraform configuration at /home/node/.openclaw/workspace/repos/molt-infra/compliance/audit/pipeline.tf was successfully applied.
+
+Pentest finding PENTEST-2026-042 (high severity SSRF vulnerability in the agent proxy service) is being remediated on schedule — we're on day 5 of the 14-day SLA. The fix includes URL allowlist validation, blocking of internal IP ranges (10.0.0.0/8, 169.254.0.0/16, 172.16.0.0/12), and request signing for trusted endpoints. The code is in PR review.
+
+IAM policy remediation moved from v8.3 to v8.4, addressing three categories of over-permissions: replacing s3:* with specific actions (s3:GetObject, s3:PutObject, s3:ListBucket) scoped to the audit bucket, removing unnecessary ec2:Describe* from Lambda functions, and adding conditional constraints to iam:PassRole (limited to lambda.amazonaws.com and ecs-tasks.amazonaws.com). These changes enforce least-privilege access per SOC2-CC6.1-CC7.2.
+
+Vendor security assessment VSA-2026-017 for OpenAI is in progress — we documented the data processing agreement terms, confirmed no training on customer data, verified GDPR compliance, and compiled the subprocessor list (AWS, Stripe, OpenAI, Twilio). OpenAI received a Medium risk rating due to LLM prompt processing, though they maintain SOC 2 Type II certification and the DPA prohibits persistent customer data storage. The DPA is pending signature.
+
+The SOC 2 evidence tracker was updated to reflect completed work (audit pipeline immutability satisfies CC6.1-CC7.2), in-progress items (PENTEST-2026-042 remediation, IAM v8.4 deployment pending), and blocked items (VSA-2026-017 DPA signature). All audit events use a standardized schema with required fields for completeness: event_id, tenant_id, user_id, action, resource, result, timestamp_utc, ip_address, and trace_id.
+
+```json
+{
+  "main": "SOC 2 Type II audit preparation across logging, pentesting, IAM, and vendor assessments",
+  "sub": [
+    {
+      "id": "audit-logging-pipeline",
+      "label": "Audit pipeline v2.2.0 with immutable S3 storage and KMS encryption",
+      "status": "completed"
+    },
+    {
+      "id": "pentest-ssrf-remediation",
+      "label": "PENTEST-2026-042 SSRF vulnerability fix in agent proxy service",
+      "status": "active"
+    },
+    {
+      "id": "iam-policy-remediation",
+      "label": "IAM policy v8.4 least-privilege enforcement",
+      "status": "active"
+    },
+    {
+      "id": "openai-vendor-assessment",
+      "label": "VSA-2026-017 OpenAI data processing agreement and risk assessment",
+      "status": "blocked"
+    },
+    {
+      "id": "soc2-evidence-tracking",
+      "label": "SOC 2 evidence tracker updates for CC6.1-CC7.2 controls",
+      "status": "active"
+    }
+  ],
+  "decisions": [
+    "Use S3 Object Lock COMPLIANCE mode with 365-day retention for audit logs to ensure immutability",
+    "Remediate PENTEST-2026-042 SSRF with URL allowlist, internal IP blocking, and request signing",
+    "Replace s3:* with specific actions scoped to audit bucket in IAM policy v8.4",
+    "Add iam:PassRole conditions limiting to lambda.amazonaws.com and ecs-tasks.amazonaws.com",
+    "Rate OpenAI as Medium risk vendor requiring annual re-assessment"
+  ],
+  "open_questions": [
+    "When will VSA-2026-017 DPA be signed by OpenAI?",
+    "When will IAM policy v8.4 be deployed to production?"
+  ],
+  "key_state": [
+    {
+      "kind": "url",
+      "value": "https://audit.moltaicorp.com/v1/events/ingest",
+      "label": "audit pipeline ingestion endpoint",
+      "thread_id": "audit-logging-pipeline"
+    },
+    {
+      "kind": "id",
+      "value": "arn:aws:s3:::molt-audit-logs-prod-us-east-1",
+      "label": "audit logs S3 bucket",
+      "thread_id": "audit-logging-pipeline"
+    },
+    {
+      "kind": "id",
+      "value": "arn:aws:kms:us-east-1:843979154439:key/c3d4e5f6-a7b8-9012-c3d4-e5f6a7b89012",
+      "label": "audit bucket KMS encryption key",
+      "thread_id": "audit-logging-pipeline"
+    },
+    {
+      "kind": "path",
+      "value": "/home/node/.openclaw/workspace/repos/molt-infra/compliance/audit/pipeline.tf",
+      "label": "audit pipeline Terraform config",
+      "thread_id": "audit-logging-pipeline"
+    },
+    {
+      "kind": "version",
+      "value": "v2.2.0",
+      "label": "audit pipeline version (current)",
+      "thread_id": "audit-logging-pipeline"
+    },
+    {
+      "kind": "id",
+      "value": "PENTEST-2026-042",
+      "label": "SSRF pentest finding ID",
+      "thread_id": "pentest-ssrf-remediation"
+    },
+    {
+      "kind": "version",
+      "value": "v8.3",
+      "label": "IAM policy version (previous)",
+      "thread_id": "iam-policy-remediation"
+    },
+    {
+      "kind": "version",
+      "value": "v8.4",
+      "label": "IAM policy version (current)",
+      "thread_id": "iam-policy-remediation"
+    },
+    {
+      "kind": "id",
+      "value": "VSA-2026-017",
+      "label": "OpenAI vendor security assessment ID",
+      "thread_id": "openai-vendor-assessment"
+    },
+    {
+      "kind": "id",
+      "value": "arn:aws:s3:::molt-audit-logs-prod-us-east-1/*",
+      "label": "audit bucket object scope for IAM policies",
+      "thread_id": "iam-policy-remediation"
+    }
+  ]
+}
+```

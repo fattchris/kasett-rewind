@@ -1,0 +1,131 @@
+The session covered status checks across ten parallel Q2 platform initiatives. Each track was reviewed for current state, key configuration details, and blockers. All tracks remain on schedule with no new blockers reported.
+
+The Kafka migration is moving from AWS MSK (EOL 2026-08-15) to Strimzi 0.39.0 on EKS. The PostgreSQL upgrade from 14.10 to 16.2 is scheduled for a maintenance window on 2026-05-25 at 03:00 UTC with snapshot backup and documented rollback procedures. Bundle size optimization is in progress, currently at 847KB with a 500KB target; lodash refactoring already saved 80KB. The Feast feature store rollout has the recommendation model as its first consumer, with registry and online/offline stores configured. The v1 API deprecation is on track for 2026-09-01 sunset with 34 endpoints deprecated, migration guide published, and customers notified.
+
+Distributed tracing with OpenTelemetry is partially deployed across auth, API gateway, and billing services. Cost allocation tagging is enforced via AWS Config rules requiring environment, service, owner, and cost-center tags. The IAM-to-SSO migration will deprecate 23 legacy IAM users in favor of AWS SSO with the DeveloperAccess-Prod permission set. LaunchDarkly feature flag migration has completed 156 flags into the moltai-prod project. The on-call rotation is transitioning from PagerDuty (EOL 2026-07-01) to Opsgenie with all routing rules ported.
+
+Multiple repeated status checks confirmed no new blockers on any of the ten tracks. All initiatives are proceeding as planned with previously documented timelines and configurations intact.
+
+```json
+{
+  "main": "Q2 platform work status review across ten parallel infrastructure and tooling initiatives",
+  "sub": [
+    {
+      "id": "kafka-migration",
+      "label": "Migrate from AWS MSK to Strimzi on EKS",
+      "status": "active"
+    },
+    {
+      "id": "postgresql-upgrade",
+      "label": "Upgrade PostgreSQL from 14.10 to 16.2",
+      "status": "active"
+    },
+    {
+      "id": "bundle-size-optimization",
+      "label": "Reduce frontend bundle size from 847KB to 500KB target",
+      "status": "active"
+    },
+    {
+      "id": "feast-feature-store",
+      "label": "Roll out Feast ML feature store with recommendation model",
+      "status": "active"
+    },
+    {
+      "id": "v1-api-deprecation",
+      "label": "Deprecate v1 API endpoints by 2026-09-01",
+      "status": "active"
+    }
+  ],
+  "decisions": [
+    "MSK EOL date set to 2026-08-15, migration to Strimzi 0.39.0 on EKS",
+    "PostgreSQL upgrade maintenance window scheduled for 2026-05-25 03:00 UTC",
+    "v1 API sunset date confirmed as 2026-09-01 with customer notifications sent",
+    "PagerDuty EOL set to 2026-07-01, full migration to Opsgenie",
+    "Lodash full import replaced with selective imports, saving 80KB"
+  ],
+  "open_questions": [],
+  "key_state": [
+    {
+      "kind": "id",
+      "value": "arn:aws:kafka:us-east-1:492372116065:cluster/msk-prod/abc-123",
+      "label": "Source MSK cluster ARN",
+      "thread_id": "kafka-migration"
+    },
+    {
+      "kind": "version",
+      "value": "0.39.0",
+      "label": "Strimzi chart version",
+      "thread_id": "kafka-migration"
+    },
+    {
+      "kind": "url",
+      "value": "molt-prod-rds.cluster-xyz.us-east-1.rds.amazonaws.com",
+      "label": "PostgreSQL RDS endpoint",
+      "thread_id": "postgresql-upgrade"
+    },
+    {
+      "kind": "url",
+      "value": "s3://moltai-feast-registry-prod",
+      "label": "Feast registry S3 bucket",
+      "thread_id": "feast-feature-store"
+    },
+    {
+      "kind": "url",
+      "value": "feast-online.cache.amazonaws.com:6379",
+      "label": "Feast online store endpoint",
+      "thread_id": "feast-feature-store"
+    },
+    {
+      "kind": "url",
+      "value": "s3://moltai-feast-offline-prod",
+      "label": "Feast offline store S3 bucket",
+      "thread_id": "feast-feature-store"
+    },
+    {
+      "kind": "url",
+      "value": "otel-collector.observability:4317",
+      "label": "OpenTelemetry collector endpoint"
+    },
+    {
+      "kind": "url",
+      "value": "https://jaeger.moltaicorp.com",
+      "label": "Jaeger query UI"
+    },
+    {
+      "kind": "url",
+      "value": "https://grafana.moltaicorp.com/d/cost-allocation",
+      "label": "Cost allocation dashboard"
+    },
+    {
+      "kind": "url",
+      "value": "https://moltaicorp.awsapps.com/start",
+      "label": "AWS SSO portal URL"
+    },
+    {
+      "kind": "id",
+      "value": "okta-app-0oa3xyz123",
+      "label": "Okta app ID"
+    },
+    {
+      "kind": "id",
+      "value": "og-int-key-2026-05",
+      "label": "Opsgenie integration key"
+    },
+    {
+      "kind": "id",
+      "value": "team-sre-prod",
+      "label": "Opsgenie team ID"
+    },
+    {
+      "kind": "config",
+      "value": "moltai-prod",
+      "label": "LaunchDarkly project key"
+    },
+    {
+      "kind": "config",
+      "value": "LAUNCHDARKLY_SDK_KEY",
+      "label": "LaunchDarkly SDK key environment variable"
+    }
+  ]
+}
+```

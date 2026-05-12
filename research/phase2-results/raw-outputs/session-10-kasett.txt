@@ -1,0 +1,99 @@
+We built and shipped @moltai/kasett-rewind v0.1.0, a thread-aware compaction plugin for OpenClaw. The plugin injects structured steering prompts before compaction and parses thread metadata from LLM output to maintain continuity across sessions. The core architecture uses three hooks: before_compaction (inject steering), after_compaction (parse and store metadata), and context_load (inject orientation from recent metadata). Thread metadata is stored in session JSONL files as kaspiett events (legacy naming from pre-rename), with a rolling window of the 5 most recent compactions.
+
+The plugin reads from /home/node/.openclaw/agents/main/sessions/ via a SessionReader class that parses JSONL events and extracts kaspiett metadata. The steering prompt builder analyzes previous thread metadata to classify threads as core/fresh/fading and constructs prompts that guide the LLM to produce both a narrative summary and a structured [THREAD_META] block. The parser uses regex to extract this block and parse main:/sub1:/sub2:/sub3: lines into a ThreadMeta object. If the LLM fails to produce the block, the plugin degrades gracefully by storing null metadata and falling back to basic steering on the next compaction.
+
+We built a Phase 1 benchmark harness to validate the approach. The benchmark generates 10 synthetic sessions across three complexity tiers (Tier 3 has 5+ threads, 8-12 key state values, 80-100 turns) and compares vanilla summarization against kasett-steered summarization using anthropic/claude-sonnet-4-6 via OpenRouter. The harness measures Thread Retention Rate (TRR) and Key State Survival Rate (KSSR), with specific greppable values like URLs, UUIDs, version strings, and file paths embedded in fixtures.
+
+Results were strong: TRR improved from 0.62 to 0.89 (Cohen's d=1.8, large effect) and KSSR from 0.71 to 0.94 (d=1.6, large effect). The kasett steering significantly improved both thread retention and key state survival across all sessions. All 47 tests passed, and the plugin was published to the registry. The plugin is now installable via openclaw plugin install @moltai/kasett-rewind.
+
+```json
+{
+  "main": "Built and validated @moltai/kasett-rewind v0.1.0, a thread-aware compaction plugin for OpenClaw",
+  "sub": [
+    {
+      "id": "plugin-architecture",
+      "label": "Plugin hooks (before/after_compaction, context_load) and registration",
+      "status": "completed"
+    },
+    {
+      "id": "thread-meta-schema",
+      "label": "ThreadMeta schema and kaspiett storage in session JSONL",
+      "status": "completed"
+    },
+    {
+      "id": "session-reader",
+      "label": "SessionReader class for parsing JSONL events from sessions directory",
+      "status": "completed"
+    },
+    {
+      "id": "benchmark-harness",
+      "label": "Phase 1 benchmark with anthropic/claude-sonnet-4-6 via OpenRouter",
+      "status": "completed"
+    },
+    {
+      "id": "steering-prompt-builder",
+      "label": "buildSteeringPrompt() with core/fresh/fading thread analysis",
+      "status": "completed"
+    }
+  ],
+  "decisions": [
+    "Keep kaspiett as the storage field name for backwards compatibility despite project rename to kasett-rewind",
+    "Use rolling window of 5 most recent compactions for thread metadata",
+    "Degrade gracefully to basic steering when THREAD_META block is missing or sessions directory is unavailable",
+    "Use anthropic/claude-sonnet-4-6 via OpenRouter for Phase 1 benchmark validation"
+  ],
+  "open_questions": [],
+  "key_state": [
+    {
+      "kind": "url",
+      "value": "https://registry.moltaicorp.com/plugins/kasett-rewind/versions",
+      "label": "kasett-rewind plugin registry URL"
+    },
+    {
+      "kind": "url",
+      "value": "https://openrouter.ai/api/v1/chat/completions",
+      "label": "OpenRouter API endpoint for benchmark"
+    },
+    {
+      "kind": "id",
+      "value": "kasett-rewind-f7a3b2c1-9d44-4b7e-8c22-1f0e3b5d9a11",
+      "label": "kasett-rewind plugin ID"
+    },
+    {
+      "kind": "path",
+      "value": "/home/node/.openclaw/workspace/repos/kasett-rewind/src/index.ts",
+      "label": "kasett-rewind plugin entry point"
+    },
+    {
+      "kind": "path",
+      "value": "/home/node/.openclaw/agents/main/sessions/",
+      "label": "session JSONL storage directory"
+    },
+    {
+      "kind": "version",
+      "value": "v0.1.0",
+      "label": "kasett-rewind release version"
+    },
+    {
+      "kind": "version",
+      "value": "anthropic/claude-sonnet-4-6",
+      "label": "benchmark model"
+    },
+    {
+      "kind": "config",
+      "value": "rolling_window_size=5",
+      "label": "thread metadata rolling window size"
+    },
+    {
+      "kind": "config",
+      "value": "phase1_fixture_count=10",
+      "label": "Phase 1 benchmark fixture count"
+    },
+    {
+      "kind": "value",
+      "value": "kaspiett",
+      "label": "JSONL event field name for thread metadata"
+    }
+  ]
+}
+```

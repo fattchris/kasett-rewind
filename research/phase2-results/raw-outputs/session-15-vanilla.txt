@@ -1,0 +1,64 @@
+# Conversation Summary: MoltaiCorp Project Status
+
+## Active Threads (4)
+
+### 1. Design Tokens 2.0 Rollout
+- **Version**: 2.0.1 published to github.com/moltaicorp/design-tokens
+- **Storybook**: https://storybook.moltaicorp.com (all components updated)
+- **Adoption**: 60% of components migrated, remainder planned for current sprint
+- **Status**: Active, on track
+
+### 2. Incident Post-Mortem
+- **Incident ID**: INC-2026-05-08-001
+- **Duration**: 47 minutes
+- **RCA Document**: https://docs.moltaicorp.com/incidents/INC-2026-05-08-001
+- **Action Items**: 4 tracked in RCA, all tied to incident
+- **Status**: Active, no new updates
+
+### 3. Q2 2026 OKR Planning
+- **Spreadsheet**: https://docs.google.com/spreadsheets/d/1xyz-okr-q2-2026
+- **Review Cadence**: Weekly, Tuesday 10am MT (locked)
+- **Status**: Active, tracking ongoing
+
+### 4. Sidekiq to Temporal Migration
+- **Target Endpoint**: temporal.moltaicorp.com:7233
+- **Namespace**: molt-prod
+- **Progress**: ~30% of workflows ported
+- **Sidekiq EOL**: 2026-07-15
+- **Status**: Active, in progress
+
+## Completed Threads (2)
+
+### 5. Legacy Admin Dashboard Decommission
+- **Completion Date**: 2026-04-30
+- **DNS**: old-admin.moltaicorp.com retired
+- **Traffic**: No traffic since cutover
+- **Status**: ✅ Completed
+
+### 6. Static Assets Migration to Cloudflare R2
+- **Bucket**: moltai-static-assets
+- **Account**: cf-account-2026-05
+- **Custom Domain**: cdn.moltaicorp.com
+- **Old S3 Origin**: Removed, all traffic via R2
+- **Status**: ✅ Completed
+
+## Blocked Thread (1)
+
+### 7. LLM Vendor Renegotiation (Anthropic)
+- **Vendor**: Anthropic Enterprise Agreement
+- **Current Spend**: $42,000/month
+- **Target Spend**: $28,000/month
+- **Renewal Deadline**: 2026-06-30
+- **Blocker**: Awaiting new pricing tier from vendor
+- **Owner**: Finance lead (finance-lead@moltaicorp.com)
+- **Status**: 🚫 Blocked on vendor pricing response
+
+## Key Dates
+- **2026-06-30**: Anthropic contract renewal deadline
+- **2026-07-15**: Sidekiq EOL deadline
+- **Every Tuesday 10am MT**: OKR review meeting
+
+## Critical Path Items
+1. Anthropic pricing response needed before 2026-06-30 deadline
+2. Temporal migration must complete before 2026-07-15 Sidekiq EOL
+3. Design tokens rollout: 40% remaining to migrate this sprint

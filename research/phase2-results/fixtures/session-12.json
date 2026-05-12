@@ -1,0 +1,436 @@
+{
+  "id": "session-12",
+  "tier": 4,
+  "threads": [
+    "redesigning the customer onboarding flow (originally called signup-v2, renamed mid-session to customer-onboarding-revamp)",
+    "pricing tier restructuring from 3-tier to 4-tier model",
+    "integrating Stripe billing portal with custom domain",
+    "building usage analytics dashboard for product team",
+    "refactoring email service from Mailgun to Postmark",
+    "GDPR data export feature implementation"
+  ],
+  "keyState": {
+    "new_thread_name": "customer-onboarding-revamp",
+    "old_thread_name": "signup-v2",
+    "figma_url": "https://figma.com/file/aBcD3fGhI4j/onboarding-revamp",
+    "new_pricing_starter": "$49/mo",
+    "new_pricing_pro": "$199/mo",
+    "new_pricing_business": "$499/mo",
+    "new_pricing_enterprise": "custom",
+    "stripe_portal_domain": "billing.moltaicorp.com",
+    "stripe_account_id": "acct_1OqB7zE2k9jX4mPp",
+    "analytics_db": "molt-analytics-prod.aurora.us-east-1",
+    "analytics_dashboard_url": "https://dashboards.moltaicorp.com/product-usage-v2",
+    "postmark_server_token": "pm-server-token-2026-05",
+    "mailgun_eol_date": "2026-06-15",
+    "transactional_email_domain": "mail.moltaicorp.com",
+    "gdpr_export_endpoint": "/api/v2/users/{id}/data-export",
+    "export_bucket": "s3://moltai-gdpr-exports-prod",
+    "export_signed_url_ttl": "24h",
+    "pii_columns_count": "47",
+    "onboarding_pr": "#892",
+    "pricing_pr": "#897"
+  },
+  "messages": [
+    {
+      "role": "user",
+      "content": "Six tracks today: customer onboarding revamp (used to be called signup-v2), pricing tier restructuring, Stripe billing portal, product analytics dashboard, email migration to Postmark, and GDPR data export. Walk through each."
+    },
+    {
+      "role": "user",
+      "content": "Kicking off signup-v2 today — Figma link?"
+    },
+    {
+      "role": "assistant",
+      "content": "Figma is at https://figma.com/file/aBcD3fGhI4j/onboarding-revamp. signup-v2 covers the whole post-signup flow up to first value."
+    },
+    {
+      "role": "user",
+      "content": "New pricing tiers are starter $49/mo, pro $199/mo, business $499/mo, enterprise custom. PR target?"
+    },
+    {
+      "role": "assistant",
+      "content": "PR #897 will introduce the 4-tier model: starter $49/mo, pro $199/mo, business $499/mo, enterprise custom. Coordinated with Stripe portal change."
+    },
+    {
+      "role": "user",
+      "content": "Stripe portal custom domain?"
+    },
+    {
+      "role": "assistant",
+      "content": "billing.moltaicorp.com — DNS configured, Stripe verified. Stripe account is acct_1OqB7zE2k9jX4mPp."
+    },
+    {
+      "role": "user",
+      "content": "Analytics dashboard for product — datasource?"
+    },
+    {
+      "role": "assistant",
+      "content": "Reading from molt-analytics-prod.aurora.us-east-1. Dashboard lives at https://dashboards.moltaicorp.com/product-usage-v2."
+    },
+    {
+      "role": "user",
+      "content": "Email migration plan — Mailgun out by when?"
+    },
+    {
+      "role": "assistant",
+      "content": "Mailgun EOL date is 2026-06-15. Postmark server token in place: pm-server-token-2026-05. Cutover via mail.moltaicorp.com."
+    },
+    {
+      "role": "user",
+      "content": "GDPR export endpoint?"
+    },
+    {
+      "role": "assistant",
+      "content": "GET /api/v2/users/{id}/data-export. Returns a signed URL into s3://moltai-gdpr-exports-prod with 24h TTL."
+    },
+    {
+      "role": "user",
+      "content": "Quick rename — let us call this customer-onboarding-revamp from now on. signup-v2 is too narrow."
+    },
+    {
+      "role": "assistant",
+      "content": "Got it. Renaming the thread from signup-v2 to customer-onboarding-revamp. PR will land as #892."
+    },
+    {
+      "role": "user",
+      "content": "Effective date?"
+    },
+    {
+      "role": "assistant",
+      "content": "New customers get 4-tier starting next Monday. Existing on grandfathered 3-tier until next renewal."
+    },
+    {
+      "role": "user",
+      "content": "SSL?"
+    },
+    {
+      "role": "assistant",
+      "content": "Stripe provisions the cert automatically once DNS resolves. Already green on billing.moltaicorp.com."
+    },
+    {
+      "role": "user",
+      "content": "Refresh cadence?"
+    },
+    {
+      "role": "assistant",
+      "content": "Hourly aggregations from raw events. Dashboard at https://dashboards.moltaicorp.com/product-usage-v2 refreshes on access."
+    },
+    {
+      "role": "user",
+      "content": "Sender domain?"
+    },
+    {
+      "role": "assistant",
+      "content": "mail.moltaicorp.com is the new transactional domain. SPF, DKIM, DMARC all configured for Postmark."
+    },
+    {
+      "role": "user",
+      "content": "How many PII columns covered?"
+    },
+    {
+      "role": "assistant",
+      "content": "47 PII columns across 12 tables — full coverage per the data inventory."
+    },
+    {
+      "role": "user",
+      "content": "Reference both names in the PR description so search works?"
+    },
+    {
+      "role": "assistant",
+      "content": "Yes — PR #892 will mention both customer-onboarding-revamp (current name) and signup-v2 (legacy name) in the description."
+    },
+    {
+      "role": "user",
+      "content": "Marketing copy locked?"
+    },
+    {
+      "role": "assistant",
+      "content": "Locked. starter $49/mo, pro $199/mo, business $499/mo. Enterprise stays custom."
+    },
+    {
+      "role": "user",
+      "content": "Test transaction?"
+    },
+    {
+      "role": "assistant",
+      "content": "Ran a $1 charge through the portal under acct_1OqB7zE2k9jX4mPp. Refunded immediately. Flow works end-to-end."
+    },
+    {
+      "role": "user",
+      "content": "Access control?"
+    },
+    {
+      "role": "assistant",
+      "content": "Product team SSO group only. PII redacted at the SQL view layer."
+    },
+    {
+      "role": "user",
+      "content": "Volume sanity check?"
+    },
+    {
+      "role": "assistant",
+      "content": "Postmark plan handles up to 300k/month. Current peak about 180k. Well within limits."
+    },
+    {
+      "role": "user",
+      "content": "Encryption?"
+    },
+    {
+      "role": "assistant",
+      "content": "KMS-encrypted at rest. Signed URL valid 24h. Bucket is s3://moltai-gdpr-exports-prod with object-lock for compliance hold."
+    },
+    {
+      "role": "user",
+      "content": "Open questions on pricing tier restructuring from 3-tier to 4-tier model?"
+    },
+    {
+      "role": "assistant",
+      "content": "None outstanding right now. State as previously summarized."
+    },
+    {
+      "role": "user",
+      "content": "Open questions on building usage analytics dashboard for product team?"
+    },
+    {
+      "role": "assistant",
+      "content": "None outstanding right now. State as previously summarized."
+    },
+    {
+      "role": "user",
+      "content": "Open questions on GDPR data export feature implementation?"
+    },
+    {
+      "role": "assistant",
+      "content": "None outstanding right now. State as previously summarized."
+    },
+    {
+      "role": "user",
+      "content": "Open questions on pricing tier restructuring from 3-tier to 4-tier model?"
+    },
+    {
+      "role": "assistant",
+      "content": "None outstanding right now. State as previously summarized."
+    },
+    {
+      "role": "user",
+      "content": "Open questions on building usage analytics dashboard for product team?"
+    },
+    {
+      "role": "assistant",
+      "content": "None outstanding right now. State as previously summarized."
+    },
+    {
+      "role": "user",
+      "content": "Open questions on GDPR data export feature implementation?"
+    },
+    {
+      "role": "assistant",
+      "content": "None outstanding right now. State as previously summarized."
+    },
+    {
+      "role": "user",
+      "content": "Open questions on pricing tier restructuring from 3-tier to 4-tier model?"
+    },
+    {
+      "role": "assistant",
+      "content": "None outstanding right now. State as previously summarized."
+    },
+    {
+      "role": "user",
+      "content": "Open questions on building usage analytics dashboard for product team?"
+    },
+    {
+      "role": "assistant",
+      "content": "None outstanding right now. State as previously summarized."
+    },
+    {
+      "role": "user",
+      "content": "Open questions on GDPR data export feature implementation?"
+    },
+    {
+      "role": "assistant",
+      "content": "None outstanding right now. State as previously summarized."
+    },
+    {
+      "role": "user",
+      "content": "Open questions on pricing tier restructuring from 3-tier to 4-tier model?"
+    },
+    {
+      "role": "assistant",
+      "content": "None outstanding right now. State as previously summarized."
+    },
+    {
+      "role": "user",
+      "content": "Open questions on building usage analytics dashboard for product team?"
+    },
+    {
+      "role": "assistant",
+      "content": "None outstanding right now. State as previously summarized."
+    },
+    {
+      "role": "user",
+      "content": "Open questions on GDPR data export feature implementation?"
+    },
+    {
+      "role": "assistant",
+      "content": "None outstanding right now. State as previously summarized."
+    },
+    {
+      "role": "user",
+      "content": "Open questions on pricing tier restructuring from 3-tier to 4-tier model?"
+    },
+    {
+      "role": "assistant",
+      "content": "None outstanding right now. State as previously summarized."
+    },
+    {
+      "role": "user",
+      "content": "Open questions on building usage analytics dashboard for product team?"
+    },
+    {
+      "role": "assistant",
+      "content": "None outstanding right now. State as previously summarized."
+    },
+    {
+      "role": "user",
+      "content": "Open questions on GDPR data export feature implementation?"
+    },
+    {
+      "role": "assistant",
+      "content": "None outstanding right now. State as previously summarized."
+    },
+    {
+      "role": "user",
+      "content": "Open questions on pricing tier restructuring from 3-tier to 4-tier model?"
+    },
+    {
+      "role": "assistant",
+      "content": "None outstanding right now. State as previously summarized."
+    },
+    {
+      "role": "user",
+      "content": "Open questions on building usage analytics dashboard for product team?"
+    },
+    {
+      "role": "assistant",
+      "content": "None outstanding right now. State as previously summarized."
+    },
+    {
+      "role": "user",
+      "content": "Open questions on GDPR data export feature implementation?"
+    },
+    {
+      "role": "assistant",
+      "content": "None outstanding right now. State as previously summarized."
+    },
+    {
+      "role": "user",
+      "content": "Open questions on pricing tier restructuring from 3-tier to 4-tier model?"
+    },
+    {
+      "role": "assistant",
+      "content": "None outstanding right now. State as previously summarized."
+    },
+    {
+      "role": "user",
+      "content": "Open questions on building usage analytics dashboard for product team?"
+    },
+    {
+      "role": "assistant",
+      "content": "None outstanding right now. State as previously summarized."
+    },
+    {
+      "role": "user",
+      "content": "Open questions on GDPR data export feature implementation?"
+    },
+    {
+      "role": "assistant",
+      "content": "None outstanding right now. State as previously summarized."
+    },
+    {
+      "role": "user",
+      "content": "Open questions on pricing tier restructuring from 3-tier to 4-tier model?"
+    },
+    {
+      "role": "assistant",
+      "content": "None outstanding right now. State as previously summarized."
+    },
+    {
+      "role": "user",
+      "content": "Open questions on building usage analytics dashboard for product team?"
+    },
+    {
+      "role": "assistant",
+      "content": "None outstanding right now. State as previously summarized."
+    },
+    {
+      "role": "user",
+      "content": "Open questions on GDPR data export feature implementation?"
+    },
+    {
+      "role": "assistant",
+      "content": "None outstanding right now. State as previously summarized."
+    },
+    {
+      "role": "user",
+      "content": "Open questions on pricing tier restructuring from 3-tier to 4-tier model?"
+    },
+    {
+      "role": "assistant",
+      "content": "None outstanding right now. State as previously summarized."
+    },
+    {
+      "role": "user",
+      "content": "Open questions on building usage analytics dashboard for product team?"
+    },
+    {
+      "role": "assistant",
+      "content": "None outstanding right now. State as previously summarized."
+    },
+    {
+      "role": "user",
+      "content": "Open questions on GDPR data export feature implementation?"
+    },
+    {
+      "role": "assistant",
+      "content": "None outstanding right now. State as previously summarized."
+    },
+    {
+      "role": "user",
+      "content": "Open questions on pricing tier restructuring from 3-tier to 4-tier model?"
+    },
+    {
+      "role": "assistant",
+      "content": "None outstanding right now. State as previously summarized."
+    },
+    {
+      "role": "user",
+      "content": "Open questions on building usage analytics dashboard for product team?"
+    },
+    {
+      "role": "assistant",
+      "content": "None outstanding right now. State as previously summarized."
+    },
+    {
+      "role": "user",
+      "content": "Open questions on GDPR data export feature implementation?"
+    },
+    {
+      "role": "assistant",
+      "content": "None outstanding right now. State as previously summarized."
+    },
+    {
+      "role": "user",
+      "content": "Open questions on pricing tier restructuring from 3-tier to 4-tier model?"
+    },
+    {
+      "role": "assistant",
+      "content": "None outstanding right now. State as previously summarized."
+    },
+    {
+      "role": "user",
+      "content": "Open questions on building usage analytics dashboard for product team?"
+    }
+  ]
+}

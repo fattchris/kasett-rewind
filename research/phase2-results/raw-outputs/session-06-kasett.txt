@@ -1,0 +1,84 @@
+We implemented end-to-end encryption for the agent message bus service. The core work centered on building an envelope encryption pattern using AWS KMS, with AES-256-GCM for message encryption and HMAC-SHA256 for authentication. The encryption module handles per-message data key generation from KMS, encrypts the payload, and stores the encrypted data key alongside the ciphertext.
+
+Key rotation became a significant focus. We configured automatic rotation every 90 days for the KMS key, with application-level data key rotation. Old messages remain decryptable through KMS's versioned key management. We added rotation audit logging to CloudWatch with 90-day retention and built an admin endpoint to manually flush the data key cache when rotation occurs.
+
+Performance testing revealed that raw KMS GenerateDataKey calls added ~40ms per message, dropping throughput from 12,400 to 3,200 messages/second. We solved this with data key caching: 300-second TTL, max 1000 cached keys per tenant. This recovered throughput to 11,800 messages/second with only 12ms p99 latency — a 5% overhead versus plaintext. The cipher suite uses AES-256-GCM for encryption, HMAC-SHA256 for authentication, and RSA-OAEP for asymmetric operations when needed.
+
+We completed the security design documentation and promoted the release from v5.0.0-rc2 to v5.0.0, then deployed to production.
+
+```json
+{
+  "main": "Implementing E2E encryption for the agent message bus with KMS envelope encryption",
+  "sub": [
+    {
+      "id": "e2e-crypto-module",
+      "label": "Build E2E encryption module with AES-256-GCM and HMAC-SHA256",
+      "status": "completed"
+    },
+    {
+      "id": "kms-key-rotation",
+      "label": "Configure 90-day KMS key rotation with audit logging and cache flush",
+      "status": "completed"
+    },
+    {
+      "id": "throughput-benchmark",
+      "label": "Benchmark encrypted throughput and implement data key caching",
+      "status": "completed"
+    }
+  ],
+  "decisions": [
+    "Use envelope encryption with KMS for key management rather than client-side key storage",
+    "Implement data key caching with 300s TTL to mitigate KMS latency overhead",
+    "Set 90-day rotation policy for KMS keys with automatic cache invalidation",
+    "Accept 5% throughput reduction (11,800 vs 12,400 msg/s) as acceptable for E2E encryption"
+  ],
+  "open_questions": [],
+  "key_state": [
+    {
+      "kind": "url",
+      "value": "https://mbus.moltaicorp.com/v2/messages/publish",
+      "label": "mbus message publish endpoint"
+    },
+    {
+      "kind": "id",
+      "value": "arn:aws:kms:us-east-1:843979154439:key/b2c3d4e5-f6a7-8901-b2c3-d4e5f6a78901",
+      "label": "KMS CMK for envelope encryption"
+    },
+    {
+      "kind": "path",
+      "value": "/home/node/.openclaw/workspace/repos/molt-infra/services/mbus/src/crypto/e2e.ts",
+      "label": "E2E encryption module",
+      "thread_id": "e2e-crypto-module"
+    },
+    {
+      "kind": "path",
+      "value": "/admin/crypto/flush-cache",
+      "label": "cache flush admin endpoint",
+      "thread_id": "kms-key-rotation"
+    },
+    {
+      "kind": "version",
+      "value": "v5.0.0",
+      "label": "production release version"
+    },
+    {
+      "kind": "config",
+      "value": "rotation_days=90",
+      "label": "KMS key rotation interval",
+      "thread_id": "kms-key-rotation"
+    },
+    {
+      "kind": "config",
+      "value": "cache_ttl=300",
+      "label": "data key cache TTL in seconds",
+      "thread_id": "throughput-benchmark"
+    },
+    {
+      "kind": "config",
+      "value": "max_cached_keys=1000",
+      "label": "maximum cached data keys",
+      "thread_id": "throughput-benchmark"
+    }
+  ]
+}
+```

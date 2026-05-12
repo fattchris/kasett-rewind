@@ -1,0 +1,45 @@
+# Migration Summary: Agents Database to New RDS Instance
+
+## Completed Migration
+Successfully migrated the agents database from the old primary instance to a new RDS instance with upgraded hardware and schema updates.
+
+## Key Technical Details
+
+### Database Connections
+- **Old connection**: `postgresql://prod:xK9mP2rL@db-primary.internal:5432/agents`
+- **New connection**: `postgresql://prod:xK9mP2rL@db-primary-new.internal:5432/agents`
+- **Instance class**: db.r6g.xlarge
+
+### Backup & Recovery
+- **Snapshot created**: `rds:db-primary-snap-20260505-120000`
+- **Retention period**: 30 days
+- **Status**: Retained for rollback capability
+
+### Schema Migration
+- **Migration version**: schema-migration-v047
+- **Migration file**: `/home/node/.openclaw/workspace/repos/molt-infra/db/migrations/047_add_agent_metadata.sql`
+- **Changes**: Added `agent_metadata` JSONB column to agents table with GIN index for metadata queries
+- **Status**: Applied successfully with 0 errors
+
+### Configuration Updates
+- **Files updated**: 7 config files
+- **Old references remaining**: 0 (verified clean)
+- **All configs now point to**: db-primary-new.internal
+
+### Migration Steps Executed
+1. Created snapshot of old db-primary instance
+2. Restored snapshot to new db.r6g.xlarge instance at db-primary-new.internal
+3. Applied schema-migration-v047 to new instance
+4. Tested connectivity - successful
+5. Verified replication lag - 0 seconds
+6. Updated all 7 configuration files
+7. Verified no old connection references remain
+8. Set snapshot retention to 30 days
+9. Old instance (db-primary.internal) ready for decommission
+
+## Current State
+- **Active connection**: postgresql://prod:xK9mP2rL@db-primary-new.internal:5432/agents
+- **Instance type**: db.r6g.xlarge
+- **Schema version**: v047 (includes agent_metadata column)
+- **Migration status**: Complete
+- **Runbook**: Documented

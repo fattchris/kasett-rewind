@@ -1,0 +1,30 @@
+# Conversation Summary: Production Auth Failure Incident
+
+## Incident Overview
+**Problem**: Users experiencing 401 errors when refreshing authentication tokens  
+**Affected Endpoint**: https://auth.moltaicorp.com/v1/tokens/refresh  
+**Impact**: 340 users affected over ~70 minutes  
+**Test Session ID**: a3f8c201-9d44-4b7e-8c22-1f0e3b5d9a77
+
+## Root Cause
+- **Deployment**: v3.1.0 deployed to production 1 hour before incident detection
+- **Bug Location**: /opt/services/auth-service/src/middleware/jwt.ts
+- **Technical Issue**: JWT expiry validation changed to compare `Date.now()` (milliseconds) directly against token `exp` field (seconds), causing all tokens to appear immediately expired
+
+## Resolution
+**Hotfix Version**: v3.1.0-hotfix  
+**Fix Applied**: Changed expiry check from `Date.now() > token.exp` to `Date.now() / 1000 > token.exp`  
+**Deployment Time**: ~4 minutes  
+**Verification**: Session a3f8c201-9d44-4b7e-8c22-1f0e3b5d9a77 tested successfully, returned 200 with new access token  
+**Current Status**: Stable, error rate back to baseline
+
+## Prevention Measures Implemented
+1. **Unit Test**: Added test case "should reject tokens with expiry in milliseconds" to jwt.test.ts (same directory as jwt.ts)
+2. **Lint Rule**: Added ESLint rule to catch direct Date.now() comparisons against JWT exp without division
+3. **Documentation**: Postmortem written covering timeline, impact, root cause, and prevention measures
+
+## User Recovery
+No manual backfill required - affected users will naturally re-authenticate on next request with hotfix in place
+
+## Incident Status
+**ARCHIVED** - All documentation complete, service stable on v3.1.0-hotfix

@@ -1,0 +1,479 @@
+{
+  "id": "session-15",
+  "tier": 4,
+  "threads": [
+    "rolling out new design system tokens across web app (active)",
+    "incident response for last weeks production outage post-mortem (active)",
+    "Q2 OKR planning and tracking spreadsheet (active)",
+    "background job queue migration from Sidekiq to Temporal (active)",
+    "completed: deprecation of legacy admin dashboard",
+    "completed: migration of static assets to Cloudflare R2",
+    "blocked: vendor contract renegotiation with current LLM provider"
+  ],
+  "keyState": {
+    "design_tokens_repo": "github.com/moltaicorp/design-tokens",
+    "design_tokens_version": "2.0.1",
+    "storybook_url": "https://storybook.moltaicorp.com",
+    "incident_id": "INC-2026-05-08-001",
+    "incident_duration_min": "47",
+    "rca_doc_url": "https://docs.moltaicorp.com/incidents/INC-2026-05-08-001",
+    "okr_sheet_url": "https://docs.google.com/spreadsheets/d/1xyz-okr-q2-2026",
+    "okr_review_cadence": "weekly Tuesday 10am MT",
+    "temporal_namespace": "molt-prod",
+    "temporal_endpoint": "temporal.moltaicorp.com:7233",
+    "sidekiq_eol_date": "2026-07-15",
+    "legacy_admin_decom_date": "2026-04-30",
+    "legacy_admin_dns": "old-admin.moltaicorp.com",
+    "r2_bucket": "moltai-static-assets",
+    "r2_account_id": "cf-account-2026-05",
+    "r2_custom_domain": "cdn.moltaicorp.com",
+    "blocked_vendor_name": "Anthropic Enterprise Agreement",
+    "blocked_reason": "awaiting new pricing tier from vendor",
+    "blocked_renewal_deadline": "2026-06-30",
+    "current_monthly_spend": "$42,000",
+    "target_monthly_spend": "$28,000",
+    "finance_lead_email": "finance-lead@moltaicorp.com"
+  },
+  "messages": [
+    {
+      "role": "user",
+      "content": "Mixed-state day. 4 active threads (design tokens, incident post-mortem, OKR planning, Sidekiq->Temporal), 2 completed (legacy admin decom, R2 static migration), 1 blocked (LLM vendor renegotiation). Status on each, especially the blocked one."
+    },
+    {
+      "role": "user",
+      "content": "Design tokens 2.0 status?"
+    },
+    {
+      "role": "assistant",
+      "content": "Version 2.0.1 published to github.com/moltaicorp/design-tokens. Storybook at https://storybook.moltaicorp.com shows all components updated."
+    },
+    {
+      "role": "user",
+      "content": "Incident post-mortem — id?"
+    },
+    {
+      "role": "assistant",
+      "content": "INC-2026-05-08-001. Duration 47 minutes. RCA at https://docs.moltaicorp.com/incidents/INC-2026-05-08-001."
+    },
+    {
+      "role": "user",
+      "content": "Q2 OKRs sheet?"
+    },
+    {
+      "role": "assistant",
+      "content": "https://docs.google.com/spreadsheets/d/1xyz-okr-q2-2026. Weekly review Tuesday 10am MT."
+    },
+    {
+      "role": "user",
+      "content": "Temporal migration target?"
+    },
+    {
+      "role": "assistant",
+      "content": "Namespace molt-prod, endpoint temporal.moltaicorp.com:7233. Sidekiq EOL 2026-07-15."
+    },
+    {
+      "role": "user",
+      "content": "Legacy admin dashboard decom — done?"
+    },
+    {
+      "role": "assistant",
+      "content": "Done. Decommissioned 2026-04-30. DNS old-admin.moltaicorp.com retired."
+    },
+    {
+      "role": "user",
+      "content": "Static assets on R2 — done?"
+    },
+    {
+      "role": "assistant",
+      "content": "Done. Bucket moltai-static-assets in account cf-account-2026-05. Custom domain cdn.moltaicorp.com."
+    },
+    {
+      "role": "user",
+      "content": "LLM vendor renegotiation — status?"
+    },
+    {
+      "role": "assistant",
+      "content": "Blocked on vendor pricing. Anthropic Enterprise Agreement renewal deadline 2026-06-30. Current spend $42,000/mo, target $28,000/mo."
+    },
+    {
+      "role": "user",
+      "content": "Adoption?"
+    },
+    {
+      "role": "assistant",
+      "content": "60% of components migrated to design-tokens 2.0.1. Remainder this sprint."
+    },
+    {
+      "role": "user",
+      "content": "Action items tracked?"
+    },
+    {
+      "role": "assistant",
+      "content": "Yes, 4 action items in the RCA at https://docs.moltaicorp.com/incidents/INC-2026-05-08-001. All tied back to incident INC-2026-05-08-001."
+    },
+    {
+      "role": "user",
+      "content": "Cadence locked?"
+    },
+    {
+      "role": "assistant",
+      "content": "Locked. Weekly Tuesday 10am MT review of OKRs in https://docs.google.com/spreadsheets/d/1xyz-okr-q2-2026."
+    },
+    {
+      "role": "user",
+      "content": "Workflows ported?"
+    },
+    {
+      "role": "assistant",
+      "content": "About 30% so far. Sidekiq EOL is 2026-07-15. Endpoint temporal.moltaicorp.com:7233 in namespace molt-prod is target for all of them."
+    },
+    {
+      "role": "user",
+      "content": "Anyone still hitting it?"
+    },
+    {
+      "role": "assistant",
+      "content": "No traffic on old-admin.moltaicorp.com since 2026-04-30 cutover. Marked completed."
+    },
+    {
+      "role": "user",
+      "content": "Old S3 origin retired?"
+    },
+    {
+      "role": "assistant",
+      "content": "Yes — all traffic on cdn.moltaicorp.com via R2 bucket moltai-static-assets. S3 origin removed. Marked completed."
+    },
+    {
+      "role": "user",
+      "content": "Why blocked?"
+    },
+    {
+      "role": "assistant",
+      "content": "Awaiting new pricing tier from vendor. Finance lead finance-lead@moltaicorp.com is driving. Renewal deadline is 2026-06-30, current $42,000/mo, target $28,000/mo."
+    },
+    {
+      "role": "user",
+      "content": "Updates on incident response for last weeks production outage post-mortem (active)?"
+    },
+    {
+      "role": "assistant",
+      "content": "Same status as previously reported. No new movement."
+    },
+    {
+      "role": "user",
+      "content": "Updates on background job queue migration from Sidekiq to Temporal (active)?"
+    },
+    {
+      "role": "assistant",
+      "content": "Same status as previously reported. No new movement."
+    },
+    {
+      "role": "user",
+      "content": "Updates on completed: migration of static assets to Cloudflare R2?"
+    },
+    {
+      "role": "assistant",
+      "content": "Same status as previously reported. No new movement."
+    },
+    {
+      "role": "user",
+      "content": "Updates on rolling out new design system tokens across web app (active)?"
+    },
+    {
+      "role": "assistant",
+      "content": "Same status as previously reported. No new movement."
+    },
+    {
+      "role": "user",
+      "content": "Updates on Q2 OKR planning and tracking spreadsheet (active)?"
+    },
+    {
+      "role": "assistant",
+      "content": "Same status as previously reported. No new movement."
+    },
+    {
+      "role": "user",
+      "content": "Updates on completed: deprecation of legacy admin dashboard?"
+    },
+    {
+      "role": "assistant",
+      "content": "Same status as previously reported. No new movement."
+    },
+    {
+      "role": "user",
+      "content": "Updates on blocked: vendor contract renegotiation with current LLM provider?"
+    },
+    {
+      "role": "assistant",
+      "content": "Same status as previously reported. No new movement."
+    },
+    {
+      "role": "user",
+      "content": "Updates on incident response for last weeks production outage post-mortem (active)?"
+    },
+    {
+      "role": "assistant",
+      "content": "Same status as previously reported. No new movement."
+    },
+    {
+      "role": "user",
+      "content": "Updates on background job queue migration from Sidekiq to Temporal (active)?"
+    },
+    {
+      "role": "assistant",
+      "content": "Same status as previously reported. No new movement."
+    },
+    {
+      "role": "user",
+      "content": "Updates on completed: migration of static assets to Cloudflare R2?"
+    },
+    {
+      "role": "assistant",
+      "content": "Same status as previously reported. No new movement."
+    },
+    {
+      "role": "user",
+      "content": "Updates on rolling out new design system tokens across web app (active)?"
+    },
+    {
+      "role": "assistant",
+      "content": "Same status as previously reported. No new movement."
+    },
+    {
+      "role": "user",
+      "content": "Updates on Q2 OKR planning and tracking spreadsheet (active)?"
+    },
+    {
+      "role": "assistant",
+      "content": "Same status as previously reported. No new movement."
+    },
+    {
+      "role": "user",
+      "content": "Updates on completed: deprecation of legacy admin dashboard?"
+    },
+    {
+      "role": "assistant",
+      "content": "Same status as previously reported. No new movement."
+    },
+    {
+      "role": "user",
+      "content": "Updates on blocked: vendor contract renegotiation with current LLM provider?"
+    },
+    {
+      "role": "assistant",
+      "content": "Same status as previously reported. No new movement."
+    },
+    {
+      "role": "user",
+      "content": "Updates on incident response for last weeks production outage post-mortem (active)?"
+    },
+    {
+      "role": "assistant",
+      "content": "Same status as previously reported. No new movement."
+    },
+    {
+      "role": "user",
+      "content": "Updates on background job queue migration from Sidekiq to Temporal (active)?"
+    },
+    {
+      "role": "assistant",
+      "content": "Same status as previously reported. No new movement."
+    },
+    {
+      "role": "user",
+      "content": "Updates on completed: migration of static assets to Cloudflare R2?"
+    },
+    {
+      "role": "assistant",
+      "content": "Same status as previously reported. No new movement."
+    },
+    {
+      "role": "user",
+      "content": "Updates on rolling out new design system tokens across web app (active)?"
+    },
+    {
+      "role": "assistant",
+      "content": "Same status as previously reported. No new movement."
+    },
+    {
+      "role": "user",
+      "content": "Updates on Q2 OKR planning and tracking spreadsheet (active)?"
+    },
+    {
+      "role": "assistant",
+      "content": "Same status as previously reported. No new movement."
+    },
+    {
+      "role": "user",
+      "content": "Updates on completed: deprecation of legacy admin dashboard?"
+    },
+    {
+      "role": "assistant",
+      "content": "Same status as previously reported. No new movement."
+    },
+    {
+      "role": "user",
+      "content": "Updates on blocked: vendor contract renegotiation with current LLM provider?"
+    },
+    {
+      "role": "assistant",
+      "content": "Same status as previously reported. No new movement."
+    },
+    {
+      "role": "user",
+      "content": "Updates on incident response for last weeks production outage post-mortem (active)?"
+    },
+    {
+      "role": "assistant",
+      "content": "Same status as previously reported. No new movement."
+    },
+    {
+      "role": "user",
+      "content": "Updates on background job queue migration from Sidekiq to Temporal (active)?"
+    },
+    {
+      "role": "assistant",
+      "content": "Same status as previously reported. No new movement."
+    },
+    {
+      "role": "user",
+      "content": "Updates on completed: migration of static assets to Cloudflare R2?"
+    },
+    {
+      "role": "assistant",
+      "content": "Same status as previously reported. No new movement."
+    },
+    {
+      "role": "user",
+      "content": "Updates on rolling out new design system tokens across web app (active)?"
+    },
+    {
+      "role": "assistant",
+      "content": "Same status as previously reported. No new movement."
+    },
+    {
+      "role": "user",
+      "content": "Updates on Q2 OKR planning and tracking spreadsheet (active)?"
+    },
+    {
+      "role": "assistant",
+      "content": "Same status as previously reported. No new movement."
+    },
+    {
+      "role": "user",
+      "content": "Updates on completed: deprecation of legacy admin dashboard?"
+    },
+    {
+      "role": "assistant",
+      "content": "Same status as previously reported. No new movement."
+    },
+    {
+      "role": "user",
+      "content": "Updates on blocked: vendor contract renegotiation with current LLM provider?"
+    },
+    {
+      "role": "assistant",
+      "content": "Same status as previously reported. No new movement."
+    },
+    {
+      "role": "user",
+      "content": "Updates on incident response for last weeks production outage post-mortem (active)?"
+    },
+    {
+      "role": "assistant",
+      "content": "Same status as previously reported. No new movement."
+    },
+    {
+      "role": "user",
+      "content": "Updates on background job queue migration from Sidekiq to Temporal (active)?"
+    },
+    {
+      "role": "assistant",
+      "content": "Same status as previously reported. No new movement."
+    },
+    {
+      "role": "user",
+      "content": "Updates on completed: migration of static assets to Cloudflare R2?"
+    },
+    {
+      "role": "assistant",
+      "content": "Same status as previously reported. No new movement."
+    },
+    {
+      "role": "user",
+      "content": "Updates on rolling out new design system tokens across web app (active)?"
+    },
+    {
+      "role": "assistant",
+      "content": "Same status as previously reported. No new movement."
+    },
+    {
+      "role": "user",
+      "content": "Updates on Q2 OKR planning and tracking spreadsheet (active)?"
+    },
+    {
+      "role": "assistant",
+      "content": "Same status as previously reported. No new movement."
+    },
+    {
+      "role": "user",
+      "content": "Updates on completed: deprecation of legacy admin dashboard?"
+    },
+    {
+      "role": "assistant",
+      "content": "Same status as previously reported. No new movement."
+    },
+    {
+      "role": "user",
+      "content": "Updates on blocked: vendor contract renegotiation with current LLM provider?"
+    },
+    {
+      "role": "assistant",
+      "content": "Same status as previously reported. No new movement."
+    },
+    {
+      "role": "user",
+      "content": "Updates on incident response for last weeks production outage post-mortem (active)?"
+    },
+    {
+      "role": "assistant",
+      "content": "Same status as previously reported. No new movement."
+    },
+    {
+      "role": "user",
+      "content": "Updates on background job queue migration from Sidekiq to Temporal (active)?"
+    },
+    {
+      "role": "assistant",
+      "content": "Same status as previously reported. No new movement."
+    },
+    {
+      "role": "user",
+      "content": "Updates on completed: migration of static assets to Cloudflare R2?"
+    },
+    {
+      "role": "assistant",
+      "content": "Same status as previously reported. No new movement."
+    },
+    {
+      "role": "user",
+      "content": "Updates on rolling out new design system tokens across web app (active)?"
+    },
+    {
+      "role": "assistant",
+      "content": "Same status as previously reported. No new movement."
+    },
+    {
+      "role": "user",
+      "content": "Updates on Q2 OKR planning and tracking spreadsheet (active)?"
+    },
+    {
+      "role": "assistant",
+      "content": "Same status as previously reported. No new movement."
+    },
+    {
+      "role": "user",
+      "content": "Updates on completed: deprecation of legacy admin dashboard?"
+    }
+  ]
+}

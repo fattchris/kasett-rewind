@@ -1,0 +1,70 @@
+We deployed agent infrastructure version v2.4.1 to the staging ECS cluster. The deployment initially hit an ImagePullBackoff error because the ECS task execution role was missing the `ecr:GetAuthorizationToken` permission. After adding that permission and forcing a new deployment, all three tasks successfully pulled the v2.4.1 image and reached RUNNING state. We ran a smoke test against the staging endpoint, which passed.
+
+After the successful deployment, we updated the task definition file to reflect v2.4.1 as the active version and committed the change. We also corrected the ALB target group health check path to `/v2/health` and created a git tag for the release. The deployment procedure and IAM prerequisites were documented in the runbook to prevent similar issues in future deployments.
+
+The staging environment is now stable with v2.4.1 running across all tasks. We scheduled the production promotion for tomorrow at 9am MT and set a reminder. The deployment flow is documented and ready to be replicated for the prod environment.
+
+```json
+{
+  "main": "Deploy agent infrastructure v2.4.1 to staging ECS cluster",
+  "sub": [
+    {
+      "id": "staging-deployment",
+      "label": "Deploy v2.4.1 to staging ECS with IAM fix",
+      "status": "completed"
+    },
+    {
+      "id": "iam-permissions-fix",
+      "label": "Add ecr:GetAuthorizationToken to task execution role",
+      "status": "completed"
+    },
+    {
+      "id": "alb-health-check",
+      "label": "Update ALB health check path to /v2/health",
+      "status": "completed"
+    },
+    {
+      "id": "deployment-documentation",
+      "label": "Document deployment procedure and IAM prerequisites in runbook",
+      "status": "completed"
+    },
+    {
+      "id": "prod-promotion",
+      "label": "Schedule prod deployment of v2.4.1 for tomorrow 9am MT",
+      "status": "active"
+    }
+  ],
+  "decisions": [
+    "Added ecr:GetAuthorizationToken permission to ECS task execution role to fix ImagePullBackoff",
+    "Set health check path to /v2/health on ALB target group",
+    "Scheduled prod promotion for tomorrow at 9am MT after successful staging validation"
+  ],
+  "open_questions": [],
+  "key_state": [
+    {
+      "kind": "url",
+      "value": "https://api.staging.molt.ai/v2/agents/deploy",
+      "label": "staging agent deploy endpoint",
+      "thread_id": "staging-deployment"
+    },
+    {
+      "kind": "version",
+      "value": "v2.4.1",
+      "label": "deployed agent version",
+      "thread_id": "staging-deployment"
+    },
+    {
+      "kind": "path",
+      "value": "/home/node/.openclaw/workspace/repos/molt-infra/ecs/task-def.json",
+      "label": "ECS task definition file",
+      "thread_id": "staging-deployment"
+    },
+    {
+      "kind": "path",
+      "value": "/v2/health",
+      "label": "ALB health check path",
+      "thread_id": "alb-health-check"
+    }
+  ]
+}
+```

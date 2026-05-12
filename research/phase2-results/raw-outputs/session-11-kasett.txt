@@ -1,0 +1,169 @@
+The session covered a multi-threaded standup spanning infrastructure migration, authentication modernization, operational issues, and compliance work. The primary focus was migrating from EKS to GKE to achieve a 60% cost reduction (from $28,400/month to $11,200/month), while simultaneously cutting over authentication from static JWT validation to OIDC. The GKE cluster will be deployed as a single-zone instance initially to minimize cross-zone egress costs during validation.
+
+A critical blocker emerged around persistent 504 errors on the dashboard metrics endpoint, affecting 0.7% of requests and exceeding the 0.5% SLA threshold. This issue is tracked in Sentry as PROJ-12847 and appears to be an upstream timeout to the analytics service. The team attempted a rollback to a previous build, but the issue persisted, indicating a pre-existing problem rather than a new regression. The dashboard workload migration to GKE is on hold until this is resolved, while stateless API workers will migrate first.
+
+The OIDC cutover is proceeding with dual-path validation for 30 days to maintain backwards compatibility. The new OIDC issuer is live, and the auth middleware is being refactored to validate against it using the new key ID. A soft launch with read-only headers is planned for tomorrow, with hard cutover at week's end contingent on resolving the 504 issue. The rate limiter is ready with a Redis backend and tiered policies (free: 100/min, paid: 1000/min, enterprise: 10000/min), routing through a new API gateway.
+
+Supporting work included database credential rotation with a 24-hour grace period, a VPC peering Terraform module awaiting network lead approval, onboarding a new SRE (Maya Lin) starting Monday with a two-week shadowing period, and SOC 2 Type II audit preparation for the Q2 2026 window. Evidence collection is underway with proper bucket access controls and encryption in place.
+
+```json
+{
+  "main": "Multi-threaded infrastructure standup covering EKS-to-GKE migration, OIDC authentication cutover, dashboard 504 debugging, and operational readiness",
+  "sub": [
+    {
+      "id": "eks-to-gke-migration",
+      "label": "Migrate from EKS to GKE for 60% cost reduction",
+      "status": "active"
+    },
+    {
+      "id": "oidc-auth-cutover",
+      "label": "Refactor auth middleware from static JWT to OIDC validation",
+      "status": "active"
+    },
+    {
+      "id": "dashboard-504-debugging",
+      "label": "Debug persistent 504 errors on dashboard metrics endpoint",
+      "status": "blocked"
+    },
+    {
+      "id": "rate-limiter-rollout",
+      "label": "Deploy tiered rate limiting on public API gateway",
+      "status": "active"
+    },
+    {
+      "id": "db-credential-rotation",
+      "label": "Rotate database master credentials with 24h grace period",
+      "status": "active"
+    },
+    {
+      "id": "vpc-peering-terraform",
+      "label": "Build and review Terraform module for VPC peering",
+      "status": "blocked"
+    },
+    {
+      "id": "sre-onboarding",
+      "label": "Onboard new SRE Maya Lin starting Monday",
+      "status": "active"
+    },
+    {
+      "id": "soc2-audit-prep",
+      "label": "Prepare SOC 2 Type II audit evidence for Q2 2026",
+      "status": "active"
+    }
+  ],
+  "decisions": [
+    "Deploy GKE as single-zone initially to minimize cross-zone egress costs during validation",
+    "Hold dashboard workload migration to GKE until 504 issue is resolved; migrate stateless API workers first",
+    "Maintain dual-path JWT validation for 30 days to ensure backwards compatibility during OIDC cutover",
+    "Soft launch rate limiter tomorrow with read-only headers; hard cutover end of week if 504 is fixed",
+    "Revoke old database credentials 24h after all services confirm successful auth via new path"
+  ],
+  "open_questions": [
+    "What is causing the persistent 504 timeout to the analytics service on /api/v2/dashboard/metrics?",
+    "When will network lead provide sign-off on VPC peering PR #1247?"
+  ],
+  "key_state": [
+    {
+      "kind": "id",
+      "value": "gke-prod-molt-us-central1-a",
+      "label": "GKE prod cluster",
+      "context": "Single-zone deployment in us-central1-a",
+      "thread_id": "eks-to-gke-migration"
+    },
+    {
+      "kind": "id",
+      "value": "arn:aws:eks:us-east-1:492372116065:cluster/molt-prod",
+      "label": "EKS prod cluster being migrated from",
+      "thread_id": "eks-to-gke-migration"
+    },
+    {
+      "kind": "url",
+      "value": "https://auth.moltai.com/realms/prod",
+      "label": "OIDC issuer endpoint",
+      "thread_id": "oidc-auth-cutover"
+    },
+    {
+      "kind": "id",
+      "value": "kid-2026-05-prod-001",
+      "label": "OIDC JWT key ID",
+      "context": "8h session TTL",
+      "thread_id": "oidc-auth-cutover"
+    },
+    {
+      "kind": "id",
+      "value": "PROJ-12847",
+      "label": "Sentry issue for dashboard 504s",
+      "context": "0.7% error rate, above 0.5% threshold",
+      "thread_id": "dashboard-504-debugging"
+    },
+    {
+      "kind": "path",
+      "value": "/api/v2/dashboard/metrics",
+      "label": "Dashboard metrics endpoint with 504s",
+      "thread_id": "dashboard-504-debugging"
+    },
+    {
+      "kind": "url",
+      "value": "redis://rl-prod.cache.amazonaws.com:6379/3",
+      "label": "Rate limiter Redis backend",
+      "thread_id": "rate-limiter-rollout"
+    },
+    {
+      "kind": "id",
+      "value": "agi-9k3jx7q2vp",
+      "label": "API gateway ID for rate limiter",
+      "thread_id": "rate-limiter-rollout"
+    },
+    {
+      "kind": "path",
+      "value": "kv/prod/db/master/v3",
+      "label": "New database credentials in Vault",
+      "thread_id": "db-credential-rotation"
+    },
+    {
+      "kind": "path",
+      "value": "kv/prod/db/master/v2",
+      "label": "Old database credentials (24h grace)",
+      "thread_id": "db-credential-rotation"
+    },
+    {
+      "kind": "id",
+      "value": "molt-prod.cluster-cqm9w.us-east-1.rds.amazonaws.com:5432",
+      "label": "RDS master endpoint",
+      "thread_id": "db-credential-rotation"
+    },
+    {
+      "kind": "id",
+      "value": "pcx-0a8c4e7f23b9d1e5a",
+      "label": "VPC peering connection ID",
+      "thread_id": "vpc-peering-terraform"
+    },
+    {
+      "kind": "url",
+      "value": "https://wiki.moltaicorp.com/sre/runbooks/incident-response-v4",
+      "label": "Updated incident response runbook",
+      "context": "Reflects OIDC migration and rate limiter rollout",
+      "thread_id": "sre-onboarding"
+    },
+    {
+      "kind": "id",
+      "value": "maya.lin@moltaicorp.com",
+      "label": "New SRE email",
+      "thread_id": "sre-onboarding"
+    },
+    {
+      "kind": "path",
+      "value": "s3://moltai-soc2-evidence/2026-q2/",
+      "label": "SOC 2 evidence bucket",
+      "context": "SSE-KMS, versioning, MFA delete enabled",
+      "thread_id": "soc2-audit-prep"
+    },
+    {
+      "kind": "id",
+      "value": "audit-pm@trustwave.com",
+      "label": "SOC 2 auditor PM contact",
+      "thread_id": "soc2-audit-prep"
+    }
+  ]
+}
+```

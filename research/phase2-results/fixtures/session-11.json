@@ -1,0 +1,523 @@
+{
+  "id": "session-11",
+  "tier": 4,
+  "threads": [
+    "migrating EKS workloads to GKE for cost optimization",
+    "refactoring auth middleware to use OIDC instead of static JWTs",
+    "investigating intermittent 504 errors on customer dashboard",
+    "implementing rate limiting on the public API gateway",
+    "rotating production database credentials and updating Vault paths",
+    "building Terraform module for new VPC peering setup",
+    "onboarding new SRE engineer with runbook updates",
+    "preparing SOC 2 Type II audit evidence collection"
+  ],
+  "keyState": {
+    "eks_cluster_arn": "arn:aws:eks:us-east-1:492372116065:cluster/molt-prod",
+    "gke_cluster_id": "gke-prod-molt-us-central1-a",
+    "oidc_issuer_url": "https://auth.moltai.com/realms/prod",
+    "jwt_signing_key_id": "kid-2026-05-prod-001",
+    "error_rate_threshold": "0.5%",
+    "affected_endpoint": "/api/v2/dashboard/metrics",
+    "sentry_issue_id": "PROJ-12847",
+    "rate_limit_redis_url": "redis://rl-prod.cache.amazonaws.com:6379/3",
+    "rate_limit_default": "1000 req/min",
+    "db_master_endpoint": "molt-prod.cluster-cqm9w.us-east-1.rds.amazonaws.com:5432",
+    "new_db_password_vault_path": "kv/prod/db/master/v3",
+    "old_db_password_vault_path": "kv/prod/db/master/v2",
+    "vpc_peering_id": "pcx-0a8c4e7f23b9d1e5a",
+    "new_sre_email": "maya.lin@moltaicorp.com",
+    "runbook_url": "https://wiki.moltaicorp.com/sre/runbooks/incident-response-v4",
+    "soc2_evidence_bucket": "s3://moltai-soc2-evidence/2026-q2/",
+    "soc2_audit_window": "2026-04-01 to 2026-06-30",
+    "auditor_contact": "audit-pm@trustwave.com",
+    "gke_node_pool": "standard-32-spot-pool",
+    "vault_namespace": "admin/molt-prod",
+    "monthly_eks_spend": "$28,400",
+    "target_gke_spend": "$11,200",
+    "runbook_pr_id": "#1247",
+    "api_gateway_id": "agi-9k3jx7q2vp",
+    "auth_session_ttl": "8h"
+  },
+  "messages": [
+    {
+      "role": "user",
+      "content": "Standup time — today's plan covers the GKE migration, OIDC cutover, the dashboard 504, rate limiter rollout, DB rotation, VPC peering review, SRE onboarding, and SOC 2 evidence. Walk me through each."
+    },
+    {
+      "role": "user",
+      "content": "Pulling cost numbers — EKS prod is at $28,400/month. What does GKE quote for equivalent capacity?"
+    },
+    {
+      "role": "assistant",
+      "content": "GKE quote for similar capacity on a standard-32-spot-pool node pool is roughly $11,200/month — about 60% reduction. The cluster id will be gke-prod-molt-us-central1-a."
+    },
+    {
+      "role": "user",
+      "content": "Status on OIDC migration?"
+    },
+    {
+      "role": "assistant",
+      "content": "OIDC issuer is up at https://auth.moltai.com/realms/prod. Currently cutting over the auth middleware to validate against that instead of the static JWT signing key."
+    },
+    {
+      "role": "user",
+      "content": "504 errors on the dashboard — any update?"
+    },
+    {
+      "role": "assistant",
+      "content": "Sentry issue PROJ-12847 shows error rate at about 0.7%, just above our 0.5% threshold. Affecting /api/v2/dashboard/metrics specifically."
+    },
+    {
+      "role": "user",
+      "content": "Rate limiter status?"
+    },
+    {
+      "role": "assistant",
+      "content": "Redis backend up at redis://rl-prod.cache.amazonaws.com:6379/3. Default policy is 1000 req/min per token. API gateway id agi-9k3jx7q2vp will route through it."
+    },
+    {
+      "role": "user",
+      "content": "DB credential rotation — where are we?"
+    },
+    {
+      "role": "assistant",
+      "content": "New password written to kv/prod/db/master/v3. Old creds at kv/prod/db/master/v2 still active for 24h grace period. Vault namespace admin/molt-prod."
+    },
+    {
+      "role": "user",
+      "content": "VPC peering Terraform module — ready for review?"
+    },
+    {
+      "role": "assistant",
+      "content": "Module is up. Peering connection id is pcx-0a8c4e7f23b9d1e5a. PR is #1247 in the infra repo."
+    },
+    {
+      "role": "user",
+      "content": "New SRE start date?"
+    },
+    {
+      "role": "assistant",
+      "content": "Maya Lin starts Monday. Email maya.lin@moltaicorp.com. Day one onboarding is the runbook walkthrough."
+    },
+    {
+      "role": "user",
+      "content": "SOC 2 audit window?"
+    },
+    {
+      "role": "assistant",
+      "content": "Type II window is 2026-04-01 to 2026-06-30. Auditor PM is audit-pm@trustwave.com. Evidence going into s3://moltai-soc2-evidence/2026-q2/."
+    },
+    {
+      "role": "user",
+      "content": "Confirm: gke-prod-molt-us-central1-a is in us-central1-a zone, right?"
+    },
+    {
+      "role": "assistant",
+      "content": "Correct. Single-zone for now to minimize cross-zone egress costs while we validate. The EKS cluster we are migrating from is arn:aws:eks:us-east-1:492372116065:cluster/molt-prod."
+    },
+    {
+      "role": "user",
+      "content": "New JWT key id?"
+    },
+    {
+      "role": "assistant",
+      "content": "kid-2026-05-prod-001 — this is the OIDC-signed key id we are validating against. Auth session TTL set to 8h to match the old static config."
+    },
+    {
+      "role": "user",
+      "content": "Is it the same endpoint every time?"
+    },
+    {
+      "role": "assistant",
+      "content": "Always /api/v2/dashboard/metrics. Looks like an upstream timeout to the analytics service. Holding off on the GKE migration of dashboard until this is resolved."
+    },
+    {
+      "role": "user",
+      "content": "Per-tier overrides?"
+    },
+    {
+      "role": "assistant",
+      "content": "Free tier 100/min, paid 1000/min, enterprise 10000/min. All keyed by token claims. Default 1000 req/min applies if claim is absent."
+    },
+    {
+      "role": "user",
+      "content": "Master endpoint?"
+    },
+    {
+      "role": "assistant",
+      "content": "molt-prod.cluster-cqm9w.us-east-1.rds.amazonaws.com:5432 — same endpoint, just creds rotating."
+    },
+    {
+      "role": "user",
+      "content": "Test plan?"
+    },
+    {
+      "role": "assistant",
+      "content": "Apply to sandbox first, then prod. Sandbox already shows successful peering across the two VPCs."
+    },
+    {
+      "role": "user",
+      "content": "Runbook URL?"
+    },
+    {
+      "role": "assistant",
+      "content": "https://wiki.moltaicorp.com/sre/runbooks/incident-response-v4 — newly updated to reflect the OIDC migration and the rate limiter rollout."
+    },
+    {
+      "role": "user",
+      "content": "Bucket access controls verified?"
+    },
+    {
+      "role": "assistant",
+      "content": "Yes — only the audit IAM role can read. Bucket has SSE-KMS, versioning, MFA delete enabled."
+    },
+    {
+      "role": "user",
+      "content": "What workloads go first?"
+    },
+    {
+      "role": "assistant",
+      "content": "Stateless API workers first. Customer dashboard last because of the 504 issue we are still debugging. Target monthly spend: $11,200 vs current $28,400."
+    },
+    {
+      "role": "user",
+      "content": "Are we keeping backwards compat for old tokens?"
+    },
+    {
+      "role": "assistant",
+      "content": "Yes, dual-path validation for 30 days. After that we drop the static path and only honor OIDC tokens with kid kid-2026-05-prod-001."
+    },
+    {
+      "role": "user",
+      "content": "Roll back the recent dashboard deploy?"
+    },
+    {
+      "role": "assistant",
+      "content": "Already tried. Issue persisted on previous build too. Not a new regression — looks pre-existing but only now exceeding the 0.5% threshold."
+    },
+    {
+      "role": "user",
+      "content": "Deploy timeline?"
+    },
+    {
+      "role": "assistant",
+      "content": "Soft launch tomorrow (read-only headers, no enforcement). Hard cutover end of week assuming 504 fixed."
+    },
+    {
+      "role": "user",
+      "content": "When does v2 path get deleted?"
+    },
+    {
+      "role": "assistant",
+      "content": "24h after all services confirm successful auth via v3. We will revoke v2 manually after the metrics dashboard signals all good."
+    },
+    {
+      "role": "user",
+      "content": "Approval needed?"
+    },
+    {
+      "role": "assistant",
+      "content": "Need network lead sign-off before prod apply. PR #1247 is the canonical review request."
+    },
+    {
+      "role": "user",
+      "content": "Anyone shadowing her?"
+    },
+    {
+      "role": "assistant",
+      "content": "Yes, pairing with senior on-call for the first two weeks. Hand-off after that."
+    },
+    {
+      "role": "user",
+      "content": "Outstanding items?"
+    },
+    {
+      "role": "assistant",
+      "content": "Just the credential rotation evidence (covered by the v3 vault path) and the OIDC cutover docs. Both should land this week."
+    },
+    {
+      "role": "user",
+      "content": "Anything else on refactoring auth middleware to use OIDC instead of static JWTs?"
+    },
+    {
+      "role": "assistant",
+      "content": "No new updates on that thread since the last message. Status: in progress per earlier notes."
+    },
+    {
+      "role": "user",
+      "content": "Anything else on implementing rate limiting on the public API gateway?"
+    },
+    {
+      "role": "assistant",
+      "content": "No new updates on that thread since the last message. Status: in progress per earlier notes."
+    },
+    {
+      "role": "user",
+      "content": "Anything else on building Terraform module for new VPC peering setup?"
+    },
+    {
+      "role": "assistant",
+      "content": "No new updates on that thread since the last message. Status: in progress per earlier notes."
+    },
+    {
+      "role": "user",
+      "content": "Anything else on preparing SOC 2 Type II audit evidence collection?"
+    },
+    {
+      "role": "assistant",
+      "content": "No new updates on that thread since the last message. Status: in progress per earlier notes."
+    },
+    {
+      "role": "user",
+      "content": "Anything else on refactoring auth middleware to use OIDC instead of static JWTs?"
+    },
+    {
+      "role": "assistant",
+      "content": "No new updates on that thread since the last message. Status: in progress per earlier notes."
+    },
+    {
+      "role": "user",
+      "content": "Anything else on implementing rate limiting on the public API gateway?"
+    },
+    {
+      "role": "assistant",
+      "content": "No new updates on that thread since the last message. Status: in progress per earlier notes."
+    },
+    {
+      "role": "user",
+      "content": "Anything else on building Terraform module for new VPC peering setup?"
+    },
+    {
+      "role": "assistant",
+      "content": "No new updates on that thread since the last message. Status: in progress per earlier notes."
+    },
+    {
+      "role": "user",
+      "content": "Anything else on preparing SOC 2 Type II audit evidence collection?"
+    },
+    {
+      "role": "assistant",
+      "content": "No new updates on that thread since the last message. Status: in progress per earlier notes."
+    },
+    {
+      "role": "user",
+      "content": "Anything else on refactoring auth middleware to use OIDC instead of static JWTs?"
+    },
+    {
+      "role": "assistant",
+      "content": "No new updates on that thread since the last message. Status: in progress per earlier notes."
+    },
+    {
+      "role": "user",
+      "content": "Anything else on implementing rate limiting on the public API gateway?"
+    },
+    {
+      "role": "assistant",
+      "content": "No new updates on that thread since the last message. Status: in progress per earlier notes."
+    },
+    {
+      "role": "user",
+      "content": "Anything else on building Terraform module for new VPC peering setup?"
+    },
+    {
+      "role": "assistant",
+      "content": "No new updates on that thread since the last message. Status: in progress per earlier notes."
+    },
+    {
+      "role": "user",
+      "content": "Anything else on preparing SOC 2 Type II audit evidence collection?"
+    },
+    {
+      "role": "assistant",
+      "content": "No new updates on that thread since the last message. Status: in progress per earlier notes."
+    },
+    {
+      "role": "user",
+      "content": "Anything else on refactoring auth middleware to use OIDC instead of static JWTs?"
+    },
+    {
+      "role": "assistant",
+      "content": "No new updates on that thread since the last message. Status: in progress per earlier notes."
+    },
+    {
+      "role": "user",
+      "content": "Anything else on implementing rate limiting on the public API gateway?"
+    },
+    {
+      "role": "assistant",
+      "content": "No new updates on that thread since the last message. Status: in progress per earlier notes."
+    },
+    {
+      "role": "user",
+      "content": "Anything else on building Terraform module for new VPC peering setup?"
+    },
+    {
+      "role": "assistant",
+      "content": "No new updates on that thread since the last message. Status: in progress per earlier notes."
+    },
+    {
+      "role": "user",
+      "content": "Anything else on preparing SOC 2 Type II audit evidence collection?"
+    },
+    {
+      "role": "assistant",
+      "content": "No new updates on that thread since the last message. Status: in progress per earlier notes."
+    },
+    {
+      "role": "user",
+      "content": "Anything else on refactoring auth middleware to use OIDC instead of static JWTs?"
+    },
+    {
+      "role": "assistant",
+      "content": "No new updates on that thread since the last message. Status: in progress per earlier notes."
+    },
+    {
+      "role": "user",
+      "content": "Anything else on implementing rate limiting on the public API gateway?"
+    },
+    {
+      "role": "assistant",
+      "content": "No new updates on that thread since the last message. Status: in progress per earlier notes."
+    },
+    {
+      "role": "user",
+      "content": "Anything else on building Terraform module for new VPC peering setup?"
+    },
+    {
+      "role": "assistant",
+      "content": "No new updates on that thread since the last message. Status: in progress per earlier notes."
+    },
+    {
+      "role": "user",
+      "content": "Anything else on preparing SOC 2 Type II audit evidence collection?"
+    },
+    {
+      "role": "assistant",
+      "content": "No new updates on that thread since the last message. Status: in progress per earlier notes."
+    },
+    {
+      "role": "user",
+      "content": "Anything else on refactoring auth middleware to use OIDC instead of static JWTs?"
+    },
+    {
+      "role": "assistant",
+      "content": "No new updates on that thread since the last message. Status: in progress per earlier notes."
+    },
+    {
+      "role": "user",
+      "content": "Anything else on implementing rate limiting on the public API gateway?"
+    },
+    {
+      "role": "assistant",
+      "content": "No new updates on that thread since the last message. Status: in progress per earlier notes."
+    },
+    {
+      "role": "user",
+      "content": "Anything else on building Terraform module for new VPC peering setup?"
+    },
+    {
+      "role": "assistant",
+      "content": "No new updates on that thread since the last message. Status: in progress per earlier notes."
+    },
+    {
+      "role": "user",
+      "content": "Anything else on preparing SOC 2 Type II audit evidence collection?"
+    },
+    {
+      "role": "assistant",
+      "content": "No new updates on that thread since the last message. Status: in progress per earlier notes."
+    },
+    {
+      "role": "user",
+      "content": "Anything else on refactoring auth middleware to use OIDC instead of static JWTs?"
+    },
+    {
+      "role": "assistant",
+      "content": "No new updates on that thread since the last message. Status: in progress per earlier notes."
+    },
+    {
+      "role": "user",
+      "content": "Anything else on implementing rate limiting on the public API gateway?"
+    },
+    {
+      "role": "assistant",
+      "content": "No new updates on that thread since the last message. Status: in progress per earlier notes."
+    },
+    {
+      "role": "user",
+      "content": "Anything else on building Terraform module for new VPC peering setup?"
+    },
+    {
+      "role": "assistant",
+      "content": "No new updates on that thread since the last message. Status: in progress per earlier notes."
+    },
+    {
+      "role": "user",
+      "content": "Anything else on preparing SOC 2 Type II audit evidence collection?"
+    },
+    {
+      "role": "assistant",
+      "content": "No new updates on that thread since the last message. Status: in progress per earlier notes."
+    },
+    {
+      "role": "user",
+      "content": "Anything else on refactoring auth middleware to use OIDC instead of static JWTs?"
+    },
+    {
+      "role": "assistant",
+      "content": "No new updates on that thread since the last message. Status: in progress per earlier notes."
+    },
+    {
+      "role": "user",
+      "content": "Anything else on implementing rate limiting on the public API gateway?"
+    },
+    {
+      "role": "assistant",
+      "content": "No new updates on that thread since the last message. Status: in progress per earlier notes."
+    },
+    {
+      "role": "user",
+      "content": "Anything else on building Terraform module for new VPC peering setup?"
+    },
+    {
+      "role": "assistant",
+      "content": "No new updates on that thread since the last message. Status: in progress per earlier notes."
+    },
+    {
+      "role": "user",
+      "content": "Anything else on preparing SOC 2 Type II audit evidence collection?"
+    },
+    {
+      "role": "assistant",
+      "content": "No new updates on that thread since the last message. Status: in progress per earlier notes."
+    },
+    {
+      "role": "user",
+      "content": "Anything else on refactoring auth middleware to use OIDC instead of static JWTs?"
+    },
+    {
+      "role": "assistant",
+      "content": "No new updates on that thread since the last message. Status: in progress per earlier notes."
+    },
+    {
+      "role": "user",
+      "content": "Anything else on implementing rate limiting on the public API gateway?"
+    },
+    {
+      "role": "assistant",
+      "content": "No new updates on that thread since the last message. Status: in progress per earlier notes."
+    },
+    {
+      "role": "user",
+      "content": "Anything else on building Terraform module for new VPC peering setup?"
+    },
+    {
+      "role": "assistant",
+      "content": "No new updates on that thread since the last message. Status: in progress per earlier notes."
+    },
+    {
+      "role": "user",
+      "content": "Anything else on preparing SOC 2 Type II audit evidence collection?"
+    }
+  ]
+}

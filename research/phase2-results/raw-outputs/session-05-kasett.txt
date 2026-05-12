@@ -1,0 +1,74 @@
+We built multi-region Terraform IaC for ECS Fargate agent deployment across us-east-1 and us-west-2. The module at `/home/node/.openclaw/workspace/repos/molt-infra/terraform/modules/agent-cluster/main.tf` handles VPC setup, ECS cluster provisioning, Fargate task definitions, and auto-scaling configuration. VPC CIDRs are non-overlapping (10.0.0.0/16 for us-east-1, 10.1.0.0/16 for us-west-2) with VPC peering established between them.
+
+We worked through DNS resolution across VPCs using Route 53 private hosted zones associated with both VPCs, allowing agents in us-west-2 to resolve the us-east-1 health endpoint. The ECS task definition configures 1 vCPU and 2GB RAM per container by default, with environment variables pulled from SSM Parameter Store.
+
+Cost optimization was a major focus. We evaluated three patterns: always-on ($110/month for 10 idle tasks), scale-to-zero ($0 idle cost but 30-second cold starts), and warm standby ($22/month for 2 tasks with no cold starts). We chose warm standby as the default, setting min_capacity=1 per region with scale-up at 70% CPU and scale-down to 1 (not 0). This saves $88/month versus always-on while eliminating cold start latency.
+
+Both regions were deployed using Terraform v1.8.3 via workspaces prod-us-east-1 and prod-us-west-2. The us-east-1 health endpoint is live and returning 200. All changes were committed and pushed.
+
+```json
+{
+  "main": "Multi-region Terraform IaC for ECS Fargate agent deployment",
+  "sub": [
+    {
+      "id": "terraform-agent-cluster-module",
+      "label": "Write agent-cluster Terraform module with ECS Fargate and auto-scaling",
+      "status": "completed"
+    },
+    {
+      "id": "vpc-peering-setup",
+      "label": "VPC peering between us-east-1 and us-west-2 with DNS resolution",
+      "status": "completed"
+    },
+    {
+      "id": "ecs-task-definition",
+      "label": "ECS task definition for agent containers with SSM config",
+      "status": "completed"
+    },
+    {
+      "id": "cost-optimization-warm-standby",
+      "label": "Cost optimization using warm standby pattern",
+      "status": "completed"
+    }
+  ],
+  "decisions": [
+    "Use warm standby pattern (min_capacity=1 per region) instead of scale-to-zero to eliminate cold starts while saving $88/month versus always-on",
+    "VPC CIDRs: 10.0.0.0/16 for us-east-1, 10.1.0.0/16 for us-west-2 with VPC peering",
+    "Route 53 private hosted zones associated with both VPCs for cross-region DNS resolution",
+    "Auto-scaling: scale up at 70% CPU, scale down to 1 (not 0) to maintain warm standby"
+  ],
+  "open_questions": [],
+  "key_state": [
+    {
+      "kind": "url",
+      "value": "https://agents.us-east-1.moltaicorp.com/health",
+      "label": "us-east-1 agent health endpoint",
+      "thread_id": "vpc-peering-setup"
+    },
+    {
+      "kind": "path",
+      "value": "/home/node/.openclaw/workspace/repos/molt-infra/terraform/modules/agent-cluster/main.tf",
+      "label": "agent-cluster Terraform module",
+      "thread_id": "terraform-agent-cluster-module"
+    },
+    {
+      "kind": "version",
+      "value": "v1.8.3",
+      "label": "Terraform version",
+      "context": "Used for prod-us-east-1 and prod-us-west-2 workspaces"
+    },
+    {
+      "kind": "config",
+      "value": "10.0.0.0/16",
+      "label": "us-east-1 VPC CIDR",
+      "thread_id": "vpc-peering-setup"
+    },
+    {
+      "kind": "config",
+      "value": "10.1.0.0/16",
+      "label": "us-west-2 VPC CIDR",
+      "thread_id": "vpc-peering-setup"
+    }
+  ]
+}
+```

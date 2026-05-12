@@ -1,0 +1,118 @@
+The session covered five parallel infrastructure and tooling tracks, all in active planning or early implementation. The primary focus was merging two separate notification services into a unified system, alongside provisioning new infrastructure for reporting, logging, admin tooling, and SDK distribution.
+
+The notifications consolidation merges molt-email-notifications and molt-push-notifications into a single service called molt-notifications, hosted at github.com/moltaicorp/molt-notifications. The migration strategy starts with the email channel, then adds push notifications, with both legacy services retired once feature parity is confirmed.
+
+Logging is being centralized into Datadog, moving application logs away from CloudWatch (which will remain only for AWS-native logs). The Datadog site is datadoghq.com with 90-day retention, using an API key stored in kv/prod/datadog/api-key.
+
+A customer success admin tool was deployed at https://admin.moltaicorp.com, providing customer lookup, plan changes, refund issuance, and audit trail capabilities, all gated behind the CustomerSuccessAdmin role.
+
+The SDK pipeline publishes TypeScript and Python SDKs to npm:@moltai/sdk and pypi:moltai-sdk respectively, with GitHub Actions auto-publishing on git tags matching v*. Current version is 3.4.0.
+
+A read replica for reporting workloads was provisioned at molt-prod-ro.cluster-ro-xyz.us-east-1.rds.amazonaws.com on a db.r6g.2xlarge instance, with Tableau and Looker pointed at it using the reporting_ro role.
+
+```json
+{
+  "main": "Parallel infrastructure work across notifications consolidation, logging migration, admin tooling, SDK pipeline, and read replica provisioning",
+  "sub": [
+    {
+      "id": "notifications-service-merge",
+      "label": "Merge molt-email-notifications and molt-push-notifications into unified molt-notifications service",
+      "status": "active"
+    },
+    {
+      "id": "datadog-logging-migration",
+      "label": "Centralize application logging from CloudWatch to Datadog",
+      "status": "active"
+    },
+    {
+      "id": "cs-admin-tool",
+      "label": "Customer success admin tool deployment and access control",
+      "status": "completed"
+    },
+    {
+      "id": "sdk-pipeline",
+      "label": "TypeScript and Python SDK auto-publish pipeline",
+      "status": "completed"
+    },
+    {
+      "id": "read-replica-provisioning",
+      "label": "Provision RDS read replica for reporting workloads",
+      "status": "completed"
+    }
+  ],
+  "decisions": [
+    "Merge email and push notifications into single molt-notifications service rather than maintaining separate services",
+    "Migrate email channel first, then push channel, retiring old services only after parity confirmed",
+    "Retain CloudWatch only for AWS-native logs, move all application logs to Datadog with 90-day retention",
+    "Use db.r6g.2xlarge instance class for read replica based on current reporting load"
+  ],
+  "key_state": [
+    {
+      "kind": "url",
+      "value": "https://admin.moltaicorp.com",
+      "label": "Customer success admin tool",
+      "thread_id": "cs-admin-tool"
+    },
+    {
+      "kind": "url",
+      "value": "https://github.com/moltaicorp/molt-notifications",
+      "label": "Unified notifications service repo",
+      "thread_id": "notifications-service-merge"
+    },
+    {
+      "kind": "url",
+      "value": "https://datadoghq.com",
+      "label": "Datadog site",
+      "thread_id": "datadog-logging-migration"
+    },
+    {
+      "kind": "path",
+      "value": "kv/prod/datadog/api-key",
+      "label": "Datadog API key location",
+      "thread_id": "datadog-logging-migration"
+    },
+    {
+      "kind": "id",
+      "value": "molt-prod-ro.cluster-ro-xyz.us-east-1.rds.amazonaws.com",
+      "label": "Read replica endpoint",
+      "thread_id": "read-replica-provisioning"
+    },
+    {
+      "kind": "config",
+      "value": "reporting_ro",
+      "label": "Read replica database role",
+      "thread_id": "read-replica-provisioning"
+    },
+    {
+      "kind": "config",
+      "value": "db.r6g.2xlarge",
+      "label": "Read replica instance class",
+      "thread_id": "read-replica-provisioning"
+    },
+    {
+      "kind": "config",
+      "value": "CustomerSuccessAdmin",
+      "label": "Admin tool access role",
+      "thread_id": "cs-admin-tool"
+    },
+    {
+      "kind": "id",
+      "value": "npm:@moltai/sdk",
+      "label": "TypeScript SDK package",
+      "thread_id": "sdk-pipeline"
+    },
+    {
+      "kind": "id",
+      "value": "pypi:moltai-sdk",
+      "label": "Python SDK package",
+      "thread_id": "sdk-pipeline"
+    },
+    {
+      "kind": "version",
+      "value": "3.4.0",
+      "label": "Current SDK version",
+      "thread_id": "sdk-pipeline"
+    }
+  ]
+}
+```

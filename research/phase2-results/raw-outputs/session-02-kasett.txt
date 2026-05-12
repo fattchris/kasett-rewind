@@ -1,0 +1,77 @@
+We responded to a production auth outage caused by a JWT validation bug in v3.1.0. Users were getting 401 errors when trying to refresh tokens at the auth endpoint. The root cause was a milliseconds/seconds unit mismatch in the token expiry check — the code was comparing `Date.now()` (milliseconds) directly against the JWT `exp` claim (seconds), causing all tokens to appear expired immediately.
+
+The bug was isolated to the JWT middleware file, and we confirmed 340 users were affected over approximately 70 minutes. We built and deployed a hotfix (v3.1.0-hotfix) that corrected the comparison by dividing `Date.now()` by 1000. We validated the fix using a specific affected session ID, confirmed the endpoint returned to baseline error rates, and verified that users would naturally re-authenticate without manual intervention.
+
+After resolving the immediate issue, we added preventive measures: a new unit test specifically guarding against milliseconds/seconds regressions, and an ESLint rule to catch this pattern statically. We documented the incident in a postmortem covering timeline, impact, root cause, fix, and prevention, then archived the incident.
+
+```json
+{
+  "main": "Production JWT auth outage response and hotfix deployment",
+  "sub": [
+    {
+      "id": "jwt-expiry-bug-investigation",
+      "label": "Investigate and diagnose JWT 401 failures in v3.1.0",
+      "status": "completed"
+    },
+    {
+      "id": "hotfix-deployment",
+      "label": "Build, test, and deploy v3.1.0-hotfix",
+      "status": "completed"
+    },
+    {
+      "id": "preventive-measures",
+      "label": "Add unit test and ESLint rule to prevent recurrence",
+      "status": "completed"
+    },
+    {
+      "id": "incident-documentation",
+      "label": "Write and distribute postmortem",
+      "status": "completed"
+    }
+  ],
+  "decisions": [
+    "Deploy hotfix immediately rather than roll back to previous version",
+    "No manual user backfill needed — users will re-authenticate naturally",
+    "Add both test coverage and static analysis to prevent future ms/s bugs"
+  ],
+  "open_questions": [],
+  "key_state": [
+    {
+      "kind": "url",
+      "value": "https://auth.moltaicorp.com/v1/tokens/refresh",
+      "label": "token refresh endpoint",
+      "context": "production auth endpoint affected by outage"
+    },
+    {
+      "kind": "version",
+      "value": "v3.1.0",
+      "label": "broken release version",
+      "context": "introduced JWT expiry bug"
+    },
+    {
+      "kind": "version",
+      "value": "v3.1.0-hotfix",
+      "label": "hotfix release version",
+      "context": "corrected ms/s comparison bug"
+    },
+    {
+      "kind": "path",
+      "value": "/opt/services/auth-service/src/middleware/jwt.ts",
+      "label": "JWT middleware file",
+      "context": "location of expiry check bug and fix"
+    },
+    {
+      "kind": "id",
+      "value": "a3f8c201-9d44-4b7e-8c22-1f0e3b5d9a77",
+      "label": "test session ID",
+      "context": "used to validate hotfix effectiveness"
+    },
+    {
+      "kind": "value",
+      "value": "340",
+      "label": "affected user count",
+      "context": "users who received 401s during 70-minute outage"
+    }
+  ]
+}
+```

@@ -1,0 +1,79 @@
+# Molt AI Multi-Tenant Agent Orchestration Platform - Summary
+
+## Platform Overview
+- **Version**: v3.0.0 (promoted from v3.0.0-rc1)
+- **Primary Endpoint**: https://platform.moltaicorp.com/v3/orchestrate
+- **Status**: Deployed to production, ready for tenant onboarding
+- **Integration Tests**: All 47 tests passing
+
+## Infrastructure Details
+
+### EKS Cluster
+- **ARN**: arn:aws:eks:us-east-1:843979154439:cluster/molt-agents-prod
+- **Primary Namespace**: molt-agents-prod
+- **Tenant Isolation**: Sub-namespaces per tenant (molt-agents-prod/{tenant_id})
+
+### Orchestrator
+- **Location**: /home/node/.openclaw/workspace/repos/molt-infra/platform/src/orchestrator/index.ts
+- **Capacity**: 10,000 concurrent agent sessions
+- **Architecture**: Async event loop, connection pooling, HPA for scaling
+- **Routing**: Least-loaded pod selection with sticky session support
+- **Session Affinity**: Redis-backed, keyed by tenant_id + session_id, with failover
+
+## Five Development Threads
+
+### Thread 1: Orchestrator
+- Request router built for incoming agent requests
+- Routes to correct Kubernetes pods in molt-agents-prod namespace
+- Sticky sessions implemented with Redis backing
+- Calls K8s API to list available pods and select least-loaded
+- Falls back to least-loaded pod on failure
+
+### Thread 2: OpenTelemetry Tracing
+- **Trace Endpoint**: https://otel.moltaicorp.com/v1/traces
+- **Service Name**: molt-orchestrator-prod
+- **Span Attributes**: tenant_id, agent_id, session_id
+- **Propagation**: W3C TraceContext across services
+- **Custom Metrics**: 
+  - active_sessions (gauge)
+  - orchestration_latency (histogram)
+  - billing_events_sent (counter)
+
+### Thread 3: Tenant Onboarding API
+- **Example Tenant**: onboard-7f3a9c2d-1b4e-5f8a-9c2b-3e5f8a1d4c7b (successfully onboarded)
+- **Onboarding Flow**:
+  1. Create record in database
+  2. Create K8s namespace/RBAC in EKS cluster
+  3. Issue API key
+  4. Create Stripe customer + meter subscription
+  5. Return API key to caller
+- **Default Quota**: 100K api_calls_v2/month per new tenant
+
+### Thread 4: Kubernetes Configuration
+- **Agent Pod Resources**:
+  - Request: 500m CPU / 1Gi memory
+  - Limit: 2000m CPU / 4Gi memory
+- **PodDisruptionBudget**: minAvailable=1 for deployments with >1 replica
+- **NetworkPolicy**:
+  - Egress: Agent pods can only reach orchestrator and message bus
+  - Ingress: Only pods with label app=molt-orchestrator can send traffic to agent pods
+  - No inter-tenant pod communication (strict isolation)
+- **Security Audit Completed**:
+  - NetworkPolicy enforced
+  - PodSecurityPolicy active (no privileged pods)
+  - RBAC minimal permissions
+  - Image pull only from internal ECR
+
+### Thread 5: Stripe Billing Integration
+- **API Key**: sk_live_51PxQ2HRzKf9NkL8mW3bC7dE4fG5hI6jK7lM8nO9pQ0rS
+- **Meter Name**: api_calls_v2
+- **Reporting**: Each API call to orchestrate endpoint reported to Stripe
+- **Usage Alerts**: Webhook fires at 80% of quota, sends email + POST to tenant webhook
+- **Proration**: Enabled via proration_behavior=always_invoice for mid-cycle upgrades
+
+## Current State
+- Platform deployed and operational at v3.0.0
+- All five threads integrated and tested
+- Production validation complete
+- Tenant onboarding active
+- Billing system live and tracking usage

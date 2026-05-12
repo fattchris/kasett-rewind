@@ -1,0 +1,73 @@
+# SOC 2 Type II Audit Preparation Summary
+
+## Overview
+Active SOC 2 Type II audit preparation with 5 parallel workstreams addressing controls SOC2-CC6.1-CC7.2 (logical access controls, monitoring, least privilege).
+
+## Thread 1: Audit Logging Pipeline ✅ COMPLETE
+- **Endpoint**: https://audit.moltaicorp.com/v1/events/ingest
+- **Version**: audit-pipeline-v2.2.0 (upgraded from v2.1.0)
+- **Architecture**: Ingest → Kinesis → Lambda → S3
+- **Storage**: arn:aws:s3:::molt-audit-logs-prod-us-east-1
+- **Encryption**: KMS key arn:aws:kms:us-east-1:843979154439:key/c3d4e5f6-a7b8-9012-c3d4-e5f6a7b89012
+- **Immutability**: S3 Object Lock COMPLIANCE mode, 365-day retention
+- **Terraform**: /home/node/.openclaw/workspace/repos/molt-infra/compliance/audit/pipeline.tf (applied successfully)
+- **Event Schema**: {event_id, tenant_id, user_id, action, resource, result, timestamp_utc, ip_address, trace_id}
+- **Controls Satisfied**: SOC2-CC6.1 (logical access), CC7.2 (monitoring)
+
+## Thread 2: Pentest Remediation 🟡 IN PROGRESS
+- **Finding ID**: PENTEST-2026-042
+- **Severity**: High
+- **Issue**: SSRF vulnerability in agent proxy service
+- **Remediation**: 
+  - URL allowlist validation implemented
+  - Internal IP blocking (10.0.0.0/8, 169.254.0.0/16, 172.16.0.0/12)
+  - Request signing for trusted endpoints
+- **Status**: Code fix complete, PR in review (Day 5 of 14-day SLA)
+- **Timeline**: Remediation target 14 days per SOC2-CC6.1-CC7.2
+
+## Thread 3: IAM Access Control Review 🟡 PENDING DEPLOY
+- **Current Version**: v8.3 → v8.4
+- **Issues Found**:
+  1. 3 service roles with s3:* overpermission
+  2. 2 Lambda functions with unnecessary ec2:Describe*
+  3. 1 role with unconditioned iam:PassRole
+- **Remediations in v8.4**:
+  - s3:* replaced with specific actions (s3:GetObject, s3:PutObject, s3:ListBucket) scoped to arn:aws:s3:::molt-audit-logs-prod-us-east-1/*
+  - iam:PassRole conditioned to iam:PassedToService=['lambda.amazonaws.com', 'ecs-tasks.amazonaws.com']
+- **Controls Satisfied**: SOC2-CC6.1 (least privilege), CC6.3 (access removal)
+- **AWS Account**: 843979154439
+
+## Thread 4: Vendor Security Assessment 🟡 IN REVIEW
+- **Assessment ID**: VSA-2026-017
+- **Vendor**: OpenAI (LLM provider)
+- **Risk Rating**: Medium
+- **Requirements**: 
+  - Data Processing Agreement (DPA) - pending signature
+  - No training on customer data confirmed
+  - GDPR compliance verified
+  - SOC 2 Type II certified
+- **Subprocessor List**: AWS (compute/storage), Stripe (billing), OpenAI (LLM inference), Twilio (notifications)
+- **Re-assessment**: Annual requirement
+- **Controls**: SOC2-CC6.1-CC7.2 vendor management
+
+## Thread 5: Compliance Status Dashboard
+**Open Items**:
+1. PENTEST-2026-042: Day 5 of 14-day remediation (on track)
+2. VSA-2026-017: OpenAI DPA pending signature
+3. IAM policy v8.4: Pending deployment
+4. Audit pipeline v2.2.0: ✅ Deployed successfully
+
+**Evidence Tracker Updated**: All controls mapped to SOC2-CC6.1-CC7.2 requirements
+
+## Key Technical Details
+- **AWS Account**: 843979154439
+- **Region**: us-east-1
+- **Terraform Path**: /home/node/.openclaw/workspace/repos/molt-infra/compliance/audit/pipeline.tf
+- **KMS Key**: arn:aws:kms:us-east-1:843979154439:key/c3d4e5f6-a7b8-9012-c3d4-e5f6a7b89012
+- **Audit Bucket**: arn:aws:s3:::molt-audit-logs-prod-us-east-1
+
+## Next Actions
+1. Deploy IAM policy v8.4
+2. Complete PENTEST-2026-042 remediation (9 days remaining)
+3. Obtain OpenAI DPA signature for VSA-2026-017
+4. Continue SOC 2 evidence collection

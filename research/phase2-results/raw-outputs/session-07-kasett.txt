@@ -1,0 +1,92 @@
+We built a vector search index for agent memory retrieval at https://memory.moltaicorp.com/v1/search, implementing the core search module in /home/node/.openclaw/workspace/repos/molt-infra/services/memory/src/search/vector.ts. The system uses OpenAI's text-embedding-3-large (3072 dimensions) as the primary embedding model, with pgvector HNSW indices on PostgreSQL for similarity search using cosine distance. We added metadata filtering capabilities (agent_id, session_id, timestamp range, memory_type) before the ANN search.
+
+A second thread explored embedding model cost vs accuracy tradeoffs. We compared text-embedding-3-large ($0.13/1M tokens, 3072d) against text-embedding-3-small ($0.02/1M tokens, 1536d), finding that the small model delivers 87% of large's accuracy at 6.5x lower cost. For short working-memory queries under 50 tokens, the accuracy difference is negligible. We implemented adaptive embedding selection: queries ≤100 chars use text-embedding-3-small, longer queries use text-embedding-3-large. This required dual indices: idx-agents-memory-prod-f9a2b3c4d5e6 (3072d) and idx-agents-memory-small-f9a2b3c4d5e6 (1536d), with query routing based on which model was used.
+
+A third thread designed the memory persistence layer. Raw memories are stored in S3 (cheap, durable), vector embeddings in pgvector (queryable), and metadata in PostgreSQL (filterable). TTL is 90 days for working memory, indefinite for long-term. The write path stores raw content in S3 first, then generates embeddings asynchronously via SQS queue and Lambda workers, with typical embedding lag of 1-5 seconds. We added a GET /v1/memories/{id}/status endpoint to check indexing status and confirm searchability. Backup strategy uses RDS automated snapshots daily; full index rebuild from S3 takes ~12 minutes with 10 parallel Lambda workers (~$13 cost for text-embedding-3-large at current 100K memory scale). A reindex script was added to the vector.ts module for disaster recovery.
+
+Version v1.2.0 was deployed to production with all features live.
+
+```json
+{
+  "main": "Build vector search index for agent memory retrieval with adaptive embedding selection",
+  "sub": [
+    {
+      "id": "vector-search-module",
+      "label": "Implement core vector search module with pgvector HNSW and metadata filtering",
+      "status": "completed"
+    },
+    {
+      "id": "adaptive-embedding-cost-optimization",
+      "label": "Implement adaptive embedding selection (large vs small model) based on query length",
+      "status": "completed"
+    },
+    {
+      "id": "memory-persistence-layer",
+      "label": "Design persistence layer with S3 storage, async embedding generation, and backup strategy",
+      "status": "completed"
+    }
+  ],
+  "decisions": [
+    "Use cosine similarity for text embeddings from text-embedding-3-large",
+    "Implement adaptive embedding: queries ≤100 chars use text-embedding-3-small (1536d), longer queries use text-embedding-3-large (3072d)",
+    "Async embedding generation via SQS queue with 1-5 second eventual consistency",
+    "TTL: 90 days for working memory, indefinite for long-term memory",
+    "Backup via RDS automated snapshots; full rebuild from S3 takes ~12 minutes with parallel workers"
+  ],
+  "open_questions": [],
+  "key_state": [
+    {
+      "kind": "url",
+      "value": "https://memory.moltaicorp.com/v1/search",
+      "label": "vector search endpoint"
+    },
+    {
+      "kind": "path",
+      "value": "/home/node/.openclaw/workspace/repos/molt-infra/services/memory/src/search/vector.ts",
+      "label": "vector search module",
+      "thread_id": "vector-search-module"
+    },
+    {
+      "kind": "version",
+      "value": "v1.2.0",
+      "label": "deployed memory service version"
+    },
+    {
+      "kind": "id",
+      "value": "idx-agents-memory-prod-f9a2b3c4d5e6",
+      "label": "primary vector index (3072d text-embedding-3-large)",
+      "thread_id": "vector-search-module"
+    },
+    {
+      "kind": "id",
+      "value": "idx-agents-memory-small-f9a2b3c4d5e6",
+      "label": "secondary vector index (1536d text-embedding-3-small)",
+      "thread_id": "adaptive-embedding-cost-optimization"
+    },
+    {
+      "kind": "config",
+      "value": "ef_construction=128",
+      "label": "HNSW index construction parameter",
+      "thread_id": "vector-search-module"
+    },
+    {
+      "kind": "value",
+      "value": "text-embedding-3-large",
+      "label": "primary embedding model (3072 dimensions)",
+      "thread_id": "adaptive-embedding-cost-optimization"
+    },
+    {
+      "kind": "value",
+      "value": "text-embedding-3-small",
+      "label": "secondary embedding model (1536 dimensions)",
+      "thread_id": "adaptive-embedding-cost-optimization"
+    },
+    {
+      "kind": "path",
+      "value": "/v1/memories/{id}/status",
+      "label": "consistency check endpoint",
+      "thread_id": "memory-persistence-layer"
+    }
+  ]
+}
+```

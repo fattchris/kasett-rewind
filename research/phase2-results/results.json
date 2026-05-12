@@ -1,0 +1,474 @@
+{
+  "partial": false,
+  "meta": {
+    "model": "anthropic/claude-sonnet-4-5",
+    "max_tokens": 32000,
+    "temperature": 0,
+    "fixture_count": 15,
+    "timestamp": "2026-05-12T17:45:34.377Z"
+  },
+  "aggregate": {
+    "n": 15,
+    "vanilla_trr": 0.7358730158730159,
+    "kasett_trr": 0.7554761904761905,
+    "d_trr": 0.07885846856083299,
+    "vanilla_kssr": 0.9756430976430975,
+    "kasett_kssr": 0.9464713804713804,
+    "d_kssr": -0.4935914986288145,
+    "mean_sy": 13.466666666666667,
+    "compliance_rate": 0.8
+  },
+  "by_tier": {
+    "1": {
+      "n": 3,
+      "vanilla_trr": 0.6666666666666666,
+      "kasett_trr": 0.5,
+      "d_trr": -0.4082482904638629,
+      "vanilla_kssr": 1,
+      "kasett_kssr": 1,
+      "d_kssr": 0,
+      "mean_sy": 12.666666666666666,
+      "compliance_rate": 1
+    },
+    "2": {
+      "n": 4,
+      "vanilla_trr": 0.9166666666666666,
+      "kasett_trr": 1,
+      "d_trr": 0.7071067811865478,
+      "vanilla_kssr": 1,
+      "kasett_kssr": 0.9583333333333334,
+      "d_kssr": -0.707106781186547,
+      "mean_sy": 14.5,
+      "compliance_rate": 1
+    },
+    "3": {
+      "n": 3,
+      "vanilla_trr": 0.7555555555555555,
+      "kasett_trr": 0.8222222222222223,
+      "d_trr": 0.5107539184552499,
+      "vanilla_kssr": 0.9629629629629629,
+      "kasett_kssr": 0.9629629629629629,
+      "d_kssr": 0,
+      "mean_sy": 20.333333333333332,
+      "compliance_rate": 1
+    },
+    "4": {
+      "n": 5,
+      "vanilla_trr": 0.620952380952381,
+      "kasett_trr": 0.6730952380952381,
+      "d_trr": 0.3162038675221149,
+      "vanilla_kssr": 0.9491515151515152,
+      "kasett_kssr": 0.894969696969697,
+      "d_kssr": -0.8979540916027549,
+      "mean_sy": 9,
+      "compliance_rate": 0.4
+    }
+  },
+  "per_session": [
+    {
+      "id": "session-01",
+      "tier": 1,
+      "thread_count": 1,
+      "key_state_count": 3,
+      "message_count": 60,
+      "vanilla": {
+        "trr": 1,
+        "kssr": 1,
+        "sy": 0,
+        "chars": 1883,
+        "ms": 9178
+      },
+      "kasett": {
+        "trr": 1,
+        "kssr": 1,
+        "sy": 12,
+        "chars": 2860,
+        "ms": 11221,
+        "compliance": "PARSE_OK",
+        "sub_count": 5,
+        "key_state_emitted": 4,
+        "decisions_count": 3,
+        "open_questions_count": 0,
+        "schema_version": null
+      }
+    },
+    {
+      "id": "session-02",
+      "tier": 1,
+      "thread_count": 2,
+      "key_state_count": 4,
+      "message_count": 44,
+      "vanilla": {
+        "trr": 0.5,
+        "kssr": 1,
+        "sy": 0,
+        "chars": 1660,
+        "ms": 8510
+      },
+      "kasett": {
+        "trr": 0.5,
+        "kssr": 1,
+        "sy": 13,
+        "chars": 3170,
+        "ms": 13709,
+        "compliance": "PARSE_OK",
+        "sub_count": 4,
+        "key_state_emitted": 6,
+        "decisions_count": 3,
+        "open_questions_count": 0,
+        "schema_version": null
+      }
+    },
+    {
+      "id": "session-03",
+      "tier": 1,
+      "thread_count": 2,
+      "key_state_count": 4,
+      "message_count": 40,
+      "vanilla": {
+        "trr": 0.5,
+        "kssr": 1,
+        "sy": 0,
+        "chars": 1866,
+        "ms": 8709
+      },
+      "kasett": {
+        "trr": 0,
+        "kssr": 1,
+        "sy": 13,
+        "chars": 2977,
+        "ms": 11861,
+        "compliance": "PARSE_OK",
+        "sub_count": 4,
+        "key_state_emitted": 6,
+        "decisions_count": 3,
+        "open_questions_count": 0,
+        "schema_version": null
+      }
+    },
+    {
+      "id": "session-04",
+      "tier": 2,
+      "thread_count": 3,
+      "key_state_count": 5,
+      "message_count": 44,
+      "vanilla": {
+        "trr": 1,
+        "kssr": 1,
+        "sy": 0,
+        "chars": 2256,
+        "ms": 10737
+      },
+      "kasett": {
+        "trr": 1,
+        "kssr": 1,
+        "sy": 13,
+        "chars": 3394,
+        "ms": 14147,
+        "compliance": "PARSE_OK",
+        "sub_count": 3,
+        "key_state_emitted": 6,
+        "decisions_count": 4,
+        "open_questions_count": 0,
+        "schema_version": null
+      }
+    },
+    {
+      "id": "session-05",
+      "tier": 2,
+      "thread_count": 4,
+      "key_state_count": 6,
+      "message_count": 46,
+      "vanilla": {
+        "trr": 1,
+        "kssr": 1,
+        "sy": 0,
+        "chars": 1834,
+        "ms": 10228
+      },
+      "kasett": {
+        "trr": 1,
+        "kssr": 0.8333333333333334,
+        "sy": 13,
+        "chars": 3496,
+        "ms": 14566,
+        "compliance": "PARSE_OK",
+        "sub_count": 4,
+        "key_state_emitted": 5,
+        "decisions_count": 4,
+        "open_questions_count": 0,
+        "schema_version": null
+      }
+    },
+    {
+      "id": "session-06",
+      "tier": 2,
+      "thread_count": 3,
+      "key_state_count": 5,
+      "message_count": 40,
+      "vanilla": {
+        "trr": 1,
+        "kssr": 1,
+        "sy": 0,
+        "chars": 2352,
+        "ms": 10775
+      },
+      "kasett": {
+        "trr": 1,
+        "kssr": 1,
+        "sy": 15,
+        "chars": 3662,
+        "ms": 15829,
+        "compliance": "PARSE_OK",
+        "sub_count": 3,
+        "key_state_emitted": 8,
+        "decisions_count": 4,
+        "open_questions_count": 0,
+        "schema_version": null
+      }
+    },
+    {
+      "id": "session-07",
+      "tier": 2,
+      "thread_count": 3,
+      "key_state_count": 6,
+      "message_count": 40,
+      "vanilla": {
+        "trr": 0.6666666666666666,
+        "kssr": 1,
+        "sy": 0,
+        "chars": 3123,
+        "ms": 14070
+      },
+      "kasett": {
+        "trr": 1,
+        "kssr": 1,
+        "sy": 17,
+        "chars": 4889,
+        "ms": 17371,
+        "compliance": "PARSE_OK",
+        "sub_count": 3,
+        "key_state_emitted": 9,
+        "decisions_count": 5,
+        "open_questions_count": 0,
+        "schema_version": null
+      }
+    },
+    {
+      "id": "session-08",
+      "tier": 3,
+      "thread_count": 5,
+      "key_state_count": 10,
+      "message_count": 62,
+      "vanilla": {
+        "trr": 0.8,
+        "kssr": 1,
+        "sy": 0,
+        "chars": 3249,
+        "ms": 13712
+      },
+      "kasett": {
+        "trr": 0.8,
+        "kssr": 1,
+        "sy": 20,
+        "chars": 4533,
+        "ms": 17358,
+        "compliance": "PARSE_OK",
+        "sub_count": 5,
+        "key_state_emitted": 10,
+        "decisions_count": 5,
+        "open_questions_count": 0,
+        "schema_version": null
+      }
+    },
+    {
+      "id": "session-09",
+      "tier": 3,
+      "thread_count": 5,
+      "key_state_count": 9,
+      "message_count": 52,
+      "vanilla": {
+        "trr": 0.8,
+        "kssr": 0.8888888888888888,
+        "sy": 0,
+        "chars": 3469,
+        "ms": 16880
+      },
+      "kasett": {
+        "trr": 1,
+        "kssr": 0.8888888888888888,
+        "sy": 22,
+        "chars": 5681,
+        "ms": 22626,
+        "compliance": "PARSE_OK",
+        "sub_count": 5,
+        "key_state_emitted": 10,
+        "decisions_count": 5,
+        "open_questions_count": 2,
+        "schema_version": null
+      }
+    },
+    {
+      "id": "session-10",
+      "tier": 3,
+      "thread_count": 6,
+      "key_state_count": 11,
+      "message_count": 54,
+      "vanilla": {
+        "trr": 0.6666666666666666,
+        "kssr": 1,
+        "sy": 0,
+        "chars": 4070,
+        "ms": 16172
+      },
+      "kasett": {
+        "trr": 0.6666666666666666,
+        "kssr": 1,
+        "sy": 19,
+        "chars": 4885,
+        "ms": 19844,
+        "compliance": "PARSE_OK",
+        "sub_count": 5,
+        "key_state_emitted": 10,
+        "decisions_count": 4,
+        "open_questions_count": 0,
+        "schema_version": null
+      }
+    },
+    {
+      "id": "session-11",
+      "tier": 4,
+      "thread_count": 8,
+      "key_state_count": 25,
+      "message_count": 120,
+      "vanilla": {
+        "trr": 0.5,
+        "kssr": 0.92,
+        "sy": 0,
+        "chars": 3805,
+        "ms": 18596
+      },
+      "kasett": {
+        "trr": 0.375,
+        "kssr": 0.84,
+        "sy": 0,
+        "chars": 6990,
+        "ms": 26783,
+        "compliance": "PARSE_FALLBACK",
+        "sub_count": 0,
+        "key_state_emitted": 0,
+        "decisions_count": 0,
+        "open_questions_count": 0,
+        "schema_version": null
+      }
+    },
+    {
+      "id": "session-12",
+      "tier": 4,
+      "thread_count": 6,
+      "key_state_count": 20,
+      "message_count": 100,
+      "vanilla": {
+        "trr": 0.8333333333333334,
+        "kssr": 0.95,
+        "sy": 0,
+        "chars": 2478,
+        "ms": 10526
+      },
+      "kasett": {
+        "trr": 0.8333333333333334,
+        "kssr": 0.95,
+        "sy": 0,
+        "chars": 5177,
+        "ms": 18252,
+        "compliance": "PARSE_FALLBACK",
+        "sub_count": 0,
+        "key_state_emitted": 0,
+        "decisions_count": 0,
+        "open_questions_count": 0,
+        "schema_version": null
+      }
+    },
+    {
+      "id": "session-13",
+      "tier": 4,
+      "thread_count": 10,
+      "key_state_count": 30,
+      "message_count": 150,
+      "vanilla": {
+        "trr": 0.6,
+        "kssr": 0.9666666666666667,
+        "sy": 0,
+        "chars": 3156,
+        "ms": 13026
+      },
+      "kasett": {
+        "trr": 0.7,
+        "kssr": 0.8666666666666667,
+        "sy": 25,
+        "chars": 4987,
+        "ms": 19923,
+        "compliance": "PARSE_OK",
+        "sub_count": 5,
+        "key_state_emitted": 15,
+        "decisions_count": 5,
+        "open_questions_count": 0,
+        "schema_version": null
+      }
+    },
+    {
+      "id": "session-14",
+      "tier": 4,
+      "thread_count": 5,
+      "key_state_count": 15,
+      "message_count": 80,
+      "vanilla": {
+        "trr": 0.6,
+        "kssr": 1,
+        "sy": 0,
+        "chars": 2559,
+        "ms": 11586
+      },
+      "kasett": {
+        "trr": 0.6,
+        "kssr": 1,
+        "sy": 20,
+        "chars": 4726,
+        "ms": 17716,
+        "compliance": "PARSE_OK",
+        "sub_count": 5,
+        "key_state_emitted": 11,
+        "decisions_count": 4,
+        "open_questions_count": 0,
+        "schema_version": null
+      }
+    },
+    {
+      "id": "session-15",
+      "tier": 4,
+      "thread_count": 7,
+      "key_state_count": 22,
+      "message_count": 110,
+      "vanilla": {
+        "trr": 0.5714285714285714,
+        "kssr": 0.9090909090909091,
+        "sy": 0,
+        "chars": 2247,
+        "ms": 11962
+      },
+      "kasett": {
+        "trr": 0.8571428571428571,
+        "kssr": 0.8181818181818182,
+        "sy": 0,
+        "chars": 5448,
+        "ms": 20251,
+        "compliance": "PARSE_FALLBACK",
+        "sub_count": 0,
+        "key_state_emitted": 0,
+        "decisions_count": 0,
+        "open_questions_count": 0,
+        "schema_version": null
+      }
+    }
+  ]
+}

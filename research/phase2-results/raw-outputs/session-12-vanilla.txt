@@ -1,0 +1,56 @@
+# Conversation Summary: Six Active Development Tracks
+
+## 1. Customer Onboarding Revamp (formerly signup-v2)
+- **Name Change**: Renamed from "signup-v2" to "customer-onboarding-revamp" for broader scope
+- **Figma Design**: https://figma.com/file/aBcD3fGhI4j/onboarding-revamp
+- **Scope**: Complete post-signup flow through first value delivery
+- **PR**: #892 (will reference both names for searchability)
+- **Status**: No open questions
+
+## 2. Pricing Tier Restructuring (3-tier → 4-tier)
+- **New Tiers**:
+  - Starter: $49/mo
+  - Pro: $199/mo
+  - Business: $499/mo
+  - Enterprise: Custom pricing
+- **PR**: #897
+- **Effective Date**: Next Monday for new customers
+- **Grandfathering**: Existing customers remain on 3-tier until next renewal
+- **Marketing Copy**: Locked and approved
+- **Test Transaction**: Completed successfully ($1 charge/refund through portal)
+- **Status**: No open questions
+
+## 3. Stripe Billing Portal
+- **Custom Domain**: billing.moltaicorp.com
+- **DNS**: Configured and verified
+- **SSL**: Auto-provisioned by Stripe, already active
+- **Stripe Account**: acct_1OqB7zE2k9jX4mPp
+- **Integration**: Coordinated with 4-tier pricing model rollout
+- **Status**: No open questions
+
+## 4. Product Analytics Dashboard
+- **URL**: https://dashboards.moltaicorp.com/product-usage-v2
+- **Data Source**: molt-analytics-prod.aurora.us-east-1
+- **Refresh Cadence**: Hourly aggregations from raw events, dashboard refreshes on access
+- **Access Control**: Product team SSO group only, PII redacted at SQL view layer
+- **Status**: No open questions
+
+## 5. Email Migration (Mailgun → Postmark)
+- **Mailgun EOL**: 2026-06-15
+- **Postmark Server Token**: pm-server-token-2026-05
+- **Sender Domain**: mail.moltaicorp.com
+- **DNS Configuration**: SPF, DKIM, DMARC all configured for Postmark
+- **Volume Capacity**: Postmark plan supports 300k/month, current peak ~180k/month
+- **Status**: No open questions
+
+## 6. GDPR Data Export Feature
+- **Endpoint**: GET /api/v2/users/{id}/data-export
+- **Response**: Signed URL with 24-hour TTL
+- **Storage**: s3://moltai-gdpr-exports-prod
+- **Encryption**: KMS-encrypted at rest
+- **Compliance**: Object-lock enabled for compliance hold
+- **Coverage**: 47 PII columns across 12 tables (full data inventory coverage)
+- **Status**: No open questions
+
+## Overall Status
+All six tracks have completed technical planning with no outstanding questions. Implementation details, credentials, URLs, and configurations are documented and verified.

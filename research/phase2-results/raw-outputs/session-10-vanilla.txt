@@ -1,0 +1,90 @@
+# Conversation Summary: Kasett-Rewind Plugin Development
+
+## Project Overview
+- **Package**: `@moltai/kasett-rewind` v0.1.0
+- **Plugin ID**: `kasett-rewind-f7a3b2c1-9d44-4b7e-8c22-1f0e3b5d9a11`
+- **Source**: `/home/node/.openclaw/workspace/repos/kasett-rewind/src/index.ts`
+- **Registry**: https://registry.moltaicorp.com/plugins/kasett-rewind/versions
+- **Install**: `openclaw plugin install @moltai/kasett-rewind`
+
+## Six Development Threads
+
+### Thread 1: Plugin Architecture
+- Entry point: `/home/node/.openclaw/workspace/repos/kasett-rewind/src/index.ts`
+- Exports `register(api: PluginAPI)` function
+- Three hooks registered via `api.on()`:
+  - `before_compaction`: Inject steering prompt
+  - `after_compaction`: Parse THREAD_META block and store
+  - `context_load`: Inject orientation from most recent meta
+- Configuration: `openclaw.plugin.json`
+
+### Thread 2: ThreadMeta Schema
+- **Schema**: `{main: string, sub: [string, string, string]}`
+- **Storage field**: `kaspiett` (legacy naming, predates kasett-rewind rename)
+- **Storage location**: `/home/node/.openclaw/agents/main/sessions/` (JSONL format)
+- **Event format**: `{timestamp, type, data: {kaspiett: ThreadMeta, summary: string}}`
+- **Rolling window**: `rolling_window_size=5` compactions
+
+### Thread 3: SessionReader
+- **Class**: `SessionReader` in `/home/node/.openclaw/workspace/repos/kasett-rewind/src/index.ts`
+- **Reads from**: `/home/node/.openclaw/agents/main/sessions/`
+- **Filters**: JSONL events where `data.kaspiett != null`
+- **Returns**: Last N events per `rolling_window_size=5`
+- **Error handling**: Returns empty array if path missing or JSONL corrupt; degrades gracefully
+
+### Thread 4: Benchmark Harness
+- **Model**: `anthropic/claude-sonnet-4-6`
+- **API**: https://openrouter.ai/api/v1/chat/completions
+- **Temperature**: 0 (reproducibility)
+- **Max tokens**: 4096
+- **Rate limiting**: 3-second delay between calls
+- **Fixtures**: `phase1_fixture_count=10` synthetic sessions
+- **Fixture location**: `research/phase1-results/fixtures/`
+- **Tier 3 structure**: 5+ threads, 8-12 key state values, 80-100 turns
+- **Metrics**:
+  - **TRR** (Thread Retention Rate): Did summary mention each thread?
+  - **KSSR** (Key State Survival Rate): Did exact key state values survive?
+  - **Cohen's d**: Effect size between conditions
+
+### Thread 5: Steering Prompt Builder
+- **Function**: `buildSteeringPrompt()` in `/home/node/.openclaw/workspace/repos/kasett-rewind/src/index.ts`
+- **Input**: ThreadAnalysis (core/fresh/fading) + previous metas
+- **Output format**: Narrative summary + `[THREAD_META]` block
+- **Block structure**:
+  ```
+  [THREAD_META]
+  main: <description>
+  sub1: <description>
+  sub2: <description>
+  sub3: <description>
+  [/THREAD_META]
+  ```
+- **Fallback**: With no previous metas, produces basic format instructions only
+
+### Thread 6: THREAD_META Parser
+- **Function**: `parseCompactionOutput()`
+- **Regex**: `/\[THREAD_META\]\s*\n([\s\S]*?)\n?\s*\[\/THREAD_META\]/`
+- **Parses**: `main:`, `sub1:`, `sub2:`, `sub3:` lines
+- **Returns**: `{summary: string, meta: ThreadMeta|null}`
+- **Fallback**: If no block found, returns `{summary: raw_output.trim(), meta: null}`
+- **Test coverage**: 47 tests pass (happy path, missing sub3, no block, whitespace, nested brackets)
+
+## Build & Deployment Status
+- **TypeScript build**: ✅ Success
+- **Tests**: ✅ 47 tests pass
+- **Publication**: ✅ Published to registry
+
+## Phase 1 Benchmark Results
+- **Conditions**: Vanilla vs. Kasett-steered summarization
+- **Sessions**: 10 synthetic sessions across 3 tiers
+- **Results**:
+  - **TRR**: 0.62 (vanilla) → 0.89 (kasett) | Cohen's d = 1.8 (large effect)
+  - **KSSR**: 0.71 (vanilla) → 0.94 (kasett) | Cohen's d = 1.6 (large effect)
+- **Conclusion**: Kasett steering significantly improves both thread retention and key state survival
+
+## Key Technical Values Referenced
+- `storage_path=/home/node/.openclaw/agents/main/sessions/`
+- `openrouter_base=https://openrouter.ai/api/v1/chat/completions`
+- `rolling_window_size=5`
+- `phase1_fixture_count=10`
+- Model: `anthropic/claude-sonnet-4-6`

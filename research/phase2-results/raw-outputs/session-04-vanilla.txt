@@ -1,0 +1,42 @@
+# Conversation Summary: MoltAIMux v0.7.2 Gateway Development
+
+## Project Overview
+- **Product**: MoltAIMux OpenAI-compatible gateway
+- **Version**: v0.7.2 (promoted from v0.7.2-beta)
+- **Gateway URL**: https://mux.moltaicorp.com/v1/chat/completions
+- **Router Location**: /home/node/.openclaw/workspace/repos/moltaimux/src/gateway/router.ts
+
+## Authentication & Testing
+- **Test API Key**: sk-mux-test-9f3b2e1a4c7d8e5f6a2b3c4d5e6f7a8b
+- **Test Tenant ID**: tenant-prod-8b3f9c2a-1e4d-4a7f-9c2b-3e5f8a1d4c7b
+- **Key Purpose**: Full quota access for integration testing
+
+## Features Implemented (3 Main Threads)
+
+### Thread 1: Gateway Router Functionality
+- **Streaming Support**: Handles both streaming (stream=true) and non-streaming responses via SSE
+- **Load Balancing**: Weighted round-robin strategy across upstream providers, configurable per model per tenant
+- **Automatic Failover**: On 500/503 errors, retries next provider in weighted list (max 2 retries)
+- **Request/Response Logging**: Middleware logs tenant_id, model, tokens used, latency, and response code
+
+### Thread 2: Rate Limiting & Quotas
+- **Rate Limiting**: 100 requests per minute (RPM) per tenant
+- **Burst Handling**: Sliding window algorithm with token bucket; 20 burst tokens above base limit
+- **Rate Limit Headers**: X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset
+- **Storage**: Redis-based, keyed by tenant_id
+- **Quota System**: Monthly token quota per tenant (10M tokens/month for test tenant)
+- **Pre-flight Check**: Returns 429 with X-Quota-Exceeded: true when quota exhausted
+- **Limit Response**: 429 Too Many Requests with Retry-After header at limit
+
+### Thread 3: Integration Tests
+All tests passing against v0.7.2:
+1. **Streaming Test**: Validates SSE chunk format with stream=true
+2. **Rate Limit Test**: Fires 101 requests, verifies 101st returns 429
+3. **Tenant Isolation Test**: Confirms rate limits don't bleed across tenant boundaries
+4. **Failover Test**: Mocks upstream 503, verifies successful failover to second provider
+
+## Current State
+- **Status**: Complete and deployed
+- **Version**: v0.7.2 (tagged and pushed)
+- **Test Results**: All integration tests green
+- **Ready**: Production-ready at https://mux.moltaicorp.com/v1/chat/completions

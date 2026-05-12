@@ -1,0 +1,350 @@
+{
+  "id": "session-14",
+  "tier": 4,
+  "threads": [
+    "unifying user notifications service (merged from email-notifications and push-notifications)",
+    "centralizing logging into Datadog from CloudWatch",
+    "building admin tooling for customer success team",
+    "API SDK generation pipeline (TypeScript and Python)",
+    "database read replica provisioning for reporting workloads"
+  ],
+  "keyState": {
+    "merged_service_name": "molt-notifications",
+    "old_email_service": "molt-email-notifications",
+    "old_push_service": "molt-push-notifications",
+    "notifications_repo": "github.com/moltaicorp/molt-notifications",
+    "datadog_api_key_secret": "kv/prod/datadog/api-key",
+    "datadog_site": "datadoghq.com",
+    "log_retention_days": "90",
+    "admin_tool_url": "https://admin.moltaicorp.com",
+    "admin_auth_role": "CustomerSuccessAdmin",
+    "sdk_publish_registry_ts": "npm:@moltai/sdk",
+    "sdk_publish_registry_py": "pypi:moltai-sdk",
+    "sdk_version_current": "3.4.0",
+    "read_replica_endpoint": "molt-prod-ro.cluster-ro-xyz.us-east-1.rds.amazonaws.com",
+    "read_replica_instance_class": "db.r6g.2xlarge",
+    "reporting_user_role": "reporting_ro"
+  },
+  "messages": [
+    {
+      "role": "user",
+      "content": "Five tracks today including a merge — email notifications and push notifications are merging into a single service. Plus Datadog logging consolidation, admin tooling, SDK pipeline, and read replica provisioning. Walk through each."
+    },
+    {
+      "role": "user",
+      "content": "Email notifications and push notifications — should we merge them?"
+    },
+    {
+      "role": "assistant",
+      "content": "Yes — merging molt-email-notifications and molt-push-notifications into a unified service molt-notifications. Repo github.com/moltaicorp/molt-notifications."
+    },
+    {
+      "role": "user",
+      "content": "Logging unification — Datadog?"
+    },
+    {
+      "role": "assistant",
+      "content": "Yes, centralizing into Datadog. API key in kv/prod/datadog/api-key. Site is datadoghq.com. Retention 90 days."
+    },
+    {
+      "role": "user",
+      "content": "Admin tool for CS team — URL?"
+    },
+    {
+      "role": "assistant",
+      "content": "https://admin.moltaicorp.com. Access scoped to CustomerSuccessAdmin role."
+    },
+    {
+      "role": "user",
+      "content": "SDK pipeline?"
+    },
+    {
+      "role": "assistant",
+      "content": "TypeScript SDK to npm:@moltai/sdk, Python SDK to pypi:moltai-sdk. Current version 3.4.0."
+    },
+    {
+      "role": "user",
+      "content": "Read replica for reporting?"
+    },
+    {
+      "role": "assistant",
+      "content": "Provisioning molt-prod-ro.cluster-ro-xyz.us-east-1.rds.amazonaws.com on db.r6g.2xlarge. Reporting role reporting_ro."
+    },
+    {
+      "role": "user",
+      "content": "Both old services deprecated?"
+    },
+    {
+      "role": "assistant",
+      "content": "Both molt-email-notifications and molt-push-notifications get retired. New unified service molt-notifications takes over. Single repo at github.com/moltaicorp/molt-notifications."
+    },
+    {
+      "role": "user",
+      "content": "CloudWatch decommission?"
+    },
+    {
+      "role": "assistant",
+      "content": "CloudWatch retained for AWS-native logs only. App logs all flow to datadoghq.com via the agent. Retention 90 days."
+    },
+    {
+      "role": "user",
+      "content": "Feature set?"
+    },
+    {
+      "role": "assistant",
+      "content": "Customer lookup, plan changes, refund issuance, audit trail. All gated behind CustomerSuccessAdmin role."
+    },
+    {
+      "role": "user",
+      "content": "Auto-publish on tag?"
+    },
+    {
+      "role": "assistant",
+      "content": "Yes, GitHub Actions publishes both npm:@moltai/sdk and pypi:moltai-sdk on git tag matching v*. Current is 3.4.0."
+    },
+    {
+      "role": "user",
+      "content": "Reporting tools pointed at it?"
+    },
+    {
+      "role": "assistant",
+      "content": "Tableau and Looker pointed at molt-prod-ro.cluster-ro-xyz.us-east-1.rds.amazonaws.com under role reporting_ro. Instance class db.r6g.2xlarge sufficient for current load."
+    },
+    {
+      "role": "user",
+      "content": "Migration sequence?"
+    },
+    {
+      "role": "assistant",
+      "content": "Start with email channel in molt-notifications. Then push channel. Both old services (molt-email-notifications, molt-push-notifications) shut down once parity confirmed."
+    },
+    {
+      "role": "user",
+      "content": "Anything new on API SDK generation pipeline (TypeScript and Python)?"
+    },
+    {
+      "role": "assistant",
+      "content": "Nothing new since the last update. State unchanged."
+    },
+    {
+      "role": "user",
+      "content": "Anything new on unifying user notifications service (merged from email-notifications and push-notifications)?"
+    },
+    {
+      "role": "assistant",
+      "content": "Nothing new since the last update. State unchanged."
+    },
+    {
+      "role": "user",
+      "content": "Anything new on building admin tooling for customer success team?"
+    },
+    {
+      "role": "assistant",
+      "content": "Nothing new since the last update. State unchanged."
+    },
+    {
+      "role": "user",
+      "content": "Anything new on database read replica provisioning for reporting workloads?"
+    },
+    {
+      "role": "assistant",
+      "content": "Nothing new since the last update. State unchanged."
+    },
+    {
+      "role": "user",
+      "content": "Anything new on centralizing logging into Datadog from CloudWatch?"
+    },
+    {
+      "role": "assistant",
+      "content": "Nothing new since the last update. State unchanged."
+    },
+    {
+      "role": "user",
+      "content": "Anything new on API SDK generation pipeline (TypeScript and Python)?"
+    },
+    {
+      "role": "assistant",
+      "content": "Nothing new since the last update. State unchanged."
+    },
+    {
+      "role": "user",
+      "content": "Anything new on unifying user notifications service (merged from email-notifications and push-notifications)?"
+    },
+    {
+      "role": "assistant",
+      "content": "Nothing new since the last update. State unchanged."
+    },
+    {
+      "role": "user",
+      "content": "Anything new on building admin tooling for customer success team?"
+    },
+    {
+      "role": "assistant",
+      "content": "Nothing new since the last update. State unchanged."
+    },
+    {
+      "role": "user",
+      "content": "Anything new on database read replica provisioning for reporting workloads?"
+    },
+    {
+      "role": "assistant",
+      "content": "Nothing new since the last update. State unchanged."
+    },
+    {
+      "role": "user",
+      "content": "Anything new on centralizing logging into Datadog from CloudWatch?"
+    },
+    {
+      "role": "assistant",
+      "content": "Nothing new since the last update. State unchanged."
+    },
+    {
+      "role": "user",
+      "content": "Anything new on API SDK generation pipeline (TypeScript and Python)?"
+    },
+    {
+      "role": "assistant",
+      "content": "Nothing new since the last update. State unchanged."
+    },
+    {
+      "role": "user",
+      "content": "Anything new on unifying user notifications service (merged from email-notifications and push-notifications)?"
+    },
+    {
+      "role": "assistant",
+      "content": "Nothing new since the last update. State unchanged."
+    },
+    {
+      "role": "user",
+      "content": "Anything new on building admin tooling for customer success team?"
+    },
+    {
+      "role": "assistant",
+      "content": "Nothing new since the last update. State unchanged."
+    },
+    {
+      "role": "user",
+      "content": "Anything new on database read replica provisioning for reporting workloads?"
+    },
+    {
+      "role": "assistant",
+      "content": "Nothing new since the last update. State unchanged."
+    },
+    {
+      "role": "user",
+      "content": "Anything new on centralizing logging into Datadog from CloudWatch?"
+    },
+    {
+      "role": "assistant",
+      "content": "Nothing new since the last update. State unchanged."
+    },
+    {
+      "role": "user",
+      "content": "Anything new on API SDK generation pipeline (TypeScript and Python)?"
+    },
+    {
+      "role": "assistant",
+      "content": "Nothing new since the last update. State unchanged."
+    },
+    {
+      "role": "user",
+      "content": "Anything new on unifying user notifications service (merged from email-notifications and push-notifications)?"
+    },
+    {
+      "role": "assistant",
+      "content": "Nothing new since the last update. State unchanged."
+    },
+    {
+      "role": "user",
+      "content": "Anything new on building admin tooling for customer success team?"
+    },
+    {
+      "role": "assistant",
+      "content": "Nothing new since the last update. State unchanged."
+    },
+    {
+      "role": "user",
+      "content": "Anything new on database read replica provisioning for reporting workloads?"
+    },
+    {
+      "role": "assistant",
+      "content": "Nothing new since the last update. State unchanged."
+    },
+    {
+      "role": "user",
+      "content": "Anything new on centralizing logging into Datadog from CloudWatch?"
+    },
+    {
+      "role": "assistant",
+      "content": "Nothing new since the last update. State unchanged."
+    },
+    {
+      "role": "user",
+      "content": "Anything new on API SDK generation pipeline (TypeScript and Python)?"
+    },
+    {
+      "role": "assistant",
+      "content": "Nothing new since the last update. State unchanged."
+    },
+    {
+      "role": "user",
+      "content": "Anything new on unifying user notifications service (merged from email-notifications and push-notifications)?"
+    },
+    {
+      "role": "assistant",
+      "content": "Nothing new since the last update. State unchanged."
+    },
+    {
+      "role": "user",
+      "content": "Anything new on building admin tooling for customer success team?"
+    },
+    {
+      "role": "assistant",
+      "content": "Nothing new since the last update. State unchanged."
+    },
+    {
+      "role": "user",
+      "content": "Anything new on database read replica provisioning for reporting workloads?"
+    },
+    {
+      "role": "assistant",
+      "content": "Nothing new since the last update. State unchanged."
+    },
+    {
+      "role": "user",
+      "content": "Anything new on centralizing logging into Datadog from CloudWatch?"
+    },
+    {
+      "role": "assistant",
+      "content": "Nothing new since the last update. State unchanged."
+    },
+    {
+      "role": "user",
+      "content": "Anything new on API SDK generation pipeline (TypeScript and Python)?"
+    },
+    {
+      "role": "assistant",
+      "content": "Nothing new since the last update. State unchanged."
+    },
+    {
+      "role": "user",
+      "content": "Anything new on unifying user notifications service (merged from email-notifications and push-notifications)?"
+    },
+    {
+      "role": "assistant",
+      "content": "Nothing new since the last update. State unchanged."
+    },
+    {
+      "role": "user",
+      "content": "Anything new on building admin tooling for customer success team?"
+    },
+    {
+      "role": "assistant",
+      "content": "Nothing new since the last update. State unchanged."
+    },
+    {
+      "role": "user",
+      "content": "Anything new on database read replica provisioning for reporting workloads?"
+    }
+  ]
+}

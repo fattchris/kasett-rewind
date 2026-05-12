@@ -1,0 +1,68 @@
+We built and shipped MoltAIMux v0.7.2, an OpenAI-compatible gateway at https://mux.moltaicorp.com/v1/chat/completions. The session covered three main workstreams: gateway router implementation, rate limiting and quota enforcement, and comprehensive integration testing.
+
+The gateway router in /home/node/.openclaw/workspace/repos/moltaimux/src/gateway/router.ts now handles both streaming and non-streaming responses, with automatic failover across upstream providers using weighted round-robin load balancing. When an upstream returns 500/503, the gateway automatically retries the next provider (max 2 retries). Request/response logging middleware tracks tenant_id, model, tokens, latency, and response codes.
+
+Rate limiting was implemented at 100 requests per minute per tenant using a sliding window algorithm with token bucket bursting (20 burst tokens above base). The system returns 429 Too Many Requests with appropriate headers when limits are hit. Quota enforcement was added as a pre-flight check: each tenant has a monthly token quota (10M tokens/month for the prod tenant), tracked in Redis, with 429 + X-Quota-Exceeded header when exhausted.
+
+Integration tests covered streaming validation, rate limit enforcement (101st request gets 429), tenant isolation (rate limits don't bleed across tenants), and failover behavior. All tests passed using the dev API key sk-mux-test-9f3b2e1a4c7d8e5f6a2b3c4d5e6f7a8b associated with tenant-prod-8b3f9c2a-1e4d-4a7f-9c2b-3e5f8a1d4c7b. The version was promoted from v0.7.2-beta to v0.7.2, tagged, and pushed.
+
+```json
+{
+  "main": "Build and ship MoltAIMux v0.7.2 OpenAI-compatible gateway with streaming, rate limiting, and failover",
+  "sub": [
+    {
+      "id": "gateway-router",
+      "label": "Implement streaming, failover, load balancing, and logging in gateway router",
+      "status": "completed"
+    },
+    {
+      "id": "rate-limiting-quotas",
+      "label": "Add per-tenant rate limiting (100 RPM) and monthly token quotas (10M)",
+      "status": "completed"
+    },
+    {
+      "id": "integration-tests",
+      "label": "Write and run integration tests for streaming, rate limits, tenant isolation, failover",
+      "status": "completed"
+    }
+  ],
+  "decisions": [
+    "Use sliding window with token bucket for rate limiting (100 RPM base + 20 burst tokens per tenant)",
+    "Implement automatic failover with max 2 retries on upstream 500/503 errors",
+    "Add pre-flight quota check to block requests when tenant monthly quota exhausted",
+    "Use weighted round-robin for load balancing across upstream providers"
+  ],
+  "key_state": [
+    {
+      "kind": "url",
+      "value": "https://mux.moltaicorp.com/v1/chat/completions",
+      "label": "MoltAIMux gateway endpoint"
+    },
+    {
+      "kind": "id",
+      "value": "sk-mux-test-9f3b2e1a4c7d8e5f6a2b3c4d5e6f7a8b",
+      "label": "dev/test API key"
+    },
+    {
+      "kind": "id",
+      "value": "tenant-prod-8b3f9c2a-1e4d-4a7f-9c2b-3e5f8a1d4c7b",
+      "label": "prod tenant ID"
+    },
+    {
+      "kind": "path",
+      "value": "/home/node/.openclaw/workspace/repos/moltaimux/src/gateway/router.ts",
+      "label": "gateway router source file"
+    },
+    {
+      "kind": "version",
+      "value": "v0.7.2",
+      "label": "released MoltAIMux version"
+    },
+    {
+      "kind": "version",
+      "value": "v0.7.2-beta",
+      "label": "previous beta version"
+    }
+  ]
+}
+```

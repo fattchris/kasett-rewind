@@ -1,0 +1,52 @@
+# Multi-Region Agent Deployment Summary
+
+## Infrastructure Decisions
+
+**Terraform Configuration:**
+- Version: terraform-v1.8.3
+- Primary workspace: prod-us-east-1
+- Secondary workspace: prod-us-west-2
+- Module path: `/home/node/.openclaw/workspace/repos/molt-infra/terraform/modules/agent-cluster/main.tf`
+
+**Network Architecture:**
+- us-east-1 VPC CIDR: 10.0.0.0/16
+- us-west-2 VPC CIDR: 10.1.0.0/16
+- VPC peering established between regions (no CIDR overlap)
+- DNS resolution enabled across VPCs via Route 53 private hosted zones
+- Health endpoint: https://agents.us-east-1.moltaicorp.com/health (returning 200)
+
+**ECS Configuration:**
+- Platform: ECS Fargate
+- Container specs: 1 vCPU, 2GB RAM (configurable)
+- Auto-scaling: min 1, max 20 tasks
+- Scale-up threshold: 70% CPU
+- Scale-down threshold: 30% CPU
+- Environment variables: pulled from SSM Parameter Store
+
+## Cost Optimization Strategy
+
+**Selected Approach: Warm Standby**
+- Maintains 1 warm task per region (2 total)
+- Cost: $22/month for both standbys
+- Eliminates cold start delays
+- Scales down to 1 (not 0) to maintain readiness
+
+**Alternatives Considered:**
+- Always-on (10 idle tasks): $110/month
+- Scale-to-zero: $0 idle cost but 30-second cold start delay
+- **Savings: $88/month vs. always-on approach**
+
+## Four Work Threads Completed
+
+1. **Terraform module for agent clusters** - Core IaC at module path
+2. **VPC peering** - Cross-region connectivity (10.0.0.0/16 ↔ 10.1.0.0/16)
+3. **ECS Fargate setup** - Task definitions, services, security groups, IAM roles
+4. **Cost optimization** - Implemented warm standby pattern with documentation
+
+## Deployment Status
+
+- Terraform plan: 14 resources added
+- Applied to prod-us-east-1: ✅ Complete
+- Applied to prod-us-west-2: ✅ Complete
+- Code committed and pushed
+- Both regions operational with health checks passing

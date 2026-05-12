@@ -1,0 +1,78 @@
+# Conversation Summary: Five-Track Infrastructure & Tooling Initiative
+
+## Overview
+Discussion covered five parallel workstreams for Moltai Corp infrastructure improvements, with detailed technical specifications established for each track.
+
+---
+
+## 1. Unified Notifications Service (Email + Push Merge)
+
+**Decision:** Merge `molt-email-notifications` and `molt-push-notifications` into single unified service
+
+**Technical Details:**
+- **New service name:** `molt-notifications`
+- **Repository:** `github.com/moltaicorp/molt-notifications`
+- **Migration sequence:** 
+  1. Start with email channel in new service
+  2. Add push channel
+  3. Retire both old services after parity confirmation
+- **Services to be deprecated:** `molt-email-notifications`, `molt-push-notifications`
+
+---
+
+## 2. Datadog Logging Consolidation
+
+**Decision:** Centralize application logging from CloudWatch to Datadog
+
+**Technical Details:**
+- **Datadog site:** `datadoghq.com`
+- **API key location:** `kv/prod/datadog/api-key`
+- **Retention period:** 90 days
+- **CloudWatch status:** Retained for AWS-native logs only; all application logs flow to Datadog via agent
+
+---
+
+## 3. Admin Tooling for Customer Success
+
+**Purpose:** Internal admin interface for CS team operations
+
+**Technical Details:**
+- **URL:** `https://admin.moltaicorp.com`
+- **Access control:** Scoped to `CustomerSuccessAdmin` role
+- **Feature set:**
+  - Customer lookup
+  - Plan changes
+  - Refund issuance
+  - Audit trail
+- All features gated behind `CustomerSuccessAdmin` role
+
+---
+
+## 4. SDK Generation Pipeline
+
+**Purpose:** Automated SDK publishing for TypeScript and Python
+
+**Technical Details:**
+- **TypeScript SDK:** Published to `npm:@moltai/sdk`
+- **Python SDK:** Published to `pypi:moltai-sdk`
+- **Current version:** 3.4.0
+- **Automation:** GitHub Actions auto-publishes both SDKs on git tags matching `v*` pattern
+- **Status:** No changes since last update; pipeline stable
+
+---
+
+## 5. Read Replica Provisioning for Reporting
+
+**Purpose:** Dedicated read replica for reporting workloads (Tableau, Looker)
+
+**Technical Details:**
+- **Endpoint:** `molt-prod-ro.cluster-ro-xyz.us-east-1.rds.amazonaws.com`
+- **Instance class:** `db.r6g.2xlarge` (sufficient for current load)
+- **Database role:** `reporting_ro`
+- **Connected tools:** Tableau and Looker both pointed at this endpoint
+- **Region:** `us-east-1`
+
+---
+
+## Current State
+All five tracks have established specifications. No new updates reported across multiple status checks, indicating stable planning phase or awaiting implementation kickoff.

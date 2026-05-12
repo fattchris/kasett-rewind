@@ -1,0 +1,650 @@
+{
+  "id": "session-13",
+  "tier": 4,
+  "threads": [
+    "kafka cluster migration from MSK to self-hosted Strimzi on EKS",
+    "PostgreSQL major version upgrade from 14 to 16",
+    "frontend bundle size optimization (target sub-500KB initial load)",
+    "machine learning feature store rollout",
+    "deprecating legacy v1 REST API endpoints",
+    "implementing distributed tracing with OpenTelemetry",
+    "cost allocation tagging across all AWS resources",
+    "IAM role refactor to use SSO instead of access keys",
+    "feature flag system migration to LaunchDarkly",
+    "on-call rotation overhaul — moving from PagerDuty to Opsgenie"
+  ],
+  "keyState": {
+    "msk_cluster_arn": "arn:aws:kafka:us-east-1:492372116065:cluster/msk-prod/abc-123",
+    "strimzi_namespace": "kafka-prod",
+    "strimzi_chart_version": "0.39.0",
+    "pg_old_version": "14.10",
+    "pg_new_version": "16.2",
+    "pg_endpoint": "molt-prod-rds.cluster-xyz.us-east-1.rds.amazonaws.com",
+    "pg_upgrade_window": "2026-05-25 03:00 UTC",
+    "bundle_size_target": "500KB",
+    "bundle_current_size": "847KB",
+    "feast_registry_url": "s3://moltai-feast-registry-prod",
+    "feast_redis_endpoint": "feast-online.cache.amazonaws.com:6379",
+    "v1_api_sunset_date": "2026-09-01",
+    "deprecated_endpoints_count": "34",
+    "otel_collector_endpoint": "otel-collector.observability:4317",
+    "jaeger_query_url": "https://jaeger.moltaicorp.com",
+    "cost_tag_namespace": "moltai:",
+    "required_tags": "environment,service,owner,cost-center",
+    "sso_url": "https://moltaicorp.awsapps.com/start",
+    "sso_permission_set": "DeveloperAccess-Prod",
+    "deprecated_iam_users_count": "23",
+    "launchdarkly_project_key": "moltai-prod",
+    "launchdarkly_sdk_key_env": "LAUNCHDARKLY_SDK_KEY",
+    "feature_flags_count": "156",
+    "opsgenie_team_id": "team-sre-prod",
+    "opsgenie_integration_key": "og-int-key-2026-05",
+    "pagerduty_eol_date": "2026-07-01",
+    "grafana_dashboard_url": "https://grafana.moltaicorp.com/d/cost-allocation",
+    "okta_app_id": "okta-app-0oa3xyz123",
+    "msk_eol_date": "2026-08-15",
+    "feast_offline_store": "s3://moltai-feast-offline-prod"
+  },
+  "messages": [
+    {
+      "role": "user",
+      "content": "Ten parallel tracks for Q2 platform work — Kafka migration, PG upgrade, bundle size, feature store, v1 API deprecation, distributed tracing, cost tagging, IAM/SSO, feature flags, and on-call rotation. Status on each."
+    },
+    {
+      "role": "user",
+      "content": "Kafka migration kicking off. Source?"
+    },
+    {
+      "role": "assistant",
+      "content": "Source is arn:aws:kafka:us-east-1:492372116065:cluster/msk-prod/abc-123. Target is Strimzi 0.39.0 on EKS in namespace kafka-prod."
+    },
+    {
+      "role": "user",
+      "content": "PG14 to PG16 — when?"
+    },
+    {
+      "role": "assistant",
+      "content": "Maintenance window 2026-05-25 03:00 UTC. Upgrading 14.10 to 16.2 on molt-prod-rds.cluster-xyz.us-east-1.rds.amazonaws.com."
+    },
+    {
+      "role": "user",
+      "content": "Bundle size status?"
+    },
+    {
+      "role": "assistant",
+      "content": "Current size 847KB, target 500KB. Tree-shaking and lazy-loading in progress."
+    },
+    {
+      "role": "user",
+      "content": "Feast registry?"
+    },
+    {
+      "role": "assistant",
+      "content": "Registry at s3://moltai-feast-registry-prod. Online store at feast-online.cache.amazonaws.com:6379. Offline store at s3://moltai-feast-offline-prod."
+    },
+    {
+      "role": "user",
+      "content": "v1 API sunset?"
+    },
+    {
+      "role": "assistant",
+      "content": "2026-09-01 sunset date for 34 deprecated endpoints. Customers notified via email."
+    },
+    {
+      "role": "user",
+      "content": "OTel collector endpoint?"
+    },
+    {
+      "role": "assistant",
+      "content": "otel-collector.observability:4317. Jaeger query UI at https://jaeger.moltaicorp.com."
+    },
+    {
+      "role": "user",
+      "content": "Cost tag namespace?"
+    },
+    {
+      "role": "assistant",
+      "content": "Tags use moltai: prefix. Required tags: environment,service,owner,cost-center. Dashboard at https://grafana.moltaicorp.com/d/cost-allocation."
+    },
+    {
+      "role": "user",
+      "content": "SSO URL?"
+    },
+    {
+      "role": "assistant",
+      "content": "https://moltaicorp.awsapps.com/start. Permission set DeveloperAccess-Prod. Okta app id okta-app-0oa3xyz123."
+    },
+    {
+      "role": "user",
+      "content": "LaunchDarkly project?"
+    },
+    {
+      "role": "assistant",
+      "content": "Project key moltai-prod. SDK key in env LAUNCHDARKLY_SDK_KEY. 156 flags migrated from legacy system."
+    },
+    {
+      "role": "user",
+      "content": "Opsgenie integration key?"
+    },
+    {
+      "role": "assistant",
+      "content": "og-int-key-2026-05. Team id team-sre-prod. PagerDuty EOL is 2026-07-01."
+    },
+    {
+      "role": "user",
+      "content": "MSK shutdown date?"
+    },
+    {
+      "role": "assistant",
+      "content": "MSK EOL is 2026-08-15. Strimzi chart version 0.39.0 deployed in namespace kafka-prod."
+    },
+    {
+      "role": "user",
+      "content": "Backup plan?"
+    },
+    {
+      "role": "assistant",
+      "content": "Snapshot before, manual rollback path documented. PG endpoint molt-prod-rds.cluster-xyz.us-east-1.rds.amazonaws.com stays the same."
+    },
+    {
+      "role": "user",
+      "content": "Biggest offender?"
+    },
+    {
+      "role": "assistant",
+      "content": "Lodash full import. Already replaced with selective imports — saved 80KB. Target 500KB still aspirational, currently 847KB."
+    },
+    {
+      "role": "user",
+      "content": "First model using it?"
+    },
+    {
+      "role": "assistant",
+      "content": "Recommendation model. Registry s3://moltai-feast-registry-prod, online endpoint feast-online.cache.amazonaws.com:6379."
+    },
+    {
+      "role": "user",
+      "content": "Migration guide?"
+    },
+    {
+      "role": "assistant",
+      "content": "Published. 34 deprecated endpoints all have v2 equivalents documented. Sunset is 2026-09-01."
+    },
+    {
+      "role": "user",
+      "content": "Service coverage?"
+    },
+    {
+      "role": "assistant",
+      "content": "Auth, API gateway, billing instrumented. Sending to otel-collector.observability:4317."
+    },
+    {
+      "role": "user",
+      "content": "Compliance check?"
+    },
+    {
+      "role": "assistant",
+      "content": "AWS Config rule enforces required tags: environment,service,owner,cost-center. Untagged resources flagged for owner remediation."
+    },
+    {
+      "role": "user",
+      "content": "Legacy users?"
+    },
+    {
+      "role": "assistant",
+      "content": "23 IAM users to be deprecated. SSO via https://moltaicorp.awsapps.com/start with DeveloperAccess-Prod replaces them."
+    },
+    {
+      "role": "user",
+      "content": "Flag count to migrate?"
+    },
+    {
+      "role": "assistant",
+      "content": "156 flags total. Project key moltai-prod. Read SDK key from LAUNCHDARKLY_SDK_KEY env var."
+    },
+    {
+      "role": "user",
+      "content": "Routing rules ported?"
+    },
+    {
+      "role": "assistant",
+      "content": "All routing rules ported to Opsgenie team team-sre-prod. Integration key og-int-key-2026-05 wired into Alertmanager."
+    },
+    {
+      "role": "user",
+      "content": "Any new blockers on PostgreSQL major version upgrade from 14 to 16?"
+    },
+    {
+      "role": "assistant",
+      "content": "No new blockers. Track status as previously stated."
+    },
+    {
+      "role": "user",
+      "content": "Any new blockers on machine learning feature store rollout?"
+    },
+    {
+      "role": "assistant",
+      "content": "No new blockers. Track status as previously stated."
+    },
+    {
+      "role": "user",
+      "content": "Any new blockers on implementing distributed tracing with OpenTelemetry?"
+    },
+    {
+      "role": "assistant",
+      "content": "No new blockers. Track status as previously stated."
+    },
+    {
+      "role": "user",
+      "content": "Any new blockers on IAM role refactor to use SSO instead of access keys?"
+    },
+    {
+      "role": "assistant",
+      "content": "No new blockers. Track status as previously stated."
+    },
+    {
+      "role": "user",
+      "content": "Any new blockers on on-call rotation overhaul — moving from PagerDuty to Opsgenie?"
+    },
+    {
+      "role": "assistant",
+      "content": "No new blockers. Track status as previously stated."
+    },
+    {
+      "role": "user",
+      "content": "Any new blockers on PostgreSQL major version upgrade from 14 to 16?"
+    },
+    {
+      "role": "assistant",
+      "content": "No new blockers. Track status as previously stated."
+    },
+    {
+      "role": "user",
+      "content": "Any new blockers on machine learning feature store rollout?"
+    },
+    {
+      "role": "assistant",
+      "content": "No new blockers. Track status as previously stated."
+    },
+    {
+      "role": "user",
+      "content": "Any new blockers on implementing distributed tracing with OpenTelemetry?"
+    },
+    {
+      "role": "assistant",
+      "content": "No new blockers. Track status as previously stated."
+    },
+    {
+      "role": "user",
+      "content": "Any new blockers on IAM role refactor to use SSO instead of access keys?"
+    },
+    {
+      "role": "assistant",
+      "content": "No new blockers. Track status as previously stated."
+    },
+    {
+      "role": "user",
+      "content": "Any new blockers on on-call rotation overhaul — moving from PagerDuty to Opsgenie?"
+    },
+    {
+      "role": "assistant",
+      "content": "No new blockers. Track status as previously stated."
+    },
+    {
+      "role": "user",
+      "content": "Any new blockers on PostgreSQL major version upgrade from 14 to 16?"
+    },
+    {
+      "role": "assistant",
+      "content": "No new blockers. Track status as previously stated."
+    },
+    {
+      "role": "user",
+      "content": "Any new blockers on machine learning feature store rollout?"
+    },
+    {
+      "role": "assistant",
+      "content": "No new blockers. Track status as previously stated."
+    },
+    {
+      "role": "user",
+      "content": "Any new blockers on implementing distributed tracing with OpenTelemetry?"
+    },
+    {
+      "role": "assistant",
+      "content": "No new blockers. Track status as previously stated."
+    },
+    {
+      "role": "user",
+      "content": "Any new blockers on IAM role refactor to use SSO instead of access keys?"
+    },
+    {
+      "role": "assistant",
+      "content": "No new blockers. Track status as previously stated."
+    },
+    {
+      "role": "user",
+      "content": "Any new blockers on on-call rotation overhaul — moving from PagerDuty to Opsgenie?"
+    },
+    {
+      "role": "assistant",
+      "content": "No new blockers. Track status as previously stated."
+    },
+    {
+      "role": "user",
+      "content": "Any new blockers on PostgreSQL major version upgrade from 14 to 16?"
+    },
+    {
+      "role": "assistant",
+      "content": "No new blockers. Track status as previously stated."
+    },
+    {
+      "role": "user",
+      "content": "Any new blockers on machine learning feature store rollout?"
+    },
+    {
+      "role": "assistant",
+      "content": "No new blockers. Track status as previously stated."
+    },
+    {
+      "role": "user",
+      "content": "Any new blockers on implementing distributed tracing with OpenTelemetry?"
+    },
+    {
+      "role": "assistant",
+      "content": "No new blockers. Track status as previously stated."
+    },
+    {
+      "role": "user",
+      "content": "Any new blockers on IAM role refactor to use SSO instead of access keys?"
+    },
+    {
+      "role": "assistant",
+      "content": "No new blockers. Track status as previously stated."
+    },
+    {
+      "role": "user",
+      "content": "Any new blockers on on-call rotation overhaul — moving from PagerDuty to Opsgenie?"
+    },
+    {
+      "role": "assistant",
+      "content": "No new blockers. Track status as previously stated."
+    },
+    {
+      "role": "user",
+      "content": "Any new blockers on PostgreSQL major version upgrade from 14 to 16?"
+    },
+    {
+      "role": "assistant",
+      "content": "No new blockers. Track status as previously stated."
+    },
+    {
+      "role": "user",
+      "content": "Any new blockers on machine learning feature store rollout?"
+    },
+    {
+      "role": "assistant",
+      "content": "No new blockers. Track status as previously stated."
+    },
+    {
+      "role": "user",
+      "content": "Any new blockers on implementing distributed tracing with OpenTelemetry?"
+    },
+    {
+      "role": "assistant",
+      "content": "No new blockers. Track status as previously stated."
+    },
+    {
+      "role": "user",
+      "content": "Any new blockers on IAM role refactor to use SSO instead of access keys?"
+    },
+    {
+      "role": "assistant",
+      "content": "No new blockers. Track status as previously stated."
+    },
+    {
+      "role": "user",
+      "content": "Any new blockers on on-call rotation overhaul — moving from PagerDuty to Opsgenie?"
+    },
+    {
+      "role": "assistant",
+      "content": "No new blockers. Track status as previously stated."
+    },
+    {
+      "role": "user",
+      "content": "Any new blockers on PostgreSQL major version upgrade from 14 to 16?"
+    },
+    {
+      "role": "assistant",
+      "content": "No new blockers. Track status as previously stated."
+    },
+    {
+      "role": "user",
+      "content": "Any new blockers on machine learning feature store rollout?"
+    },
+    {
+      "role": "assistant",
+      "content": "No new blockers. Track status as previously stated."
+    },
+    {
+      "role": "user",
+      "content": "Any new blockers on implementing distributed tracing with OpenTelemetry?"
+    },
+    {
+      "role": "assistant",
+      "content": "No new blockers. Track status as previously stated."
+    },
+    {
+      "role": "user",
+      "content": "Any new blockers on IAM role refactor to use SSO instead of access keys?"
+    },
+    {
+      "role": "assistant",
+      "content": "No new blockers. Track status as previously stated."
+    },
+    {
+      "role": "user",
+      "content": "Any new blockers on on-call rotation overhaul — moving from PagerDuty to Opsgenie?"
+    },
+    {
+      "role": "assistant",
+      "content": "No new blockers. Track status as previously stated."
+    },
+    {
+      "role": "user",
+      "content": "Any new blockers on PostgreSQL major version upgrade from 14 to 16?"
+    },
+    {
+      "role": "assistant",
+      "content": "No new blockers. Track status as previously stated."
+    },
+    {
+      "role": "user",
+      "content": "Any new blockers on machine learning feature store rollout?"
+    },
+    {
+      "role": "assistant",
+      "content": "No new blockers. Track status as previously stated."
+    },
+    {
+      "role": "user",
+      "content": "Any new blockers on implementing distributed tracing with OpenTelemetry?"
+    },
+    {
+      "role": "assistant",
+      "content": "No new blockers. Track status as previously stated."
+    },
+    {
+      "role": "user",
+      "content": "Any new blockers on IAM role refactor to use SSO instead of access keys?"
+    },
+    {
+      "role": "assistant",
+      "content": "No new blockers. Track status as previously stated."
+    },
+    {
+      "role": "user",
+      "content": "Any new blockers on on-call rotation overhaul — moving from PagerDuty to Opsgenie?"
+    },
+    {
+      "role": "assistant",
+      "content": "No new blockers. Track status as previously stated."
+    },
+    {
+      "role": "user",
+      "content": "Any new blockers on PostgreSQL major version upgrade from 14 to 16?"
+    },
+    {
+      "role": "assistant",
+      "content": "No new blockers. Track status as previously stated."
+    },
+    {
+      "role": "user",
+      "content": "Any new blockers on machine learning feature store rollout?"
+    },
+    {
+      "role": "assistant",
+      "content": "No new blockers. Track status as previously stated."
+    },
+    {
+      "role": "user",
+      "content": "Any new blockers on implementing distributed tracing with OpenTelemetry?"
+    },
+    {
+      "role": "assistant",
+      "content": "No new blockers. Track status as previously stated."
+    },
+    {
+      "role": "user",
+      "content": "Any new blockers on IAM role refactor to use SSO instead of access keys?"
+    },
+    {
+      "role": "assistant",
+      "content": "No new blockers. Track status as previously stated."
+    },
+    {
+      "role": "user",
+      "content": "Any new blockers on on-call rotation overhaul — moving from PagerDuty to Opsgenie?"
+    },
+    {
+      "role": "assistant",
+      "content": "No new blockers. Track status as previously stated."
+    },
+    {
+      "role": "user",
+      "content": "Any new blockers on PostgreSQL major version upgrade from 14 to 16?"
+    },
+    {
+      "role": "assistant",
+      "content": "No new blockers. Track status as previously stated."
+    },
+    {
+      "role": "user",
+      "content": "Any new blockers on machine learning feature store rollout?"
+    },
+    {
+      "role": "assistant",
+      "content": "No new blockers. Track status as previously stated."
+    },
+    {
+      "role": "user",
+      "content": "Any new blockers on implementing distributed tracing with OpenTelemetry?"
+    },
+    {
+      "role": "assistant",
+      "content": "No new blockers. Track status as previously stated."
+    },
+    {
+      "role": "user",
+      "content": "Any new blockers on IAM role refactor to use SSO instead of access keys?"
+    },
+    {
+      "role": "assistant",
+      "content": "No new blockers. Track status as previously stated."
+    },
+    {
+      "role": "user",
+      "content": "Any new blockers on on-call rotation overhaul — moving from PagerDuty to Opsgenie?"
+    },
+    {
+      "role": "assistant",
+      "content": "No new blockers. Track status as previously stated."
+    },
+    {
+      "role": "user",
+      "content": "Any new blockers on PostgreSQL major version upgrade from 14 to 16?"
+    },
+    {
+      "role": "assistant",
+      "content": "No new blockers. Track status as previously stated."
+    },
+    {
+      "role": "user",
+      "content": "Any new blockers on machine learning feature store rollout?"
+    },
+    {
+      "role": "assistant",
+      "content": "No new blockers. Track status as previously stated."
+    },
+    {
+      "role": "user",
+      "content": "Any new blockers on implementing distributed tracing with OpenTelemetry?"
+    },
+    {
+      "role": "assistant",
+      "content": "No new blockers. Track status as previously stated."
+    },
+    {
+      "role": "user",
+      "content": "Any new blockers on IAM role refactor to use SSO instead of access keys?"
+    },
+    {
+      "role": "assistant",
+      "content": "No new blockers. Track status as previously stated."
+    },
+    {
+      "role": "user",
+      "content": "Any new blockers on on-call rotation overhaul — moving from PagerDuty to Opsgenie?"
+    },
+    {
+      "role": "assistant",
+      "content": "No new blockers. Track status as previously stated."
+    },
+    {
+      "role": "user",
+      "content": "Any new blockers on PostgreSQL major version upgrade from 14 to 16?"
+    },
+    {
+      "role": "assistant",
+      "content": "No new blockers. Track status as previously stated."
+    },
+    {
+      "role": "user",
+      "content": "Any new blockers on machine learning feature store rollout?"
+    },
+    {
+      "role": "assistant",
+      "content": "No new blockers. Track status as previously stated."
+    },
+    {
+      "role": "user",
+      "content": "Any new blockers on implementing distributed tracing with OpenTelemetry?"
+    },
+    {
+      "role": "assistant",
+      "content": "No new blockers. Track status as previously stated."
+    },
+    {
+      "role": "user",
+      "content": "Any new blockers on IAM role refactor to use SSO instead of access keys?"
+    },
+    {
+      "role": "assistant",
+      "content": "No new blockers. Track status as previously stated."
+    },
+    {
+      "role": "user",
+      "content": "Any new blockers on on-call rotation overhaul — moving from PagerDuty to Opsgenie?"
+    }
+  ]
+}
