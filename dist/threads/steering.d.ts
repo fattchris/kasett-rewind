@@ -17,17 +17,20 @@
  * site is responsible for adding the API-level structured-output flag.
  */
 import type { ThreadMeta } from '../types.js';
-import type { ThreadMetaV2 } from './schema.js';
+import type { KeyStateEntry, ThreadMetaV2, ThreadMetaV3 } from './schema.js';
 import type { WeightedSummary } from './weight.js';
 /** Steering output mode — controls how the prompt instructs the LLM to format the meta. */
 export type StructuredOutputMode = 'json' | 'tool' | 'markdown';
 /**
- * Optional tuning for buildSteeringPrompt. All fields default to v2/json.
+ * Optional tuning for buildSteeringPrompt. All fields default to v3/json.
+ *
+ * Phase C: prompt now embeds the v3 schema (v2 + key_state) and accepts
+ * detected candidate values + previous-compaction key state for continuity.
  */
 export interface SteeringOptions {
     /**
      * Output format the LLM should produce.
-     *   - 'json' (default): fenced ```json``` block conforming to v2 schema.
+     *   - 'json' (default): fenced ```json``` block conforming to v3 schema.
      *   - 'tool': same prompt as 'json' for now; assumes the call site is
      *     also passing a tool_use / response_format payload to the provider.
      *   - 'markdown': legacy v1 [THREAD_META] block — backward compat only.
@@ -40,6 +43,17 @@ export interface SteeringOptions {
      * for ID-based continuity tracking in weight.ts (B2.8).
      */
     previousSubIds?: ReadonlyArray<string>;
+    /**
+     * Detected candidate key-state values (Phase C). The detector emits
+     * these from pre-compaction messages and the LLM is asked to keep the
+     * still-relevant ones, drop the rest, and add ones we missed.
+     */
+    candidateKeyState?: ReadonlyArray<KeyStateEntry>;
+    /**
+     * Previous compaction's key_state entries, oldest-first. The LLM is
+     * encouraged to carry these forward when still relevant (continuity).
+     */
+    previousKeyState?: ReadonlyArray<KeyStateEntry>;
 }
 /**
  * Build the orientation string for the before_prompt_build hook.
@@ -69,6 +83,19 @@ export declare function buildOrientationPrompt(metas: ThreadMeta[]): string | nu
 export declare function buildOrientationPromptV2(metas: Array<{
     v1?: ThreadMeta;
     v2?: ThreadMetaV2;
+}>): string | null;
+/**
+ * V3-aware orientation builder. Extends V2 by appending a "Recent values"
+ * section pulled from the most recent meta's `key_state[]`. Falls back to
+ * the V2 builder when no V3 data is present.
+ *
+ * @param metas — Most-recent-first list. Each entry can be V1, V2, V3, or any
+ *                 mix. V3 wins when both V2 and V3 are present.
+ */
+export declare function buildOrientationPromptV3(metas: Array<{
+    v1?: ThreadMeta;
+    v2?: ThreadMetaV2;
+    v3?: ThreadMetaV3;
 }>): string | null;
 /**
  * Build the pre-compaction steering prompt.

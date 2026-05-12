@@ -54,6 +54,8 @@ import { buildSteeringPrompt, buildOrientationPrompt } from './threads/steering.
 import { parseCompactionOutput, parseCompactionOutputBestEffort } from './threads/parser.js';
 import { generateStub } from './hotswap/stub.js';
 import { runHotSwapWorker } from './hotswap/worker.js';
+import { detectCandidateKeyState } from './keystate/detector.js';
+import type { KeyStateEntry } from './threads/schema.js';
 import type { KasettConfig, ThreadMeta } from './types.js';
 import { DEFAULT_CONFIG } from './types.js';
 
@@ -624,6 +626,8 @@ async function summarizeWithHotSwap(p: SummarizeWithHotSwapParams): Promise<stri
               sidecarPath: info.sidecarPath,
               sidecarWritten: true,
               schemaVersion: info.schemaVersion,
+              keyStateCount: info.keyStateCount,
+              keyStateDetectedCount: info.keyStateDetectedCount,
             },
           });
         },
@@ -743,22 +747,41 @@ async function buildCompactionContext(
   // --- 2. Weight summaries by recency ---
   const weighted = weightSummaries(previousSummaries, config.compaction.weights);
 
-  // --- 3. Extract previous v2 sub-thread ids (for continuity hints) ---
-  // Best-effort: read the most recent summary and pull its v2 ids if present.
-  // Lets the LLM REUSE the same id for continuing threads instead of inventing
-  // a new one each compaction.
+  // --- 3. Extract previous v2 sub-thread ids and v3 key_state (continuity) ---
+  // Best-effort: read the most recent summary and pull its v2 ids and v3
+  // key_state if present. Lets the LLM REUSE the same id for continuing
+  // threads, and carry forward still-relevant key state, rather than
+  // inventing fresh state each compaction.
   let previousSubIds: string[] | undefined;
+  let previousKeyState: KeyStateEntry[] | undefined;
   if (previousSummaries.length > 0) {
     const latest = parseCompactionOutputBestEffort(previousSummaries[0]);
     if (latest.metaV2 && latest.metaV2.sub.length > 0) {
       previousSubIds = latest.metaV2.sub.map((s) => s.id);
     }
+    if (latest.metaV3?.key_state && latest.metaV3.key_state.length > 0) {
+      previousKeyState = latest.metaV3.key_state;
+    }
   }
 
-  // --- 4. Build thread-aware steering prompt (v2/json by default) ---
+  // --- 3b. Detect candidate key state values from the conversation (Phase C) ---
+  // The detector is heuristic / advisory — we surface candidates to the LLM
+  // as hints but the LLM decides what to actually preserve.
+  let candidateKeyState: KeyStateEntry[] = [];
+  try {
+    candidateKeyState = detectCandidateKeyState(
+      params.messages.map((m) => ({ role: m.role, content: m.content })),
+    );
+  } catch (err) {
+    api.logger.debug(`[kasett-rewind] keystate detector failed: ${String(err)}`);
+  }
+
+  // --- 4. Build thread-aware steering prompt (v3/json by default) ---
   const steeringPrompt = buildSteeringPrompt(weighted, {
     structuredOutput: 'json',
     ...(previousSubIds ? { previousSubIds } : {}),
+    ...(previousKeyState ? { previousKeyState } : {}),
+    ...(candidateKeyState.length > 0 ? { candidateKeyState } : {}),
   });
 
   return { previousSummaries, steeringPrompt, sessionFile };

@@ -103,6 +103,64 @@ export const THREAD_STATUS_VALUES: ReadonlyArray<ThreadStatus> = [
   'fading',
 ] as const;
 
+// ---------------------------------------------------------------------------
+// V3: KeyState — explicit tracking of specific values across compactions
+// ---------------------------------------------------------------------------
+//
+// Phase C addition. The summary tells the story; key_state is the evidence
+// list. Directly addresses CompactBench Task 2 (KSSR — Key State Retrieval).
+// ---------------------------------------------------------------------------
+
+/**
+ * Kind of key state value being preserved. The taxonomy is intentionally
+ * small — these are categories the LLM can disambiguate from context.
+ *
+ *   - url     — http(s) endpoints, API URLs, dashboards
+ *   - id      — IDs, ARNs, UUIDs, account/resource handles
+ *   - path    — filesystem paths (absolute or recognizable relative)
+ *   - version — semver / version strings / git SHAs
+ *   - config  — key=value pairs, env vars, feature flags
+ *   - value   — anything else worth preserving verbatim
+ */
+export type KeyStateKind = 'url' | 'id' | 'path' | 'version' | 'config' | 'value';
+
+export const KEY_STATE_KINDS: ReadonlyArray<KeyStateKind> = [
+  'url',
+  'id',
+  'path',
+  'version',
+  'config',
+  'value',
+] as const;
+
+/**
+ * One key-state entry. The LLM is responsible for deciding which detected
+ * candidates to keep, which to drop, and what label/context/thread_id to
+ * attach.
+ *
+ * `value` is intentionally exact — no normalization, no trimming beyond
+ * the wrapping whitespace. KSSR is measured against exact survival.
+ */
+export interface KeyStateEntry {
+  kind: KeyStateKind;
+  value: string;
+  /** Optional human-readable label (e.g. "clyde-sudo role") */
+  label?: string;
+  /** Optional one-line "what is this" context */
+  context?: string;
+  /** Optional reference to a sub-thread id this value belongs to */
+  thread_id?: string;
+}
+
+/**
+ * V3 thread meta — V2 plus optional `key_state[]`. Backward compat: the
+ * field is OPTIONAL and absent on V2 outputs/entries.
+ */
+export interface ThreadMetaV3 extends ThreadMetaV2 {
+  /** Up to 20 key state values to preserve verbatim across compactions. */
+  key_state?: KeyStateEntry[];
+}
+
 /**
  * JSON Schema describing `ThreadMetaV2`. This object is emitted into the
  * steering prompt verbatim AND can be passed to provider-native structured
@@ -159,6 +217,90 @@ export const THREAD_META_SCHEMA_V2 = {
       maxItems: 5,
       items: { type: 'string' },
       description: 'Open questions or blockers.',
+    },
+  },
+  required: ['main', 'sub'],
+} as const;
+
+/**
+ * V3 schema = V2 + optional `key_state` array (max 20). Embeds the V2 schema
+ * structure (rather than referencing it via $ref) so a single object can be
+ * embedded into the prompt and passed to provider-native structured-output
+ * APIs without resolution.
+ */
+export const MAX_KEY_STATE = 20;
+
+export const THREAD_META_SCHEMA_V3 = {
+  $schema: 'https://json-schema.org/draft-07/schema#',
+  $id: 'kasett-rewind/thread-meta/v3',
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    main: {
+      type: 'string',
+      description:
+        'The single overarching thing being worked on this session. One sentence.',
+    },
+    sub: {
+      type: 'array',
+      minItems: 0,
+      maxItems: 5,
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          id: {
+            type: 'string',
+            description:
+              'Stable identifier for this sub-thread, lowercase-kebab. Reuse from previous compaction if continuing.',
+          },
+          label: {
+            type: 'string',
+            description: 'Short description of this sub-thread.',
+          },
+          status: {
+            type: 'string',
+            enum: ['active', 'blocked', 'completed', 'fading'],
+          },
+        },
+        required: ['id', 'label', 'status'],
+      },
+    },
+    decisions: {
+      type: 'array',
+      maxItems: 5,
+      items: { type: 'string' },
+      description: 'Key decisions made since last compaction.',
+    },
+    open_questions: {
+      type: 'array',
+      maxItems: 5,
+      items: { type: 'string' },
+      description: 'Open questions or blockers.',
+    },
+    key_state: {
+      type: 'array',
+      maxItems: 20,
+      description:
+        'Specific values (URLs, IDs, paths, versions, config) to preserve verbatim across compactions.',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          kind: {
+            type: 'string',
+            enum: ['url', 'id', 'path', 'version', 'config', 'value'],
+          },
+          value: {
+            type: 'string',
+            description: 'The exact value to preserve.',
+          },
+          label: { type: 'string' },
+          context: { type: 'string' },
+          thread_id: { type: 'string' },
+        },
+        required: ['kind', 'value'],
+      },
     },
   },
   required: ['main', 'sub'],
@@ -346,4 +488,118 @@ export function projectV2ToV1(meta: ThreadMetaV2): {
  */
 export function schemaAsPromptString(): string {
   return JSON.stringify(THREAD_META_SCHEMA_V2, null, 2);
+}
+
+/**
+ * Serialize the v3 schema for prompt embedding (Phase C).
+ */
+export function schemaV3AsPromptString(): string {
+  return JSON.stringify(THREAD_META_SCHEMA_V3, null, 2);
+}
+
+// ---------------------------------------------------------------------------
+// V3 validator (Phase C)
+// ---------------------------------------------------------------------------
+
+export type ValidateResultV3 =
+  | { ok: true; value: ThreadMetaV3 }
+  | { ok: false; errors: string[] };
+
+/**
+ * Validate one KeyStateEntry. Returns either a typed entry or a list of
+ * errors. Used both standalone (for partial-recovery in the V3 validator)
+ * and exported for tests.
+ */
+export function isValidKeyStateEntry(
+  raw: unknown,
+): { ok: true; value: KeyStateEntry } | { ok: false; errors: string[] } {
+  const errors: string[] = [];
+  if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) {
+    return { ok: false, errors: ['must be a non-array object'] };
+  }
+  const obj = raw as Record<string, unknown>;
+
+  const kind = obj['kind'];
+  if (
+    typeof kind !== 'string' ||
+    !KEY_STATE_KINDS.includes(kind as KeyStateKind)
+  ) {
+    errors.push(`kind: must be one of ${KEY_STATE_KINDS.join('|')}`);
+  }
+
+  const value = obj['value'];
+  if (typeof value !== 'string' || value.trim().length === 0) {
+    errors.push('value: required non-empty string');
+  }
+
+  const label = obj['label'];
+  if (label !== undefined && label !== null && typeof label !== 'string') {
+    errors.push('label: must be string if present');
+  }
+  const context = obj['context'];
+  if (context !== undefined && context !== null && typeof context !== 'string') {
+    errors.push('context: must be string if present');
+  }
+  const threadId = obj['thread_id'];
+  if (threadId !== undefined && threadId !== null && typeof threadId !== 'string') {
+    errors.push('thread_id: must be string if present');
+  }
+
+  if (errors.length > 0) return { ok: false, errors };
+
+  const out: KeyStateEntry = {
+    kind: kind as KeyStateKind,
+    value: value as string,
+  };
+  if (typeof label === 'string' && label.length > 0) out.label = label;
+  if (typeof context === 'string' && context.length > 0) out.context = context;
+  if (typeof threadId === 'string' && threadId.length > 0) out.thread_id = threadId;
+  return { ok: true, value: out };
+}
+
+/**
+ * Validate an unknown value as ThreadMetaV3. Reuses the V2 validator for
+ * the common fields; on top, validates `key_state[]` entry-by-entry.
+ *
+ * Lenient on key_state: invalid entries are dropped (with errors recorded)
+ * rather than rejecting the whole meta object — the upstream parser
+ * decides whether to surface or swallow the warnings.
+ */
+export function validateThreadMetaV3(raw: unknown): ValidateResultV3 {
+  const v2 = validateThreadMetaV2(raw);
+  if (!v2.ok) return { ok: false, errors: v2.errors };
+
+  const obj = raw as Record<string, unknown>;
+  const out: ThreadMetaV3 = { ...v2.value };
+
+  const ksRaw = obj['key_state'];
+  if (ksRaw !== undefined && ksRaw !== null) {
+    if (!Array.isArray(ksRaw)) {
+      // Tolerate non-array as missing
+      return { ok: true, value: out };
+    }
+    const entries: KeyStateEntry[] = [];
+    for (let i = 0; i < ksRaw.length && entries.length < MAX_KEY_STATE; i++) {
+      const r = isValidKeyStateEntry(ksRaw[i]);
+      if (r.ok) entries.push(r.value);
+      // invalid entries silently dropped — advisory layer
+    }
+    if (entries.length > 0) out.key_state = entries;
+  }
+
+  return { ok: true, value: out };
+}
+
+/**
+ * Project V3 -> V2 by dropping `key_state`. Used so V2 readers keep
+ * working when only a V3 entry is available.
+ */
+export function projectV3ToV2(meta: ThreadMetaV3): ThreadMetaV2 {
+  const out: ThreadMetaV2 = {
+    main: meta.main,
+    sub: meta.sub,
+  };
+  if (meta.decisions !== undefined) out.decisions = meta.decisions;
+  if (meta.open_questions !== undefined) out.open_questions = meta.open_questions;
+  return out;
 }

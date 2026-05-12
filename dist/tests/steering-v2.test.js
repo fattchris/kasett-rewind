@@ -7,17 +7,21 @@ describe('buildSteeringPrompt — v2/json mode (default)', () => {
         assert.ok(!result.includes('[THREAD_META]'));
         assert.ok(!result.includes('[/THREAD_META]'));
     });
-    test('includes the v2 JSON schema in the prompt', () => {
+    test('includes the v3 JSON schema in the prompt (Phase C upgrade)', () => {
+        // Phase C: the steering builder now embeds the V3 schema, which is V2
+        // plus optional `key_state[]`. V2 is a subset of V3.
         const result = buildSteeringPrompt([]);
-        // Schema metadata
-        assert.ok(result.includes('"$id": "kasett-rewind/thread-meta/v2"'));
-        // Required fields
+        // Schema metadata — V3 is now the embedded schema
+        assert.ok(result.includes('"$id": "kasett-rewind/thread-meta/v3"'));
+        // Required fields (still main + sub)
         assert.ok(result.includes('"required": [') && result.includes('"main"'));
         // Status enum
         assert.ok(result.includes('"active"'));
         assert.ok(result.includes('"blocked"'));
         assert.ok(result.includes('"completed"'));
         assert.ok(result.includes('"fading"'));
+        // Phase C: key_state field is present in the schema
+        assert.ok(result.includes('"key_state"'));
     });
     test('asks for narrative + fenced ```json``` block', () => {
         const result = buildSteeringPrompt([]);

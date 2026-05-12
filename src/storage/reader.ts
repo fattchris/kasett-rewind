@@ -2,9 +2,13 @@ import { createReadStream } from 'node:fs';
 import { createInterface } from 'node:readline';
 import type { CompactionEvent, ThreadMeta } from '../types.js';
 import { readSidecar, sidecarExists, type SidecarEntry } from './sidecar.js';
-import { parseCompactionOutput, parseCompactionOutputV2 } from '../threads/parser.js';
-import type { ThreadMetaV2 } from '../threads/schema.js';
-import { projectV2ToV1 } from '../threads/schema.js';
+import {
+  parseCompactionOutput,
+  parseCompactionOutputV2,
+  parseCompactionOutputV3,
+} from '../threads/parser.js';
+import type { ThreadMetaV2, ThreadMetaV3 } from '../threads/schema.js';
+import { projectV2ToV1, projectV3ToV2 } from '../threads/schema.js';
 
 /**
  * Error class for kasett-rewind operations.
@@ -121,6 +125,7 @@ export class SessionReader {
       const entries = readSidecar(filePath);
       for (let i = entries.length - 1; i >= 0; i--) {
         const e = entries[i];
+        if (e.thread_meta_v3) return projectV2ToV1(projectV3ToV2(e.thread_meta_v3));
         if (e.thread_meta_v2) return projectV2ToV1(e.thread_meta_v2);
         if (e.thread_meta) return e.thread_meta;
       }
@@ -138,15 +143,113 @@ export class SessionReader {
    *
    * V2-only — will not project v1 entries up to v2 (we have no `id`s or
    * `status` in v1 to fabricate). Use `readLatestMeta` for the unified view.
+   *
+   * If a v3 entry is present, it is projected down to v2 (drops key_state).
    */
   async readLatestMetaV2(filePath: string): Promise<ThreadMetaV2 | null> {
     if (sidecarExists(filePath)) {
       const entries = readSidecar(filePath);
       for (let i = entries.length - 1; i >= 0; i--) {
-        if (entries[i].thread_meta_v2) return entries[i].thread_meta_v2!;
+        const e = entries[i];
+        if (e.thread_meta_v3) return projectV3ToV2(e.thread_meta_v3);
+        if (e.thread_meta_v2) return e.thread_meta_v2;
       }
     }
     return null;
+  }
+
+  /**
+   * Read the most recent v3 thread meta from the session, or null if none
+   * exists. V3-only — won't synthesize a v3 from a v2 entry (no key_state
+   * to fabricate). Use `readLatestMeta` / `readLatestMetaV2` for unified view.
+   */
+  async readLatestMetaV3(filePath: string): Promise<ThreadMetaV3 | null> {
+    if (sidecarExists(filePath)) {
+      const entries = readSidecar(filePath);
+      for (let i = entries.length - 1; i >= 0; i--) {
+        if (entries[i].thread_meta_v3) return entries[i].thread_meta_v3!;
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Read the last N thread metas with all available shapes (v1, v2, v3),
+   * oldest first. Each slot reports every shape that's available so callers
+   * can pick: orientation v3 uses v3+key_state when present, v2 falls back
+   * to that, v1 falls back to either.
+   *
+   * For sidecar entries with `thread_meta_v3`, all three are populated
+   * (v2 via `projectV3ToV2`, v1 via `projectV2ToV1`). For v2-only entries,
+   * v1+v2 are populated. For legacy entries, only v1 is populated.
+   */
+  async readLastNWithMetaV3(
+    filePath: string,
+    count: number,
+  ): Promise<Array<{ v1?: ThreadMeta; v2?: ThreadMetaV2; v3?: ThreadMetaV3 }>> {
+    if (count <= 0) return [];
+
+    const sidecarEntries = sidecarExists(filePath) ? readSidecar(filePath) : [];
+    const jsonlEvents = await this.readCompactionEvents(filePath);
+
+    const sidecarByStub = new Map<string, SidecarEntry>();
+    for (const e of sidecarEntries) {
+      if (e.stub_id) sidecarByStub.set(e.stub_id, e);
+      sidecarByStub.set(e.compaction_id, e);
+    }
+
+    const KASETT_STUB_ID_RE = /\[KASETT_STUB::([0-9a-f-]{36})\]/i;
+    const results: Array<{ v1?: ThreadMeta; v2?: ThreadMetaV2; v3?: ThreadMetaV3 }> = [];
+
+    for (const ev of jsonlEvents) {
+      const m = ev.data.summary.match(KASETT_STUB_ID_RE);
+      let sidecar: SidecarEntry | undefined;
+      if (m) sidecar = sidecarByStub.get(m[1]);
+
+      if (sidecar) {
+        const slot: { v1?: ThreadMeta; v2?: ThreadMetaV2; v3?: ThreadMetaV3 } = {};
+        if (sidecar.thread_meta_v3) {
+          slot.v3 = sidecar.thread_meta_v3;
+          slot.v2 = projectV3ToV2(sidecar.thread_meta_v3);
+          slot.v1 = projectV2ToV1(slot.v2);
+        } else if (sidecar.thread_meta_v2) {
+          slot.v2 = sidecar.thread_meta_v2;
+          slot.v1 = projectV2ToV1(sidecar.thread_meta_v2);
+        } else if (sidecar.thread_meta) {
+          slot.v1 = sidecar.thread_meta;
+        }
+        if (slot.v1 || slot.v2 || slot.v3) results.push(slot);
+        continue;
+      }
+
+      if (ev.data.kaspiett) {
+        results.push({ v1: ev.data.kaspiett });
+      }
+    }
+
+    const seenStubs = new Set<string>();
+    for (const ev of jsonlEvents) {
+      const m = ev.data.summary.match(KASETT_STUB_ID_RE);
+      if (m) seenStubs.add(m[1]);
+    }
+    for (const e of sidecarEntries) {
+      const id = e.stub_id ?? e.compaction_id;
+      if (seenStubs.has(id)) continue;
+      const slot: { v1?: ThreadMeta; v2?: ThreadMetaV2; v3?: ThreadMetaV3 } = {};
+      if (e.thread_meta_v3) {
+        slot.v3 = e.thread_meta_v3;
+        slot.v2 = projectV3ToV2(e.thread_meta_v3);
+        slot.v1 = projectV2ToV1(slot.v2);
+      } else if (e.thread_meta_v2) {
+        slot.v2 = e.thread_meta_v2;
+        slot.v1 = projectV2ToV1(e.thread_meta_v2);
+      } else if (e.thread_meta) {
+        slot.v1 = e.thread_meta;
+      }
+      if (slot.v1 || slot.v2 || slot.v3) results.push(slot);
+    }
+
+    return results.slice(-count);
   }
 
   /**
@@ -156,6 +259,7 @@ export class SessionReader {
    *
    * For sidecar entries with `thread_meta_v2`, both fields are populated
    * (v1 via `projectV2ToV1`). For legacy entries, only v1 is populated.
+   * V3 entries are projected down to v2.
    */
   async readLastNWithMetaV2(
     filePath: string,
@@ -184,7 +288,10 @@ export class SessionReader {
 
       if (sidecar) {
         const slot: { v1?: ThreadMeta; v2?: ThreadMetaV2 } = {};
-        if (sidecar.thread_meta_v2) {
+        if (sidecar.thread_meta_v3) {
+          slot.v2 = projectV3ToV2(sidecar.thread_meta_v3);
+          slot.v1 = projectV2ToV1(slot.v2);
+        } else if (sidecar.thread_meta_v2) {
           slot.v2 = sidecar.thread_meta_v2;
           slot.v1 = projectV2ToV1(sidecar.thread_meta_v2);
         } else if (sidecar.thread_meta) {
@@ -210,7 +317,10 @@ export class SessionReader {
       const id = e.stub_id ?? e.compaction_id;
       if (seenStubs.has(id)) continue;
       const slot: { v1?: ThreadMeta; v2?: ThreadMetaV2 } = {};
-      if (e.thread_meta_v2) {
+      if (e.thread_meta_v3) {
+        slot.v2 = projectV3ToV2(e.thread_meta_v3);
+        slot.v1 = projectV2ToV1(slot.v2);
+      } else if (e.thread_meta_v2) {
         slot.v2 = e.thread_meta_v2;
         slot.v1 = projectV2ToV1(e.thread_meta_v2);
       } else if (e.thread_meta) {
@@ -353,12 +463,18 @@ export class SessionReader {
         // forward-compatibility for v2 inline summaries (rare but possible
         // when the LLM call lands directly in OC's storage path).
         if (!kaspiett) {
-          const v2 = parseCompactionOutputV2(summary);
-          if (v2.metaV1) {
-            kaspiett = v2.metaV1;
+          // Try V3 → V2 → V1 in order; project the highest hit down to v1.
+          const v3 = parseCompactionOutputV3(summary);
+          if (v3.metaV1) {
+            kaspiett = v3.metaV1;
           } else {
-            const fromText = parseCompactionOutput(summary).meta;
-            if (fromText) kaspiett = fromText;
+            const v2 = parseCompactionOutputV2(summary);
+            if (v2.metaV1) {
+              kaspiett = v2.metaV1;
+            } else {
+              const fromText = parseCompactionOutput(summary).meta;
+              if (fromText) kaspiett = fromText;
+            }
           }
         }
 
@@ -404,9 +520,11 @@ function parseKaspiett(raw: unknown): ThreadMeta | undefined {
  * Convert a sidecar entry into a CompactionEvent for backward-compatible APIs.
  */
 function sidecarEntryToCompactionEvent(entry: SidecarEntry): CompactionEvent {
-  // Prefer v2 (project to v1 shape for legacy callers); fall back to v1.
+  // Prefer v3 (project down to v1); fall back to v2, then v1.
   let meta: ThreadMeta | undefined;
-  if (entry.thread_meta_v2) {
+  if (entry.thread_meta_v3) {
+    meta = projectV2ToV1(projectV3ToV2(entry.thread_meta_v3));
+  } else if (entry.thread_meta_v2) {
     meta = projectV2ToV1(entry.thread_meta_v2);
   } else if (entry.thread_meta) {
     meta = {

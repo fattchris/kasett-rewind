@@ -115,10 +115,12 @@ describe('parseCompactionOutputV2 — failure paths', () => {
 });
 
 describe('parseCompactionOutputBestEffort', () => {
-  test('reports v2 when v2 succeeds', () => {
+  test('reports v3 when v2-shaped JSON succeeds (V3 is a superset)', () => {
+    // Phase C: V3 = V2 + optional key_state. A V2-shaped object validates
+    // as V3, so the best-effort parser correctly reports the higher version.
     const raw = `Summary.\n\n\`\`\`json\n${VALID_V2_JSON}\n\`\`\``;
     const result = parseCompactionOutputBestEffort(raw);
-    assert.equal(result.version, 'v2');
+    assert.equal(result.version, 'v3');
     assert.ok(result.metaV2);
     assert.ok(result.metaV1); // also populated via projection
   });
@@ -148,7 +150,8 @@ sub3: gamma
     assert.ok(result.errors.length > 0);
   });
 
-  test('prefers v2 when both v2 and v1 are present', () => {
+  test('prefers v3 when both structured JSON and v1 sentinel are present', () => {
+    // Phase C: V3 (which subsumes V2) wins over V1 markdown sentinel.
     const raw = `Summary.
 
 [THREAD_META]
@@ -162,7 +165,7 @@ sub3: legacy 3
 ${VALID_V2_JSON}
 \`\`\``;
     const result = parseCompactionOutputBestEffort(raw);
-    assert.equal(result.version, 'v2');
+    assert.equal(result.version, 'v3');
     assert.equal(result.metaV2!.main, 'OAuth redirect debugging');
   });
 });

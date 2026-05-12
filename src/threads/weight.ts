@@ -64,7 +64,13 @@ export function weightSummaries(
 // threads need orientation context to anchor them.
 // ---------------------------------------------------------------------------
 
-import type { ThreadMetaV2, ThreadSubV2 } from './schema.js';
+import type {
+  KeyStateEntry,
+  KeyStateKind,
+  ThreadMetaV2,
+  ThreadMetaV3,
+  ThreadSubV2,
+} from './schema.js';
 
 /** Classification of a single sub-thread relative to recent history. */
 export type ThreadContinuityClass = 'core' | 'fresh' | 'fading';
@@ -204,4 +210,119 @@ export function classifyThreadsV1Fallback(
       appearances: c.appearances,
     };
   });
+}
+
+// ---------------------------------------------------------------------------
+// KeyState continuity classification (Phase C)
+// ---------------------------------------------------------------------------
+//
+// Same core/fresh/fading taxonomy as sub-threads, but matched on EXACT
+// `value`. Two key state entries are "the same" if their (kind, value)
+// pair is identical — verbatim survival is what KSSR measures, so any
+// fuzzy matching here would be misleading.
+//
+// The output is intended for the steering builder: "these values are
+// core, don't drop them; these are fading, you can probably let them go."
+// ---------------------------------------------------------------------------
+
+export interface ClassifiedKeyState {
+  kind: KeyStateKind;
+  value: string;
+  /** Latest label seen for this value (empty if none was ever set). */
+  label?: string;
+  classification: ThreadContinuityClass;
+  /** Number of metas this value appears in (within the window). */
+  appearances: number;
+}
+
+/**
+ * Classify key state across a window of v3 metas using exact (kind, value)
+ * matching.
+ *
+ * @param metas — Most-recent-first array of v3 metas (length 2-N). Entries
+ *                 without `key_state` are treated as having no key state.
+ * @returns Per-value classification
+ */
+export function classifyKeyState(
+  metas: ThreadMetaV3[],
+): ClassifiedKeyState[] {
+  if (metas.length === 0) return [];
+
+  const appearances = new Map<
+    string,
+    {
+      kind: KeyStateKind;
+      value: string;
+      label?: string;
+      appearances: number;
+      firstSlot: number;
+    }
+  >();
+
+  for (let i = 0; i < metas.length; i++) {
+    const ks = metas[i].key_state ?? [];
+    for (const e of ks) {
+      const key = `${e.kind}\x00${e.value}`;
+      const existing = appearances.get(key);
+      if (existing) {
+        existing.appearances += 1;
+        // Keep the most-recent label (slot 0 is most recent so first-seen wins)
+        if (existing.label === undefined && e.label) existing.label = e.label;
+      } else {
+        appearances.set(key, {
+          kind: e.kind,
+          value: e.value,
+          ...(e.label ? { label: e.label } : {}),
+          appearances: 1,
+          firstSlot: i,
+        });
+      }
+    }
+  }
+
+  const threshold = Math.max(2, Math.ceil(metas.length / 2));
+  const result: ClassifiedKeyState[] = [];
+  const mostRecent = metas[0].key_state ?? [];
+  const inMostRecent = (kind: KeyStateKind, value: string): boolean =>
+    mostRecent.some((e) => e.kind === kind && e.value === value);
+
+  for (const info of appearances.values()) {
+    let classification: ThreadContinuityClass;
+    if (
+      info.appearances >= threshold &&
+      inMostRecent(info.kind, info.value)
+    ) {
+      classification = 'core';
+    } else if (info.firstSlot === 0 && info.appearances === 1) {
+      classification = 'fresh';
+    } else {
+      classification = 'fading';
+    }
+    result.push({
+      kind: info.kind,
+      value: info.value,
+      ...(info.label ? { label: info.label } : {}),
+      classification,
+      appearances: info.appearances,
+    });
+  }
+  return result;
+}
+
+/**
+ * Convenience: from an array of classified key state, return only the
+ * entries to actively encourage carry-forward ("core" + still-relevant
+ * "fresh"). Used by the steering builder when picking what to surface
+ * as `previousKeyState` hints.
+ */
+export function pickContinuityKeyState(
+  classified: ReadonlyArray<ClassifiedKeyState>,
+): KeyStateEntry[] {
+  return classified
+    .filter((c) => c.classification === 'core' || c.classification === 'fresh')
+    .map((c) => {
+      const out: KeyStateEntry = { kind: c.kind, value: c.value };
+      if (c.label) out.label = c.label;
+      return out;
+    });
 }

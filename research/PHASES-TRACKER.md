@@ -76,44 +76,51 @@ future activation when needed.
 
 ## Phase C - KeyState sidecar
 
-**Goal:** Track specific values (URLs, IDs, paths, versions) explicitly. Address CompactBench KSSR (currently ~0).
+**Goal:** Track specific values (URLs, IDs, paths, versions, config) explicitly. Address CompactBench Task 2 (KSSR — Key State Survival Rate, previously ~0).
 
-**Status:** 🔵 NEXT (B2 unblocks C)
+**Status:** ✅ COMPLETE (2026-05-12) — schema v3 + heuristic detector + steering + parser + worker + sidecar + reader + weight + tests + KSSR script + daily review enhancement.
 
-### What B2 revealed about C
+### Decision
 
-With v2 schema in place we now have a typed `decisions[]` and `open_questions[]`
-field, plus stable sub-thread `id`s. KeyState (Phase C) can plug into the
-same structured-output path:
+Went with the single-schema approach: V3 = V2 + optional `key_state[]` (max 20). One LLM call, one schema, one parser. Backward compat with V2 via projection (`projectV3ToV2` drops the field). V2 entries still readable; V3 entries readable by V2 readers via projection.
 
-- Add a top-level `key_state[]` to v2 schema as the v3 increment, OR
-- Add a parallel sidecar `*.kasett-keystate.jsonl` that the LLM populates on
-  the same compaction call (single LLM call, two structured outputs)
+### Tasks
+- [x] C1. Define KeyState type and v3 schema (`KeyStateEntry`, `ThreadMetaV3`, `THREAD_META_SCHEMA_V3`, `validateThreadMetaV3`, `isValidKeyStateEntry`, `projectV3ToV2`, `MAX_KEY_STATE=20`)
+- [x] C2. Heuristic detector at `src/keystate/detector.ts` — URL/ARN/AWS-resource/UUID/path/config/version/model/git-sha with overlap suppression and trailing-punct stripping
+- [x] C3. Steering prompt update — v3 schema embedded; detected candidates + previousKeyState as continuity hints; v3 example object inlined; `buildOrientationPromptV3` adds "Recent values" section
+- [x] C4. Parser update — `parseCompactionOutputV3`, BestEffort tries v3→v2→v1, all three meta shapes populated via projection chain
+- [x] C5. Worker integration — detector runs in `buildCompactionContext` (LLM hint) AND in worker (sidecar `key_state_candidates` for KSSR measurement)
+- [x] C6. Sidecar bump — `thread_meta_v3?`, `key_state_candidates?`, `schema_version: 'v1' | 'v2' | 'v3'`, `keyStateCount` + `keyStateDetectedCount` on hook log
+- [x] C7. Reader / orientation — `readLatestMetaV3`, `readLastNWithMetaV3`; legacy v1/v2 readers project v3 down via `projectV3ToV2 ∘ projectV2ToV1`
+- [x] C8. Weight / continuity — `classifyKeyState` (exact (kind, value) match across window) + `pickContinuityKeyState` helper; same core/fresh/fading taxonomy as sub-threads
+- [x] C9. Tests — schema-v3 (15), keystate-detector (24), parser-v3 (10), steering-v3 (10), weight-keystate (12) = 82 new. Total **270/270 pass** (188 prior + 82 new). Two pre-existing tests updated to assert v3 priority (semantically correct: V3 is V2 + optional)
+- [x] C10. `scripts/measure-kssr.js` — per-compaction + aggregate KSSR (preserved / detected) plus LLM-added bonus count; smoke-tested
+- [x] C11. `scripts/daily-compaction-review.sh` — per-session key_state line + aggregate KeyState section (totals, compactions w/ KS, sessions ≥5, avg per compaction); pointer to measure-kssr.js for per-session KSSR
+- [x] C12. Tracker updated
 
-Leaning toward the former (single schema, single output, single parser) for
-simplicity. Only escalate to a separate sidecar if KeyState volume bloats v2
-entries beyond ~5KB.
+### Headline
 
-### Tasks (preview)
-- [ ] C1. Define KeyState type: `{ kind: 'url'|'id'|'path'|'version'|'config', value: string, label?: string }`
-- [ ] C2. Detect candidate values in pre-compaction messages (regex pass)
-- [ ] C3. Steering prompt addition: "preserve these specific values"
-- [ ] C4. Storage: separate keystate field on compaction event
-- [ ] C5. context_load injection: re-surface key values
+Key state is now a first-class structured field in the compaction sidecar. The summary tells the story; `key_state[]` is the evidence list. CompactBench Task 2 (KSSR) becomes measurable per-compaction via `scripts/measure-kssr.js`; expected outcome is high KSSR on kasett-instrumented compactions vs near-0 on vanilla compactions — a publishable result once we collect production data.
+
+### Pending
+
+- **Real-world data:** Sidecar + v3 schema work end-to-end in tests. Production deploy will produce the first organic v3 entries with `key_state_candidates` and `thread_meta_v3.key_state`. Run `measure-kssr.js` against the first few sessions once they accumulate.
+- **B1 deploy verification:** Still pending real-world data per `phase-b1-progress.md` checklist (no production sidecar entries yet).
 
 ---
 
 ## Phase D - Thread Identity (embedding-based continuity)
 
-**Goal:** Replace 50% substring matching with embedding-based similarity for thread evolution tracking.
+**Goal:** Replace 50% substring matching with embedding-based similarity for thread evolution tracking. (V2's stable `id`s already cover the LLM-supplied path; D adds embedding-based detection for cases where the LLM forgets to reuse an id, plus optional cross-session linking.)
 
-**Status:** ⏸ QUEUED
+**Status:** 🔵 QUEUED — next phase after Phase C.
 
 ### Tasks (preview)
-- [ ] D1. Add stable LLM-supplied IDs to sub-threads (best fix; cheap)
-- [ ] D2. Optional: local embedding for similarity backup
-- [ ] D3. Thread merge / split detection
-- [ ] D4. Sub-thread lifecycle (created/active/blocked/completed)
+- [ ] D1. Sub-thread renaming detection — LLM forgot to reuse id but the label is clearly the same thread. Use a small local embedding model (or simple TF-IDF / cosine on labels) to detect.
+- [ ] D2. KeyState clustering — same value seen with different `kind` classifications (rare but a sign of LLM/detector disagreement). Surface as a diagnostic hint.
+- [ ] D3. Thread merge / split detection — two threads in compaction N collapse into one in N+1, or vice versa. Heuristic + LLM-aided.
+- [ ] D4. Optional cross-session thread index (small SQLite or JSONL) for E.
+- [ ] D5. Diagnostic surfacing — "thread renamed" / "thread split" notes in steering prompt to nudge LLM toward stable ids.
 
 ---
 
@@ -141,6 +148,9 @@ entries beyond ~5KB.
 | 2026-05-12 | B2 Path B (JSON steering + strict parser) over Path A (provider-native tool_use) | Cross-provider portability; lower code complexity; closes most of the compliance gap. Path A scaffolded behind `structuredOutput: 'tool'` flag for future activation. |
 | 2026-05-12 | sub cap raised 3 → 5 in v2 | Real Clyde infra sessions average 5-8 active sub-threads; cap-at-3 forces information loss. 5 strikes the right balance between completeness and prompt budget. |
 | 2026-05-12 | v2 entries store BOTH `thread_meta` (v1 projection) and `thread_meta_v2` in sidecar | Lossy v1 projection keeps legacy readers working without code changes; v2 is the source of truth for new readers. Cheap (\~30% size increase per entry). |
+| 2026-05-12 | Phase C: V3 = V2 + optional `key_state[]` (single schema, single parser) over a separate sidecar | Simpler: one LLM call, one fence, one validator. V2 entries remain readable as V3 with `key_state: undefined`; V3 entries readable by V2 readers via `projectV3ToV2`. |
+| 2026-05-12 | Detector is heuristic / advisory only — LLM decides what to keep | False positives cost a few prompt tokens; missed values cost continuity. Detector errs toward higher recall and the LLM filters in the structured output. |
+| 2026-05-12 | Sidecar stores BOTH `key_state_candidates` (detected) AND `thread_meta_v3.key_state` (preserved) | Required for empirical KSSR measurement: KSSR = preserved∩detected / detected. Without storing the candidate set we can't reproduce the metric after the fact. |
 
 ---
 

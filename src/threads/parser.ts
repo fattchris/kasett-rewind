@@ -22,8 +22,11 @@
 import type { ThreadMeta } from '../types.js';
 import {
   validateThreadMetaV2,
+  validateThreadMetaV3,
   projectV2ToV1,
+  projectV3ToV2,
   type ThreadMetaV2,
+  type ThreadMetaV3,
 } from './schema.js';
 
 /**
@@ -170,27 +173,122 @@ export function parseCompactionOutputV2(raw: string): ParseResultV2 {
 }
 
 /**
- * Best-effort parser: try v2 first, fall back to v1.
+ * Result of parsing a v3 compaction output.
+ *
+ * Identical strategy to v2 (last fenced JSON block, JSON.parse, validate),
+ * but uses the v3 validator which tolerates an optional `key_state[]`. V3
+ * outputs that omit key_state are functionally identical to V2 outputs.
+ */
+export interface ParseResultV3 {
+  summary: string;
+  meta: ThreadMetaV3 | null;
+  metaV2: ThreadMetaV2 | null;
+  metaV1: ThreadMeta | null;
+  errors: string[];
+}
+
+/**
+ * Parse a v3 compaction output. Same fence-finding logic as v2, but the
+ * inner object is validated against the v3 schema (v2 + optional
+ * key_state[]). Invalid `key_state` entries are silently dropped by the
+ * validator rather than failing the whole parse.
+ */
+export function parseCompactionOutputV3(raw: string): ParseResultV3 {
+  const errors: string[] = [];
+
+  let lastMatch: RegExpExecArray | null = null;
+  const globalRe = new RegExp(JSON_FENCE_REGEX.source, 'g');
+  let m: RegExpExecArray | null;
+  while ((m = globalRe.exec(raw)) !== null) {
+    lastMatch = m;
+  }
+
+  if (!lastMatch) {
+    return {
+      summary: raw.trim(),
+      meta: null,
+      metaV2: null,
+      metaV1: null,
+      errors: ['no fenced ```json``` block found'],
+    };
+  }
+
+  const inner = lastMatch[1];
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(inner);
+  } catch (err) {
+    return {
+      summary: raw.trim(),
+      meta: null,
+      metaV2: null,
+      metaV1: null,
+      errors: [`JSON parse failed: ${(err as Error).message}`],
+    };
+  }
+
+  const validation = validateThreadMetaV3(parsed);
+  if (!validation.ok) {
+    for (const e of validation.errors) errors.push(e);
+    return {
+      summary: raw.trim(),
+      meta: null,
+      metaV2: null,
+      metaV1: null,
+      errors,
+    };
+  }
+
+  const startIdx = lastMatch.index;
+  const endIdx = lastMatch.index + lastMatch[0].length;
+  const summary = (raw.slice(0, startIdx) + raw.slice(endIdx)).trim();
+
+  const v3 = validation.value;
+  const v2 = projectV3ToV2(v3);
+  return {
+    summary,
+    meta: v3,
+    metaV2: v2,
+    metaV1: projectV2ToV1(v2),
+    errors,
+  };
+}
+
+/**
+ * Best-effort parser: try v3 (which subsumes v2), fall back to v2, then v1.
  *
  * Returns:
- *   - `version`: which schema produced the result, or 'none' if neither did
+ *   - `version`: which schema produced the result, or 'none' if none did
  *   - `summary`: clean narrative with the meta block stripped
  *   - `metaV1`: v1-shaped meta (always populated when version != 'none', via
- *     projection if v2 succeeded)
- *   - `metaV2`: v2-shaped meta (only when version === 'v2')
- *   - `errors`: v2 validator output when v2 failed (helpful for diag)
+ *     projection if v2/v3 succeeded)
+ *   - `metaV2`: v2-shaped meta (when version is 'v2' or 'v3')
+ *   - `metaV3`: v3-shaped meta (only when version === 'v3')
+ *   - `errors`: parser/validator output when v3 failed (helpful for diag)
  */
 export interface BestEffortParseResult {
-  version: 'v1' | 'v2' | 'none';
+  version: 'v1' | 'v2' | 'v3' | 'none';
   summary: string;
   metaV1: ThreadMeta | null;
   metaV2: ThreadMetaV2 | null;
+  metaV3: ThreadMetaV3 | null;
   errors: string[];
 }
 
 export function parseCompactionOutputBestEffort(
   raw: string,
 ): BestEffortParseResult {
+  const v3 = parseCompactionOutputV3(raw);
+  if (v3.meta) {
+    return {
+      version: 'v3',
+      summary: v3.summary,
+      metaV1: v3.metaV1,
+      metaV2: v3.metaV2,
+      metaV3: v3.meta,
+      errors: [],
+    };
+  }
   const v2 = parseCompactionOutputV2(raw);
   if (v2.meta) {
     return {
@@ -198,6 +296,7 @@ export function parseCompactionOutputBestEffort(
       summary: v2.summary,
       metaV1: v2.metaV1,
       metaV2: v2.meta,
+      metaV3: null,
       errors: [],
     };
   }
@@ -208,7 +307,8 @@ export function parseCompactionOutputBestEffort(
       summary: v1.summary,
       metaV1: v1.meta,
       metaV2: null,
-      errors: v2.errors,
+      metaV3: null,
+      errors: v3.errors,
     };
   }
   return {
@@ -216,7 +316,8 @@ export function parseCompactionOutputBestEffort(
     summary: raw.trim(),
     metaV1: null,
     metaV2: null,
-    errors: v2.errors,
+    metaV3: null,
+    errors: v3.errors,
   };
 }
 

@@ -24,6 +24,7 @@ import { appendFile } from 'node:fs/promises';
 import { basename } from 'node:path';
 import { writeSidecarEntry, sidecarPathFor } from '../storage/sidecar.js';
 import { parseCompactionOutputBestEffort } from '../threads/parser.js';
+import { detectCandidateKeyState } from '../keystate/detector.js';
 const DIAG_LOG = '/home/node/.openclaw/workspace/repos/kasett-rewind/research/hotswap-diag.log';
 async function diag(msg) {
     const ts = new Date().toISOString();
@@ -68,17 +69,30 @@ export async function runHotSwapWorker(params) {
             onSidecarFailed?.({ reason: 'aborted_after_llm' });
             return;
         }
+        // Phase C: detect candidate key-state values from the conversation. The
+        // detector is heuristic / advisory — result is stored on the sidecar so
+        // KSSR measurement can compare detected vs preserved. We re-detect here
+        // (rather than receive from the steering builder) so this stays robust
+        // even if the steering hook didn't run.
+        let keyStateCandidates = [];
+        try {
+            keyStateCandidates = detectCandidateKeyState(messages.map((m) => ({ role: m.role, content: m.content })));
+        }
+        catch (e) {
+            logger.debug(`[kasett-rewind:sidecar] keystate detector threw: ${String(e)}`);
+            keyStateCandidates = [];
+        }
         // Parse the LLM output to extract structured thread meta.
         //
-        // Phase B2: try v2 schema (fenced ```json``` block) first; fall back to
-        // v1 ([THREAD_META] sentinel) if v2 fails. Records which schema produced
-        // the parse so the hook log can track v1 vs v2 distribution over time.
+        // Phase C: try v3 (v2 + optional key_state) first, then v2, then v1.
+        // Records which schema produced the parse so the hook log can track
+        // v1/v2/v3 distribution over time.
         const parsed = parseCompactionOutputBestEffort(fullSummary);
         const schemaVersion = parsed.version;
+        const keyStateCount = parsed.metaV3?.key_state?.length ?? 0;
+        const keyStateDetectedCount = keyStateCandidates.length;
         if (schemaVersion === 'none' && parsed.errors.length > 0) {
-            // The LLM emitted SOMETHING that looked structured but failed v2
-            // validation, and v1 also missing. Surface in diag for tuning.
-            await diag(`PARSE_NONE stub=${stubId} v2_errors=${parsed.errors.slice(0, 2).join('; ').slice(0, 200)}`);
+            await diag(`PARSE_NONE stub=${stubId} v3_errors=${parsed.errors.slice(0, 2).join('; ').slice(0, 200)}`);
         }
         else if (schemaVersion === 'v1') {
             await diag(`PARSE_V1_FALLBACK stub=${stubId} reason=${parsed.errors.slice(0, 1).join('|').slice(0, 150)}`);
@@ -86,7 +100,11 @@ export async function runHotSwapWorker(params) {
         else if (schemaVersion === 'v2') {
             await diag(`PARSE_V2 stub=${stubId} subs=${parsed.metaV2?.sub.length ?? 0}`);
         }
+        else if (schemaVersion === 'v3') {
+            await diag(`PARSE_V3 stub=${stubId} subs=${parsed.metaV3?.sub.length ?? 0} key_state=${keyStateCount} detected=${keyStateDetectedCount}`);
+        }
         const sessionId = basename(sessionFile, '.jsonl');
+        const sidecarSchemaVersion = schemaVersion === 'v3' ? 'v3' : schemaVersion === 'v2' ? 'v2' : 'v1';
         const entry = {
             ts: new Date().toISOString(),
             session_id: sessionId,
@@ -94,9 +112,13 @@ export async function runHotSwapWorker(params) {
             stub_id: stubId,
             summary_rich: fullSummary,
             summary_chars: fullSummary.length,
-            schema_version: schemaVersion === 'v2' ? 'v2' : 'v1',
+            schema_version: sidecarSchemaVersion,
             ...(parsed.metaV1 ? { thread_meta: parsed.metaV1 } : {}),
             ...(parsed.metaV2 ? { thread_meta_v2: parsed.metaV2 } : {}),
+            ...(parsed.metaV3 ? { thread_meta_v3: parsed.metaV3 } : {}),
+            ...(keyStateCandidates.length > 0
+                ? { key_state_candidates: keyStateCandidates }
+                : {}),
             ...(compactionModel ? { model: compactionModel } : {}),
         };
         let sidecarPath;
@@ -109,14 +131,16 @@ export async function runHotSwapWorker(params) {
             onSidecarFailed?.({ reason: 'write_failed', detail: String(err).slice(0, 200) });
             return;
         }
-        const metaMain = parsed.metaV2?.main ?? parsed.metaV1?.main ?? null;
-        logger.info(`[kasett-rewind:sidecar] Sidecar entry written for stub ${stubId} (${fullSummary.length} chars, schema=${schemaVersion}, meta_main=${metaMain ?? 'null'})`);
-        await diag(`SIDECAR_WRITTEN stub=${stubId} path=${sidecarPath} chars=${fullSummary.length} schema=${schemaVersion} meta_main=${metaMain ?? 'null'}`);
+        const metaMain = parsed.metaV3?.main ?? parsed.metaV2?.main ?? parsed.metaV1?.main ?? null;
+        logger.info(`[kasett-rewind:sidecar] Sidecar entry written for stub ${stubId} (${fullSummary.length} chars, schema=${schemaVersion}, meta_main=${metaMain ?? 'null'}, key_state=${keyStateCount}/${keyStateDetectedCount})`);
+        await diag(`SIDECAR_WRITTEN stub=${stubId} path=${sidecarPath} chars=${fullSummary.length} schema=${schemaVersion} meta_main=${metaMain ?? 'null'} key_state=${keyStateCount} detected=${keyStateDetectedCount}`);
         onSidecarWritten?.({
             sidecarPath,
             summaryChars: fullSummary.length,
             metaMain,
             schemaVersion,
+            keyStateCount,
+            keyStateDetectedCount,
         });
     }
     catch (err) {

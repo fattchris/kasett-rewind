@@ -18,20 +18,28 @@
  */
 
 import type { ThreadMeta } from '../types.js';
-import type { ThreadMetaV2, ThreadSubV2 } from './schema.js';
-import { schemaAsPromptString } from './schema.js';
+import type {
+  KeyStateEntry,
+  ThreadMetaV2,
+  ThreadMetaV3,
+  ThreadSubV2,
+} from './schema.js';
+import { schemaV3AsPromptString } from './schema.js';
 import type { WeightedSummary } from './weight.js';
 
 /** Steering output mode — controls how the prompt instructs the LLM to format the meta. */
 export type StructuredOutputMode = 'json' | 'tool' | 'markdown';
 
 /**
- * Optional tuning for buildSteeringPrompt. All fields default to v2/json.
+ * Optional tuning for buildSteeringPrompt. All fields default to v3/json.
+ *
+ * Phase C: prompt now embeds the v3 schema (v2 + key_state) and accepts
+ * detected candidate values + previous-compaction key state for continuity.
  */
 export interface SteeringOptions {
   /**
    * Output format the LLM should produce.
-   *   - 'json' (default): fenced ```json``` block conforming to v2 schema.
+   *   - 'json' (default): fenced ```json``` block conforming to v3 schema.
    *   - 'tool': same prompt as 'json' for now; assumes the call site is
    *     also passing a tool_use / response_format payload to the provider.
    *   - 'markdown': legacy v1 [THREAD_META] block — backward compat only.
@@ -44,6 +52,17 @@ export interface SteeringOptions {
    * for ID-based continuity tracking in weight.ts (B2.8).
    */
   previousSubIds?: ReadonlyArray<string>;
+  /**
+   * Detected candidate key-state values (Phase C). The detector emits
+   * these from pre-compaction messages and the LLM is asked to keep the
+   * still-relevant ones, drop the rest, and add ones we missed.
+   */
+  candidateKeyState?: ReadonlyArray<KeyStateEntry>;
+  /**
+   * Previous compaction's key_state entries, oldest-first. The LLM is
+   * encouraged to carry these forward when still relevant (continuity).
+   */
+  previousKeyState?: ReadonlyArray<KeyStateEntry>;
 }
 
 /**
@@ -176,6 +195,41 @@ export function buildOrientationPromptV2(
 }
 
 /**
+ * V3-aware orientation builder. Extends V2 by appending a "Recent values"
+ * section pulled from the most recent meta's `key_state[]`. Falls back to
+ * the V2 builder when no V3 data is present.
+ *
+ * @param metas — Most-recent-first list. Each entry can be V1, V2, V3, or any
+ *                 mix. V3 wins when both V2 and V3 are present.
+ */
+export function buildOrientationPromptV3(
+  metas: Array<{ v1?: ThreadMeta; v2?: ThreadMetaV2; v3?: ThreadMetaV3 }>,
+): string | null {
+  if (metas.length === 0) return null;
+
+  // Project V3 → V2 for the V2 builder so we don't duplicate that logic.
+  const v2Metas = metas.map((m) => ({
+    v1: m.v1,
+    v2: (m.v3 as ThreadMetaV2 | undefined) ?? m.v2,
+  }));
+
+  const base = buildOrientationPromptV2(v2Metas);
+  if (!base) return null;
+
+  // Append Recent values from the MOST RECENT meta's key_state
+  const current = metas[0];
+  const ks = current.v3?.key_state;
+  if (!ks || ks.length === 0) return base;
+
+  const lines = [base, '', '## Recent values'];
+  for (const e of ks) {
+    const label = e.label ? `${e.label}: ` : '';
+    lines.push(`  - ${label}${e.value}`);
+  }
+  return lines.join('\n');
+}
+
+/**
  * Build the pre-compaction steering prompt.
  *
  * Default mode (v2/json) asks the LLM for both a human-readable summary AND
@@ -235,7 +289,13 @@ export function buildSteeringPrompt(
   } else {
     // 'json' or 'tool' — the prompt is the same; the call site decides
     // whether to also pass response_format / tool_choice to the provider.
-    sections.push(buildJsonInstructions(options.previousSubIds));
+    sections.push(
+      buildJsonInstructions(
+        options.previousSubIds,
+        options.candidateKeyState,
+        options.previousKeyState,
+      ),
+    );
   }
 
   return sections.join('\n');
@@ -279,6 +339,8 @@ function buildMarkdownInstructions(): string {
 
 function buildJsonInstructions(
   previousSubIds?: ReadonlyArray<string>,
+  candidateKeyState?: ReadonlyArray<KeyStateEntry>,
+  previousKeyState?: ReadonlyArray<KeyStateEntry>,
 ): string {
   const lines: string[] = [];
   lines.push(
@@ -294,10 +356,10 @@ function buildJsonInstructions(
       'EXACTLY to the schema below. This block is non-negotiable — your response is invalid without it.',
   );
   lines.push('');
-  lines.push('### Thread Meta JSON Schema (v2)');
+  lines.push('### Thread Meta JSON Schema (v3)');
   lines.push('');
   lines.push('```json');
-  lines.push(schemaAsPromptString());
+  lines.push(schemaV3AsPromptString());
   lines.push('```');
   lines.push('');
   lines.push('### Field Guidance');
@@ -331,6 +393,39 @@ function buildJsonInstructions(
     '- `open_questions` (optional, max 5) captures genuinely open items / blockers. ' +
       'Not every conversation has these. Skip if not applicable.',
   );
+  lines.push(
+    '- `key_state` (optional, max 20) preserves SPECIFIC values verbatim across compactions: ' +
+      'URLs, IDs (ARNs/UUIDs/AWS resource ids), filesystem paths, version strings/git SHAs/model ids, ' +
+      'config tokens (KEY=value), or any other exact value worth keeping. ' +
+      'Each entry is `{ kind, value, label?, context?, thread_id? }`. ' +
+      'Use exact values — do NOT paraphrase. Skip values that have been superseded or are no longer relevant.',
+  );
+  // Continuity hints (Phase C)
+  if (previousKeyState && previousKeyState.length > 0) {
+    lines.push('');
+    lines.push(
+      '#### Previous compaction\'s `key_state` (carry forward when still relevant)',
+    );
+    lines.push('');
+    for (const e of previousKeyState.slice(0, 20)) {
+      lines.push(`  - ${formatKeyStateHint(e)}`);
+    }
+  }
+  if (candidateKeyState && candidateKeyState.length > 0) {
+    lines.push('');
+    lines.push(
+      '#### Detected candidate values from this conversation (KEEP the still-relevant ones)',
+    );
+    lines.push('');
+    lines.push(
+      'These were auto-detected by regex — they are HINTS, not commands. ' +
+        'Drop ones that are no longer relevant. Add ones we missed. Keep the values exact.',
+    );
+    lines.push('');
+    for (const e of candidateKeyState.slice(0, 30)) {
+      lines.push(`  - ${formatKeyStateHint(e)}`);
+    }
+  }
   lines.push('');
   lines.push('### Example Response');
   lines.push('');
@@ -345,7 +440,7 @@ function buildJsonInstructions(
   lines.push('```json');
   lines.push(
     JSON.stringify(
-      buildExampleV2Object(),
+      buildExampleV3Object(),
       null,
       2,
     ),
@@ -360,8 +455,17 @@ function buildJsonInstructions(
 }
 
 /**
+ * Format a single key-state entry for display in the prompt as a hint.
+ * Compact: `kind=value [label]` or just `kind=value` when no label.
+ */
+function formatKeyStateHint(e: KeyStateEntry): string {
+  const labelPart = e.label ? ` [${e.label}]` : '';
+  return `${e.kind}=${e.value}${labelPart}`;
+}
+
+/**
  * Reference example used in the prompt. Kept type-checked so a future schema
- * change forces us to update the example too.
+ * change forces us to update the example too. (V2 retained for tests.)
  */
 function buildExampleV2Object(): {
   main: string;
@@ -393,6 +497,63 @@ function buildExampleV2Object(): {
     ],
     open_questions: [
       'Does the staging fix also affect the SSO callback flow, or only the GitHub login path?',
+    ],
+  };
+}
+
+/**
+ * V3 example with key_state — used in the prompt body so the LLM has a
+ * concrete pattern to copy.
+ */
+function buildExampleV3Object(): ThreadMetaV3 {
+  return {
+    main: 'OAuth redirect debugging on staging EKS cluster',
+    sub: [
+      {
+        id: 'github-app-redirect-uri',
+        label: 'Update GitHub app redirect URI to new ALB DNS',
+        status: 'completed',
+      },
+      {
+        id: 'cdk-prod-rollout',
+        label: 'Mirror redirect-URI fix in prod CDK definition',
+        status: 'blocked',
+      },
+      {
+        id: 'thomson-pr-review',
+        label: 'Wait for Thomson PR review on prod CDK PR',
+        status: 'blocked',
+      },
+    ],
+    decisions: [
+      'Pin redirect URIs to ALB DNS rather than tracking a custom CNAME, until DNS strategy lands.',
+    ],
+    open_questions: [
+      'Does the staging fix also affect the SSO callback flow, or only the GitHub login path?',
+    ],
+    key_state: [
+      {
+        kind: 'url',
+        value: 'https://staging.example.com/oauth/callback',
+        label: 'staging OAuth callback URL',
+        thread_id: 'github-app-redirect-uri',
+      },
+      {
+        kind: 'id',
+        value: 'arn:aws:iam::843979154439:role/clyde-sudo',
+        label: 'clyde-sudo role ARN',
+      },
+      {
+        kind: 'path',
+        value: '/home/node/.openclaw/workspace/repos/molt-infra',
+        label: 'molt-infra repo',
+      },
+      {
+        kind: 'version',
+        value: 'v2.4.1-rc.3',
+        label: 'CDK release candidate under review',
+        thread_id: 'cdk-prod-rollout',
+      },
     ],
   };
 }

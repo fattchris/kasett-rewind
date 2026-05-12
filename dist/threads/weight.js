@@ -146,4 +146,80 @@ export function classifyThreadsV1Fallback(metasAsLabels) {
         };
     });
 }
+/**
+ * Classify key state across a window of v3 metas using exact (kind, value)
+ * matching.
+ *
+ * @param metas — Most-recent-first array of v3 metas (length 2-N). Entries
+ *                 without `key_state` are treated as having no key state.
+ * @returns Per-value classification
+ */
+export function classifyKeyState(metas) {
+    if (metas.length === 0)
+        return [];
+    const appearances = new Map();
+    for (let i = 0; i < metas.length; i++) {
+        const ks = metas[i].key_state ?? [];
+        for (const e of ks) {
+            const key = `${e.kind}\x00${e.value}`;
+            const existing = appearances.get(key);
+            if (existing) {
+                existing.appearances += 1;
+                // Keep the most-recent label (slot 0 is most recent so first-seen wins)
+                if (existing.label === undefined && e.label)
+                    existing.label = e.label;
+            }
+            else {
+                appearances.set(key, {
+                    kind: e.kind,
+                    value: e.value,
+                    ...(e.label ? { label: e.label } : {}),
+                    appearances: 1,
+                    firstSlot: i,
+                });
+            }
+        }
+    }
+    const threshold = Math.max(2, Math.ceil(metas.length / 2));
+    const result = [];
+    const mostRecent = metas[0].key_state ?? [];
+    const inMostRecent = (kind, value) => mostRecent.some((e) => e.kind === kind && e.value === value);
+    for (const info of appearances.values()) {
+        let classification;
+        if (info.appearances >= threshold &&
+            inMostRecent(info.kind, info.value)) {
+            classification = 'core';
+        }
+        else if (info.firstSlot === 0 && info.appearances === 1) {
+            classification = 'fresh';
+        }
+        else {
+            classification = 'fading';
+        }
+        result.push({
+            kind: info.kind,
+            value: info.value,
+            ...(info.label ? { label: info.label } : {}),
+            classification,
+            appearances: info.appearances,
+        });
+    }
+    return result;
+}
+/**
+ * Convenience: from an array of classified key state, return only the
+ * entries to actively encourage carry-forward ("core" + still-relevant
+ * "fresh"). Used by the steering builder when picking what to surface
+ * as `previousKeyState` hints.
+ */
+export function pickContinuityKeyState(classified) {
+    return classified
+        .filter((c) => c.classification === 'core' || c.classification === 'fresh')
+        .map((c) => {
+        const out = { kind: c.kind, value: c.value };
+        if (c.label)
+            out.label = c.label;
+        return out;
+    });
+}
 //# sourceMappingURL=weight.js.map

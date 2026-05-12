@@ -18,7 +18,7 @@
  * sidecar both `thread_meta` (v1 shape) and `thread_meta_v2` (v2 object)
  * are stored when v2 succeeds, so readers can pick whichever they prefer.
  */
-import { validateThreadMetaV2, projectV2ToV1, } from './schema.js';
+import { validateThreadMetaV2, validateThreadMetaV3, projectV2ToV1, projectV3ToV2, } from './schema.js';
 /**
  * The regex that matches the [THREAD_META]...[/THREAD_META] block.
  */
@@ -123,7 +123,80 @@ export function parseCompactionOutputV2(raw) {
         errors,
     };
 }
+/**
+ * Parse a v3 compaction output. Same fence-finding logic as v2, but the
+ * inner object is validated against the v3 schema (v2 + optional
+ * key_state[]). Invalid `key_state` entries are silently dropped by the
+ * validator rather than failing the whole parse.
+ */
+export function parseCompactionOutputV3(raw) {
+    const errors = [];
+    let lastMatch = null;
+    const globalRe = new RegExp(JSON_FENCE_REGEX.source, 'g');
+    let m;
+    while ((m = globalRe.exec(raw)) !== null) {
+        lastMatch = m;
+    }
+    if (!lastMatch) {
+        return {
+            summary: raw.trim(),
+            meta: null,
+            metaV2: null,
+            metaV1: null,
+            errors: ['no fenced ```json``` block found'],
+        };
+    }
+    const inner = lastMatch[1];
+    let parsed;
+    try {
+        parsed = JSON.parse(inner);
+    }
+    catch (err) {
+        return {
+            summary: raw.trim(),
+            meta: null,
+            metaV2: null,
+            metaV1: null,
+            errors: [`JSON parse failed: ${err.message}`],
+        };
+    }
+    const validation = validateThreadMetaV3(parsed);
+    if (!validation.ok) {
+        for (const e of validation.errors)
+            errors.push(e);
+        return {
+            summary: raw.trim(),
+            meta: null,
+            metaV2: null,
+            metaV1: null,
+            errors,
+        };
+    }
+    const startIdx = lastMatch.index;
+    const endIdx = lastMatch.index + lastMatch[0].length;
+    const summary = (raw.slice(0, startIdx) + raw.slice(endIdx)).trim();
+    const v3 = validation.value;
+    const v2 = projectV3ToV2(v3);
+    return {
+        summary,
+        meta: v3,
+        metaV2: v2,
+        metaV1: projectV2ToV1(v2),
+        errors,
+    };
+}
 export function parseCompactionOutputBestEffort(raw) {
+    const v3 = parseCompactionOutputV3(raw);
+    if (v3.meta) {
+        return {
+            version: 'v3',
+            summary: v3.summary,
+            metaV1: v3.metaV1,
+            metaV2: v3.metaV2,
+            metaV3: v3.meta,
+            errors: [],
+        };
+    }
     const v2 = parseCompactionOutputV2(raw);
     if (v2.meta) {
         return {
@@ -131,6 +204,7 @@ export function parseCompactionOutputBestEffort(raw) {
             summary: v2.summary,
             metaV1: v2.metaV1,
             metaV2: v2.meta,
+            metaV3: null,
             errors: [],
         };
     }
@@ -141,7 +215,8 @@ export function parseCompactionOutputBestEffort(raw) {
             summary: v1.summary,
             metaV1: v1.meta,
             metaV2: null,
-            errors: v2.errors,
+            metaV3: null,
+            errors: v3.errors,
         };
     }
     return {
@@ -149,7 +224,8 @@ export function parseCompactionOutputBestEffort(raw) {
         summary: raw.trim(),
         metaV1: null,
         metaV2: null,
-        errors: v2.errors,
+        metaV3: null,
+        errors: v3.errors,
     };
 }
 /**

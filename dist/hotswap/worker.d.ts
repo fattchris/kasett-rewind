@@ -68,7 +68,9 @@ export interface WorkerParams {
         sidecarPath: string;
         summaryChars: number;
         metaMain: string | null;
-        schemaVersion: 'v1' | 'v2' | 'none';
+        schemaVersion: 'v1' | 'v2' | 'v3' | 'none';
+        keyStateCount: number;
+        keyStateDetectedCount: number;
     }) => void;
     /**
      * Optional callback invoked on sidecar pipeline failure (LLM empty, write

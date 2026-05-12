@@ -33,7 +33,7 @@ import {
   statSync,
 } from 'node:fs';
 import { dirname } from 'node:path';
-import type { ThreadMetaV2 } from '../threads/schema.js';
+import type { KeyStateEntry, ThreadMetaV2, ThreadMetaV3 } from '../threads/schema.js';
 
 /**
  * Schema for one sidecar entry. Stable v1 schema. Additive changes only.
@@ -76,10 +76,23 @@ export interface SidecarEntry {
    */
   thread_meta_v2?: ThreadMetaV2;
   /**
-   * Schema version that produced this entry. Defaults to v1 when absent for
-   * backward compat. Phase B2+ writes set this explicitly.
+   * Parsed v3 thread meta — v2 + optional `key_state[]`. Only set when the
+   * LLM output conformed to the v3 JSON schema (Phase C+). Absence of this
+   * field signals a v2 entry (no key_state) or a v1 fallback.
    */
-  schema_version?: 'v1' | 'v2';
+  thread_meta_v3?: ThreadMetaV3;
+  /**
+   * Detected candidate key state from the pre-compaction conversation. Stored
+   * for KSSR (Key State Survival Rate) measurement: KSSR = preserved /
+   * detected. The LLM-emitted `thread_meta_v3.key_state` is the "preserved"
+   * set; this is the "detected" set the LLM was asked to consider.
+   */
+  key_state_candidates?: KeyStateEntry[];
+  /**
+   * Schema version that produced this entry. Defaults to v1 when absent for
+   * backward compat. Phase B2 added v2; Phase C added v3.
+   */
+  schema_version?: 'v1' | 'v2' | 'v3';
   /** Model identifier used for the LLM call (for debugging / drift analysis) */
   model?: string;
   /** Character count of summary_rich (denormalized for cheap scanning) */

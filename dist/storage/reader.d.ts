@@ -1,5 +1,5 @@
 import type { CompactionEvent, ThreadMeta } from '../types.js';
-import type { ThreadMetaV2 } from '../threads/schema.js';
+import type { ThreadMetaV2, ThreadMetaV3 } from '../threads/schema.js';
 /**
  * Error class for kasett-rewind operations.
  */
@@ -64,8 +64,31 @@ export declare class SessionReader {
      *
      * V2-only — will not project v1 entries up to v2 (we have no `id`s or
      * `status` in v1 to fabricate). Use `readLatestMeta` for the unified view.
+     *
+     * If a v3 entry is present, it is projected down to v2 (drops key_state).
      */
     readLatestMetaV2(filePath: string): Promise<ThreadMetaV2 | null>;
+    /**
+     * Read the most recent v3 thread meta from the session, or null if none
+     * exists. V3-only — won't synthesize a v3 from a v2 entry (no key_state
+     * to fabricate). Use `readLatestMeta` / `readLatestMetaV2` for unified view.
+     */
+    readLatestMetaV3(filePath: string): Promise<ThreadMetaV3 | null>;
+    /**
+     * Read the last N thread metas with all available shapes (v1, v2, v3),
+     * oldest first. Each slot reports every shape that's available so callers
+     * can pick: orientation v3 uses v3+key_state when present, v2 falls back
+     * to that, v1 falls back to either.
+     *
+     * For sidecar entries with `thread_meta_v3`, all three are populated
+     * (v2 via `projectV3ToV2`, v1 via `projectV2ToV1`). For v2-only entries,
+     * v1+v2 are populated. For legacy entries, only v1 is populated.
+     */
+    readLastNWithMetaV3(filePath: string, count: number): Promise<Array<{
+        v1?: ThreadMeta;
+        v2?: ThreadMetaV2;
+        v3?: ThreadMetaV3;
+    }>>;
     /**
      * Read the last N v1+v2 thread metas, oldest first. Each slot reports
      * BOTH shapes when available so callers can pick: the orientation
@@ -73,6 +96,7 @@ export declare class SessionReader {
      *
      * For sidecar entries with `thread_meta_v2`, both fields are populated
      * (v1 via `projectV2ToV1`). For legacy entries, only v1 is populated.
+     * V3 entries are projected down to v2.
      */
     readLastNWithMetaV2(filePath: string, count: number): Promise<Array<{
         v1?: ThreadMeta;

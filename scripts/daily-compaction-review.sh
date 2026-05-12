@@ -21,6 +21,10 @@ KASETT_HANDLED=0
 KASETT_STUB_REMAINED=0
 KASETT_RICH=0
 VANILLA_HANDLED=0
+# Phase C — KSSR / key_state aggregation
+TOTAL_KEY_STATE=0
+KEY_STATE_COMPACTIONS=0
+FIVE_PLUS_KEY_STATE_SESSIONS=0
 
 echo "## Sessions Compacted (last 24h)" >> "$OUTPUT"
 echo "" >> "$OUTPUT"
@@ -114,6 +118,47 @@ else:
     print('vanilla')
 " "$session_file" 2>/dev/null) || STATUS="vanilla"
 
+  # Phase C — extract aggregate key_state stats from the sidecar.
+  # Outputs three numbers, space-separated:
+  #   total_key_state  total_compactions_with_key_state  max_key_state_in_a_compaction
+  KS_STATS=$(python3 -c "
+import sys, json, os
+path = sys.argv[1] + '.kasett-meta.jsonl'
+total = 0
+compactions_with_ks = 0
+max_ks = 0
+if os.path.exists(path):
+    try:
+        with open(path, 'r', encoding='utf-8', errors='replace') as sf:
+            for line in sf:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    obj = json.loads(line)
+                except Exception:
+                    continue
+                tm3 = obj.get('thread_meta_v3')
+                ks = tm3.get('key_state') if isinstance(tm3, dict) else None
+                n = len(ks) if isinstance(ks, list) else 0
+                if n > 0:
+                    compactions_with_ks += 1
+                    total += n
+                    if n > max_ks:
+                        max_ks = n
+    except Exception:
+        pass
+print(f'{total} {compactions_with_ks} {max_ks}')
+" "$session_file" 2>/dev/null) || KS_STATS="0 0 0"
+  KS_TOTAL=$(echo "$KS_STATS" | awk '{print $1}')
+  KS_COMP=$(echo "$KS_STATS" | awk '{print $2}')
+  KS_MAX=$(echo "$KS_STATS" | awk '{print $3}')
+  TOTAL_KEY_STATE=$((TOTAL_KEY_STATE + KS_TOTAL))
+  KEY_STATE_COMPACTIONS=$((KEY_STATE_COMPACTIONS + KS_COMP))
+  if [ "$KS_MAX" -ge 5 ]; then
+    FIVE_PLUS_KEY_STATE_SESSIONS=$((FIVE_PLUS_KEY_STATE_SESSIONS + 1))
+  fi
+
   if [[ "$STATUS" == "rich-sidecar" || "$STATUS" == "rich-inline" || "$STATUS" == "stub" || "$STATUS" == "kasett-other" ]]; then
     KASETT_HANDLED=$((KASETT_HANDLED + 1))
     if [[ "$STATUS" == "rich-sidecar" ]]; then
@@ -190,6 +235,9 @@ print(main_val)
     if [ -n "$MAIN" ]; then
       echo "  - Main: $MAIN" >> "$OUTPUT"
     fi
+    if [ "$KS_TOTAL" -gt 0 ]; then
+      echo "  - key_state: $KS_TOTAL across $KS_COMP compactions (max $KS_MAX)" >> "$OUTPUT"
+    fi
   else
     VANILLA_HANDLED=$((VANILLA_HANDLED + 1))
     echo "- ⚠️ \`$session_id\` — vanilla OC (no [THREAD_META])" >> "$OUTPUT"
@@ -213,6 +261,17 @@ if [ $COMPACTED -gt 0 ]; then
 else
   echo "- Coverage: N/A" >> "$OUTPUT"
 fi
+echo "" >> "$OUTPUT"
+echo "### KeyState (Phase C)" >> "$OUTPUT"
+echo "" >> "$OUTPUT"
+echo "- Total key_state entries: $TOTAL_KEY_STATE" >> "$OUTPUT"
+echo "- Compactions with key_state: $KEY_STATE_COMPACTIONS" >> "$OUTPUT"
+echo "- Sessions with at least one compaction ≥ 5 key_state entries: $FIVE_PLUS_KEY_STATE_SESSIONS" >> "$OUTPUT"
+if [ "$KEY_STATE_COMPACTIONS" -gt 0 ]; then
+  echo "- Avg key_state / compaction: $((TOTAL_KEY_STATE / KEY_STATE_COMPACTIONS))" >> "$OUTPUT"
+fi
+echo "" >> "$OUTPUT"
+echo "_For per-session KSSR (preserved/detected), run \`scripts/measure-kssr.js <session.jsonl>\` on individual sessions._" >> "$OUTPUT"
 
 echo "" >> "$OUTPUT"
 echo "## Observations" >> "$OUTPUT"
