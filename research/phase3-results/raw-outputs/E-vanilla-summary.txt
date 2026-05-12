@@ -1,0 +1,37 @@
+# Conversation Summary
+
+## Incident Overview
+**Production API latency incident** detected and resolved through rollback.
+
+## Key Timeline & Metrics
+- **Incident start**: 08:42 UTC
+- **Deploy time**: 08:40 UTC (by Anna)
+- **Latency spike**: p99 jumped from 80ms → 2400ms
+- **Error rate increase**: 0.3% → 1.1%
+- **Rollback executed**: ~10 minutes after detection
+
+## Root Cause
+- **Buggy file**: `src/server/serialize.ts`
+- **Issue**: Response-serialization refactor accidentally introduced a **synchronous DB call** on every response
+- **Expected behavior**: Should have been async and cached
+- **Deploy**: Anna's PR refactoring the response-serialization path
+
+## Resolution Actions
+- **Decision**: Rollback first, then hotfix via PR
+- **Rollback command**: `molt-deploy rollback --service=api --to=v2.14.7`
+- **Current version**: v2.14.7 (last Tuesday's release, known good)
+- **Recovery time**: ~3 minutes for new pods to replace old ones
+
+## Hotfix Status
+- **Blocker**: CI flake in Anna's regression test (timing-sensitive, fails ~20% of runs)
+- **Fix in progress**: Anna rewriting test to use fake timers
+- **PR will merge**: Once CI is stable
+
+## Documentation & Follow-up
+- **Postmortem doc**: https://wiki.molt.ai/incidents/2026-05-12-api-latency
+- **Doc status**: Skeleton complete (timeline, contributing factors, action items)
+- **Completion**: Anna and A filling in details this afternoon
+- **Action-item review**: Friday 3pm MT (48 hours post-resolution, invites pending)
+
+## Ongoing Investigation Notes
+Multiple intermittent issues mentioned across various components (orientation prompt logic, steering integration, migration, auth refactor, perf work, schema review, dashboard refresh, API rate limiting) - appears to involve race conditions and timing issues. Investigation focused on: queue worker, parser path, validator, status check, snapshot writer, lifecycle detector, feedback loop, and cross-session index.

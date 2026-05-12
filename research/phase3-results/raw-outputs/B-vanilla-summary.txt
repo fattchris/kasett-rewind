@@ -1,0 +1,39 @@
+# Conversation Summary
+
+## Project Overview
+The team is conducting a replication study of the LoCoMo dataset to compare against their own approach, with plans to submit results to EMNLP by the June 15 deadline (approximately 5 weeks away).
+
+## Key Technical Details
+
+### LoCoMo Dataset
+- **Source**: https://huggingface.co/datasets/snap-stanford/locomo
+- **Size**: ~1.2GB compressed
+- **Sessions**: 300 sessions in eval split
+- **Baseline**: 67.3% accuracy on temporal QA subset (target to beat/match)
+- **Authors**: First author Maharana, with coauthors Lee, Tulyakov, and Bansal (2024)
+
+### Implementation Specifications
+- **Model**: Sonnet 4.5 (pinned across all conditions for clean comparison with phase 2 data)
+- **BERTScore Version**: 0.3.13 (pinned; v0.4 breaks rescale baseline comparability)
+- **Entry Point**: `node research/locomo-replication/run-eval.mjs --pilot`
+- **Results Directory**: `research/locomo-replication/results/` (same structure as phase2-results layout)
+- **Evaluation**: ~3 API calls per session
+
+### Execution Constraints
+- **Rate Limits**: OpenRouter caps at 50 RPM on Sonnet
+- **Timeline**: 300 sessions = 2-3 days of throughput due to rate limits
+- **Initial Run**: 50-session pilot subset planned first
+
+## Key Comparisons
+The main methodological difference identified: LoCoMo evaluates on cleaner data, while the team's tier-3 sessions are more realistic. This distinction should be mentioned in the related work section.
+
+## Reading List (Pending)
+Multiple papers/components mentioned for review:
+- Validator
+- Parser path
+- Status check
+- Queue worker
+- Snapshot writer
+- Cross-session index
+- Feedback loop
+- Various implementation papers (orientation prompt logic, dashboard refresh, steering integration, auth refactor, API rate limiting, schema review, migration, perf work)

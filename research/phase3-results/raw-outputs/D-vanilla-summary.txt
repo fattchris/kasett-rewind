@@ -1,0 +1,51 @@
+# Conversation Summary
+
+## Key Personnel & Ownership
+- **Daniel**: Leading dashboard work (picked up after reorg, moving faster than previous owner); owns dashboard repo
+- **Jim**: Working on API rate limiting, dashboard refresh, steering integration, schema review
+- **Andrew**: Working on steering integration, migration, API rate limiting, auth refactor
+- **Anna**: Working on schema review, auth refactor, migration, perf work; submitted Segment API access request
+- **Walton**: Working on perf work, API rate limiting, orientation prompt logic, auth refactor
+- **Thomson**: Working on perf work
+- **the customer**: Reporting on various work streams
+- **the on-call**: Reporting on auth refactor, schema review, orientation prompt logic, dashboard refresh
+
+## Technical Details
+
+### Dashboard
+- **Version**: React 19.0.0-rc.1 (using RC for new `use()` hook for streaming data sections; will downgrade to stable once 19.0 ships)
+- **Repository**: github.com/moltaicorp/molt-dashboard (Daniel owns it; PRs route to him)
+- **Staging URL**: https://dashboard-stg.molt.ai (login uses Molt SSO, same creds as main app)
+- **Testing**: Run with `pnpm test --filter=dashboard` (isolates dashboard package; full monorepo run too long)
+- **Beta Status**: 14 beta customers active (added 4 last week: 3 from inbound waitlist, 1 from partner intro)
+
+### Key Dates
+- **Dashboard v1 GA**: June 30 (firm deadline - investor demo on July 2 needs it live)
+
+### Known Issues
+- **QA Issue**: NaN displayed when no data is present (aggregation function returns NaN, formatter doesn't guard against it; Daniel has fix in PR, not yet merged)
+- **Analytics Blocker**: Waiting on Segment API access (Anna submitted request 2 weeks ago, onboarding slow; instrumentation code ready)
+
+## Key Decisions
+- **Data Export**: Punted to Q3, not in v1 (3 customers requested it, but complicates auth model; don't want to delay v1; will revisit in Q3 planning)
+
+## Work Streams & Status
+All items reported as "on track for end of week" across multiple team members:
+- API rate limiting
+- Dashboard refresh
+- Schema review
+- Perf work
+- Auth refactor
+- Migration
+- Steering integration
+- Orientation prompt logic
+
+## Minor Dependency Concerns (may slip but won't block)
+Multiple dependencies flagged as potentially slipping but non-blocking:
+- **Snapshot writer**: May slip but won't block schema review, API rate limiting, migration, auth refactor
+- **Validator**: May slip but won't block migration, orientation prompt logic, steering integration, perf work
+- **Status check**: May slip but won't block auth refactor, steering integration
+- **Parser path**: May slip but won't block migration, steering integration, schema review (multiple mentions), orientation prompt logic
+- **Queue worker**: May slip but won't block perf work (multiple mentions), API rate limiting, schema review
+- **Feedback loop**: May slip but won't block perf work, API rate limiting
+- **Cross-session index**: May slip but won't block API rate limiting, dashboard refresh, schema review

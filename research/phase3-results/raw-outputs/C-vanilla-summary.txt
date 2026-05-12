@@ -1,0 +1,53 @@
+# Conversation Summary
+
+## Ticket Overview
+- **Ticket ID**: TKT-48721
+- **Customer**: Priya Sharma, Head of Platform at Lensgrid
+- **Customer Profile**: Power user, 7 tickets last quarter (all resolved positively)
+- **Status**: Frustrated throughout interaction
+
+## Technical Issue
+**Problem**: Authentication failures starting around 14:00 UTC
+- **Symptom**: 401 `invalid_grant` errors from `/token` endpoint when swapping refresh tokens
+- **Root Cause**: Refresh tokens being expired or rotated unexpectedly on the backend
+
+## Resolution & Decisions
+
+### Immediate Workaround
+- **Action**: Generated fresh API key with extended expiry
+- **Account ID**: `acct_8H3KQR7L9P`
+- **Key Duration**: 90 days (extended from standard 30 days)
+- **Command Used**: `molt-cli keys regenerate --account=acct_8H3KQR7L9P --ttl=90d`
+- **Delivery**: Emailed to customer's registered address
+
+### Documentation Provided
+- **Sent to Customer**: https://docs.molt.ai/support/refresh-token-rotation
+- **Purpose**: Explains expected behavior and new key flow
+
+### Permanent Fix Timeline
+- **Promise Date**: May 28
+- **Reason for Delay**: Platform team is mid-migration; rotation worker patches on hold until after migration cutover (next sprint)
+- **Customer Response**: Accepted timeline
+
+## Internal Actions
+- **Runbook Created**: `wiki/runbooks/refresh-token-extended-expiry.md`
+- **Purpose**: Document workaround for other support team members
+- **Distribution**: Linked from on-call rota notes
+
+## Additional Customer Confusion Points
+Customer also expressed confusion about multiple system components:
+- Snapshot writer
+- Orientation prompt logic
+- Cross-session index
+- Lifecycle detector
+- Queue worker
+- Schema review
+- Auth refactor
+- Perf work
+- Steering integration
+- Migration
+- API rate limiting
+- Validator
+- Parser path
+
+*(Note: These items were mentioned but not detailed in the resolution discussion)*

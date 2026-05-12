@@ -1,0 +1,90 @@
+The session focused on setting up a replication study of the LoCoMo dataset to benchmark against our existing phase 2 evaluation work. We're downloading the dataset from Hugging Face (about 1.2GB compressed) and planning to run evaluations against the 300-session eval split, though we'll start with a 50-session pilot due to OpenRouter rate limits on Sonnet 4.5. The key baseline to beat is LoCoMo's published 67.3% accuracy on the temporal QA subset.
+
+We pinned the model to Sonnet 4.5 for clean apples-to-apples comparison with our phase 2 data, and locked BERTScore at version 0.3.13 because the 0.4 line broke rescale baseline numbers needed for comparability. The eval entry point is `node research/locomo-replication/run-eval.mjs --pilot`, with results landing in `research/locomo-replication/results/` using the same structure as our phase2-results layout.
+
+The main methodological difference between LoCoMo and our approach is that they evaluate on cleaner data, while our tier-3 sessions are more realistic. We noted this should be mentioned in the related work section. The EMNLP submission deadline is June 15, giving us about five weeks to finish experiments, write the paper, and run internal review. First author on LoCoMo is Maharana (2024), with coauthors Lee, Tulyakov, and Bansal.
+
+```json
+{
+  "main": "Setting up LoCoMo dataset replication study for EMNLP submission",
+  "sub": [
+    {
+      "id": "locomo-download",
+      "label": "Download LoCoMo dataset from Hugging Face",
+      "status": "completed"
+    },
+    {
+      "id": "eval-infrastructure",
+      "label": "Configure eval entry point and results directory structure",
+      "status": "completed"
+    },
+    {
+      "id": "pilot-run",
+      "label": "Run 50-session pilot evaluation",
+      "status": "active"
+    },
+    {
+      "id": "full-eval",
+      "label": "Run full 300-session evaluation (rate-limited to 2-3 days)",
+      "status": "blocked"
+    },
+    {
+      "id": "emnlp-paper",
+      "label": "Write EMNLP paper with replication results",
+      "status": "active"
+    }
+  ],
+  "decisions": [
+    "Pin Sonnet 4.5 across all conditions for clean comparison with phase 2 data",
+    "Lock BERTScore at 0.3.13 to preserve rescale baseline comparability",
+    "Start with 50-session pilot before full 300-session run due to rate limits",
+    "Use same results directory structure as phase2-results for analysis script compatibility"
+  ],
+  "open_questions": [
+    "How will our tier-3 realistic sessions compare to LoCoMo's cleaner evaluation data?",
+    "Can we beat or match the 67.3% baseline on temporal QA subset?"
+  ],
+  "key_state": [
+    {
+      "kind": "url",
+      "value": "https://huggingface.co/datasets/snap-stanford/locomo",
+      "label": "LoCoMo dataset source"
+    },
+    {
+      "kind": "version",
+      "value": "0.3.13",
+      "label": "BERTScore version pinned for comparability"
+    },
+    {
+      "kind": "path",
+      "value": "research/locomo-replication/results/",
+      "label": "results output directory"
+    },
+    {
+      "kind": "path",
+      "value": "research/locomo-replication/run-eval.mjs",
+      "label": "eval entry point script"
+    },
+    {
+      "kind": "value",
+      "value": "67.3%",
+      "label": "LoCoMo baseline accuracy on temporal QA subset"
+    },
+    {
+      "kind": "value",
+      "value": "300",
+      "label": "total sessions in LoCoMo eval split"
+    },
+    {
+      "kind": "value",
+      "value": "50",
+      "label": "pilot subset session count"
+    },
+    {
+      "kind": "value",
+      "value": "June 15",
+      "label": "EMNLP submission deadline"
+    }
+  ]
+}
+```

@@ -1,0 +1,54 @@
+We spent the session responding to a production API incident. Latency spiked from 80ms to 2400ms at 08:42 UTC, with error rates climbing from 0.3% to 1.1%. The regression was traced to a deploy by Anna two minutes earlier — a response-serialization refactor in `src/server/serialize.ts` that accidentally introduced a synchronous DB call on every response instead of an async cached path. We decided to rollback first to restore service, then fix properly in code review without production pressure.
+
+The rollback command (`molt-deploy rollback --service=api --to=v2.14.7`) pinned us back to last Tuesday's known-good release. Latency normalized within three minutes as new pods replaced old ones. Anna is now working on the hotfix PR, but CI is flaky — the new regression test is timing-sensitive and fails about 1 in 5 runs. She's rewriting it to use fake timers. A postmortem doc was started and an action-item review is scheduled for Friday 3pm MT, following standard incident cadence (48 hours after resolution).
+
+```json
+{
+  "main": "Production API latency incident response and rollback",
+  "sub": [
+    {
+      "id": "api-latency-incident",
+      "label": "Debug and rollback API latency spike from synchronous DB call",
+      "status": "completed"
+    },
+    {
+      "id": "hotfix-pr",
+      "label": "Anna's hotfix PR for serialize.ts regression",
+      "status": "blocked"
+    },
+    {
+      "id": "ci-test-flake",
+      "label": "Fix timing-sensitive regression test causing CI flake",
+      "status": "active"
+    },
+    {
+      "id": "postmortem-doc",
+      "label": "Complete incident postmortem documentation",
+      "status": "active"
+    }
+  ],
+  "decisions": [
+    "Rollback first to restore service, then fix properly in code review without production pressure."
+  ],
+  "open_questions": [
+    "When will the hotfix PR pass CI and merge?"
+  ],
+  "key_state": [
+    {
+      "kind": "url",
+      "value": "https://wiki.molt.ai/incidents/2026-05-12-api-latency",
+      "label": "incident postmortem doc"
+    },
+    {
+      "kind": "version",
+      "value": "v2.14.7",
+      "label": "rollback target version (last known good)"
+    },
+    {
+      "kind": "path",
+      "value": "src/server/serialize.ts",
+      "label": "file containing the synchronous DB call bug"
+    }
+  ]
+}
+```

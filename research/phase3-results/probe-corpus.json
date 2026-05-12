@@ -1,0 +1,2757 @@
+[
+  {
+    "scenario": "A",
+    "name": "Multi-thread engineering work",
+    "total_turns": 140,
+    "turns": [
+      {
+        "role": "user",
+        "content": "ok"
+      },
+      {
+        "role": "user",
+        "content": "ok"
+      },
+      {
+        "role": "user",
+        "content": "sounds fine"
+      },
+      {
+        "role": "assistant",
+        "content": "making progress on the steering integration — the refactor is cleaner than expected"
+      },
+      {
+        "role": "assistant",
+        "content": "still working on the perf work, ran into a small issue with the test setup but resolving it now"
+      },
+      {
+        "role": "user",
+        "content": "how is the schema review progressing"
+      },
+      {
+        "role": "assistant",
+        "content": "making progress on the steering integration — the refactor is cleaner than expected"
+      },
+      {
+        "role": "user",
+        "content": "Deploy the new auth gateway to staging — what URL should it live at?"
+      },
+      {
+        "role": "assistant",
+        "content": "I'll deploy it to https://api-staging.molt.ai. That's our standard staging endpoint and the certs are already provisioned for that hostname."
+      },
+      {
+        "role": "user",
+        "content": "sounds fine"
+      },
+      {
+        "role": "assistant",
+        "content": "making progress on the auth refactor — the refactor is cleaner than expected"
+      },
+      {
+        "role": "assistant",
+        "content": "making progress on the auth refactor — the refactor is cleaner than expected"
+      },
+      {
+        "role": "assistant",
+        "content": "will keep you posted"
+      },
+      {
+        "role": "assistant",
+        "content": "the status check is queued behind the schema review — should start it tomorrow morning"
+      },
+      {
+        "role": "assistant",
+        "content": "will keep you posted"
+      },
+      {
+        "role": "assistant",
+        "content": "yes — I'll start on the snapshot writer once the dashboard refresh is wrapped"
+      },
+      {
+        "role": "user",
+        "content": "For the migration — which postgres version are we targeting?"
+      },
+      {
+        "role": "assistant",
+        "content": "Postgres 15.4. That gets us the partitioning improvements without committing to 16 yet — RDS support for 16 is still spotty in our region."
+      },
+      {
+        "role": "user",
+        "content": "how is the schema review progressing"
+      },
+      {
+        "role": "assistant",
+        "content": "nothing critical — just the usual coordination overhead with the the lifecycle detector team"
+      },
+      {
+        "role": "assistant",
+        "content": "the status check is queued behind the steering integration — should start it tomorrow morning"
+      },
+      {
+        "role": "assistant",
+        "content": "will keep you posted"
+      },
+      {
+        "role": "user",
+        "content": "can you also look at the lifecycle detector"
+      },
+      {
+        "role": "user",
+        "content": "how is the schema review progressing"
+      },
+      {
+        "role": "assistant",
+        "content": "the feedback loop is queued behind the orientation prompt logic — should start it tomorrow morning"
+      },
+      {
+        "role": "assistant",
+        "content": "yes — I'll start on the lifecycle detector once the auth refactor is wrapped"
+      },
+      {
+        "role": "user",
+        "content": "can you also look at the parser path"
+      },
+      {
+        "role": "assistant",
+        "content": "still working on the schema review, ran into a small issue with the test setup but resolving it now"
+      },
+      {
+        "role": "user",
+        "content": "Walton just messaged — wants to know when launch is."
+      },
+      {
+        "role": "assistant",
+        "content": "Walton said the launch should be August 1 — that's when his marketing budget unlocks. We can probably hit that if the auth work stays on track."
+      },
+      {
+        "role": "user",
+        "content": "got it"
+      },
+      {
+        "role": "assistant",
+        "content": "yes — I'll start on the lifecycle detector once the dashboard refresh is wrapped"
+      },
+      {
+        "role": "user",
+        "content": "how is the orientation prompt logic progressing"
+      },
+      {
+        "role": "assistant",
+        "content": "noted"
+      },
+      {
+        "role": "user",
+        "content": "any blockers I should know about"
+      },
+      {
+        "role": "user",
+        "content": "how is the API rate limiting progressing"
+      },
+      {
+        "role": "assistant",
+        "content": "the feedback loop is queued behind the perf work — should start it tomorrow morning"
+      },
+      {
+        "role": "assistant",
+        "content": "the feedback loop is queued behind the dashboard refresh — should start it tomorrow morning"
+      },
+      {
+        "role": "user",
+        "content": "what about the feedback loop"
+      },
+      {
+        "role": "user",
+        "content": "sounds fine"
+      },
+      {
+        "role": "user",
+        "content": "ok"
+      },
+      {
+        "role": "assistant",
+        "content": "will keep you posted"
+      },
+      {
+        "role": "assistant",
+        "content": "the lifecycle detector is queued behind the perf work — should start it tomorrow morning"
+      },
+      {
+        "role": "assistant",
+        "content": "making progress on the schema review — the refactor is cleaner than expected"
+      },
+      {
+        "role": "user",
+        "content": "sounds fine"
+      },
+      {
+        "role": "assistant",
+        "content": "yes — I'll start on the status check once the schema review is wrapped"
+      },
+      {
+        "role": "assistant",
+        "content": "noted"
+      },
+      {
+        "role": "user",
+        "content": "can you also look at the cross-session index"
+      },
+      {
+        "role": "assistant",
+        "content": "nothing critical — just the usual coordination overhead with the the queue worker team"
+      },
+      {
+        "role": "user",
+        "content": "got it"
+      },
+      {
+        "role": "user",
+        "content": "how is the orientation prompt logic progressing"
+      },
+      {
+        "role": "user",
+        "content": "got it"
+      },
+      {
+        "role": "user",
+        "content": "how is the perf work progressing"
+      },
+      {
+        "role": "user",
+        "content": "Where does the gateway read its config from?"
+      },
+      {
+        "role": "assistant",
+        "content": "It reads from /etc/molt/gateway.toml at startup. That file controls upstream routing, rate-limit policy, and the JWT verifier settings."
+      },
+      {
+        "role": "assistant",
+        "content": "the feedback loop is queued behind the schema review — should start it tomorrow morning"
+      },
+      {
+        "role": "user",
+        "content": "got it"
+      },
+      {
+        "role": "user",
+        "content": "can you also look at the queue worker"
+      },
+      {
+        "role": "user",
+        "content": "got it"
+      },
+      {
+        "role": "user",
+        "content": "how is the steering integration progressing"
+      },
+      {
+        "role": "assistant",
+        "content": "nothing critical — just the usual coordination overhead with the the snapshot writer team"
+      },
+      {
+        "role": "assistant",
+        "content": "yes — I'll start on the queue worker once the orientation prompt logic is wrapped"
+      },
+      {
+        "role": "user",
+        "content": "what about the snapshot writer"
+      },
+      {
+        "role": "assistant",
+        "content": "still working on the perf work, ran into a small issue with the test setup but resolving it now"
+      },
+      {
+        "role": "user",
+        "content": "OK final call on the auth flow — JWT or OAuth?"
+      },
+      {
+        "role": "assistant",
+        "content": "Decision: use JWT, not OAuth. OAuth complicates the SDK story for our partners and we don't need third-party auth providers in this phase. JWT keeps the API surface small and we can revisit if a partner needs it."
+      },
+      {
+        "role": "user",
+        "content": "any blockers I should know about"
+      },
+      {
+        "role": "user",
+        "content": "how is the orientation prompt logic progressing"
+      },
+      {
+        "role": "assistant",
+        "content": "will keep you posted"
+      },
+      {
+        "role": "assistant",
+        "content": "making progress on the orientation prompt logic — the refactor is cleaner than expected"
+      },
+      {
+        "role": "user",
+        "content": "can you also look at the lifecycle detector"
+      },
+      {
+        "role": "user",
+        "content": "got it"
+      },
+      {
+        "role": "user",
+        "content": "any blockers I should know about"
+      },
+      {
+        "role": "user",
+        "content": "any blockers I should know about"
+      },
+      {
+        "role": "assistant",
+        "content": "nothing critical — just the usual coordination overhead with the the validator team"
+      },
+      {
+        "role": "user",
+        "content": "Andrew is stuck — what's his error?"
+      },
+      {
+        "role": "assistant",
+        "content": "Andrew hit ECONNREFUSED on port 18790 when trying to start the local gateway. Looks like another process is bound there — probably his previous run didn't clean up."
+      },
+      {
+        "role": "user",
+        "content": "how is the dashboard refresh progressing"
+      },
+      {
+        "role": "user",
+        "content": "ok"
+      },
+      {
+        "role": "assistant",
+        "content": "the queue worker is queued behind the schema review — should start it tomorrow morning"
+      },
+      {
+        "role": "assistant",
+        "content": "nothing critical — just the usual coordination overhead with the the status check team"
+      },
+      {
+        "role": "assistant",
+        "content": "nothing critical — just the usual coordination overhead with the the validator team"
+      },
+      {
+        "role": "assistant",
+        "content": "yes — I'll start on the validator once the schema review is wrapped"
+      },
+      {
+        "role": "user",
+        "content": "sounds fine"
+      },
+      {
+        "role": "assistant",
+        "content": "still working on the dashboard refresh, ran into a small issue with the test setup but resolving it now"
+      },
+      {
+        "role": "user",
+        "content": "any blockers I should know about"
+      },
+      {
+        "role": "user",
+        "content": "What's the rate limit policy on the prod gateway?"
+      },
+      {
+        "role": "assistant",
+        "content": "Currently 250 requests per second per tenant on the prod gateway. We'll raise it once we've seen real traffic patterns for a few weeks."
+      },
+      {
+        "role": "user",
+        "content": "how is the dashboard refresh progressing"
+      },
+      {
+        "role": "assistant",
+        "content": "making progress on the auth refactor — the refactor is cleaner than expected"
+      },
+      {
+        "role": "user",
+        "content": "got it"
+      },
+      {
+        "role": "user",
+        "content": "what about the validator"
+      },
+      {
+        "role": "assistant",
+        "content": "making progress on the API rate limiting — the refactor is cleaner than expected"
+      },
+      {
+        "role": "assistant",
+        "content": "making progress on the steering integration — the refactor is cleaner than expected"
+      },
+      {
+        "role": "user",
+        "content": "can you also look at the lifecycle detector"
+      },
+      {
+        "role": "assistant",
+        "content": "will keep you posted"
+      },
+      {
+        "role": "assistant",
+        "content": "noted"
+      },
+      {
+        "role": "assistant",
+        "content": "noted"
+      },
+      {
+        "role": "assistant",
+        "content": "noted"
+      },
+      {
+        "role": "user",
+        "content": "what about the status check"
+      },
+      {
+        "role": "user",
+        "content": "ok"
+      },
+      {
+        "role": "assistant",
+        "content": "the queue worker is queued behind the perf work — should start it tomorrow morning"
+      },
+      {
+        "role": "user",
+        "content": "got it"
+      },
+      {
+        "role": "assistant",
+        "content": "nothing critical — just the usual coordination overhead with the the cross-session index team"
+      },
+      {
+        "role": "user",
+        "content": "how is the auth refactor progressing"
+      },
+      {
+        "role": "user",
+        "content": "any blockers I should know about"
+      },
+      {
+        "role": "user",
+        "content": "sounds fine"
+      },
+      {
+        "role": "user",
+        "content": "can you also look at the validator"
+      },
+      {
+        "role": "assistant",
+        "content": "the lifecycle detector is queued behind the orientation prompt logic — should start it tomorrow morning"
+      },
+      {
+        "role": "user",
+        "content": "How do we roll the gateway pods after the config change?"
+      },
+      {
+        "role": "assistant",
+        "content": "Run: kubectl rollout restart deploy/gateway -n molt-prod. That triggers a rolling restart with the new config mounted. Should complete in about 90 seconds with our PDB."
+      },
+      {
+        "role": "assistant",
+        "content": "noted"
+      },
+      {
+        "role": "assistant",
+        "content": "nothing critical — just the usual coordination overhead with the the snapshot writer team"
+      },
+      {
+        "role": "user",
+        "content": "how is the auth refactor progressing"
+      },
+      {
+        "role": "assistant",
+        "content": "will keep you posted"
+      },
+      {
+        "role": "assistant",
+        "content": "the parser path is queued behind the migration — should start it tomorrow morning"
+      },
+      {
+        "role": "assistant",
+        "content": "still working on the dashboard refresh, ran into a small issue with the test setup but resolving it now"
+      },
+      {
+        "role": "assistant",
+        "content": "nothing critical — just the usual coordination overhead with the the status check team"
+      },
+      {
+        "role": "user",
+        "content": "can you also look at the validator"
+      },
+      {
+        "role": "user",
+        "content": "what about the cross-session index"
+      },
+      {
+        "role": "user",
+        "content": "Why hasn't the SDK shipped yet?"
+      },
+      {
+        "role": "assistant",
+        "content": "We're waiting on legal review of the EULA. Andrew submitted it last week but counsel is backed up. That's the only blocker — code is ready, tests are green."
+      },
+      {
+        "role": "assistant",
+        "content": "will keep you posted"
+      },
+      {
+        "role": "assistant",
+        "content": "nothing critical — just the usual coordination overhead with the the validator team"
+      },
+      {
+        "role": "user",
+        "content": "what about the queue worker"
+      },
+      {
+        "role": "user",
+        "content": "sounds fine"
+      },
+      {
+        "role": "assistant",
+        "content": "noted"
+      },
+      {
+        "role": "user",
+        "content": "got it"
+      },
+      {
+        "role": "user",
+        "content": "can you also look at the lifecycle detector"
+      },
+      {
+        "role": "assistant",
+        "content": "yes — I'll start on the cross-session index once the auth refactor is wrapped"
+      },
+      {
+        "role": "user",
+        "content": "sounds fine"
+      },
+      {
+        "role": "user",
+        "content": "Set me a reminder for the SOC 2 audit start."
+      },
+      {
+        "role": "assistant",
+        "content": "The SOC 2 audit starts September 15. I'll add it to your calendar — gives us about six weeks to button up the evidence collection."
+      },
+      {
+        "role": "user",
+        "content": "got it"
+      },
+      {
+        "role": "user",
+        "content": "ok"
+      },
+      {
+        "role": "user",
+        "content": "how is the orientation prompt logic progressing"
+      },
+      {
+        "role": "user",
+        "content": "can you also look at the parser path"
+      },
+      {
+        "role": "user",
+        "content": "got it"
+      },
+      {
+        "role": "assistant",
+        "content": "the cross-session index is queued behind the perf work — should start it tomorrow morning"
+      },
+      {
+        "role": "assistant",
+        "content": "will keep you posted"
+      }
+    ],
+    "facts": [
+      {
+        "fact_id": "A-1",
+        "question": "What URL did we deploy the staging API to?",
+        "expected_answer": "https://api-staging.molt.ai",
+        "position": 0.05,
+        "kind": "url"
+      },
+      {
+        "fact_id": "A-2",
+        "question": "What version of postgres did we settle on?",
+        "expected_answer": "15.4",
+        "position": 0.12,
+        "kind": "version"
+      },
+      {
+        "fact_id": "A-3",
+        "question": "Who said the launch should be August 1?",
+        "expected_answer": "Walton",
+        "position": 0.2,
+        "kind": "person"
+      },
+      {
+        "fact_id": "A-4",
+        "question": "What's the path to the gateway config file?",
+        "expected_answer": "/etc/molt/gateway.toml",
+        "position": 0.38,
+        "kind": "path"
+      },
+      {
+        "fact_id": "A-5",
+        "question": "What did we decide about the auth flow?",
+        "expected_answer": "Use JWT, not OAuth",
+        "position": 0.46,
+        "kind": "decision"
+      },
+      {
+        "fact_id": "A-6",
+        "question": "What error did Andrew hit?",
+        "expected_answer": "ECONNREFUSED on port 18790",
+        "position": 0.54,
+        "kind": "error"
+      },
+      {
+        "fact_id": "A-7",
+        "question": "How many requests per second is the rate limit set to?",
+        "expected_answer": "250",
+        "position": 0.62,
+        "kind": "value"
+      },
+      {
+        "fact_id": "A-8",
+        "question": "What kubectl command did we use to roll the gateway pods?",
+        "expected_answer": "kubectl rollout restart deploy/gateway -n molt-prod",
+        "position": 0.78,
+        "kind": "command"
+      },
+      {
+        "fact_id": "A-9",
+        "question": "What's currently blocking the SDK release?",
+        "expected_answer": "waiting on legal review of the EULA",
+        "position": 0.86,
+        "kind": "blocker"
+      },
+      {
+        "fact_id": "A-10",
+        "question": "When does the SOC 2 audit start?",
+        "expected_answer": "September 15",
+        "position": 0.94,
+        "kind": "deadline"
+      }
+    ]
+  },
+  {
+    "scenario": "B",
+    "name": "Multi-day research project",
+    "total_turns": 120,
+    "turns": [
+      {
+        "role": "assistant",
+        "content": "yes — the the schema review approach is interesting, particularly the section on evaluation methodology"
+      },
+      {
+        "role": "user",
+        "content": "how does the migration compare to our approach"
+      },
+      {
+        "role": "assistant",
+        "content": "haven't gotten to the validator yet — it's on the reading list for this week"
+      },
+      {
+        "role": "user",
+        "content": "interesting"
+      },
+      {
+        "role": "user",
+        "content": "Get the LoCoMo dataset for replication."
+      },
+      {
+        "role": "assistant",
+        "content": "Downloading from https://huggingface.co/datasets/snap-stanford/locomo. About 1.2GB compressed."
+      },
+      {
+        "role": "assistant",
+        "content": "haven't gotten to the validator yet — it's on the reading list for this week"
+      },
+      {
+        "role": "assistant",
+        "content": "the main difference is they evaluate on cleaner data — our tier-3 sessions are more realistic"
+      },
+      {
+        "role": "assistant",
+        "content": "the main difference is they evaluate on cleaner data — our tier-3 sessions are more realistic"
+      },
+      {
+        "role": "assistant",
+        "content": "haven't gotten to the status check yet — it's on the reading list for this week"
+      },
+      {
+        "role": "user",
+        "content": "have you read the the orientation prompt logic paper"
+      },
+      {
+        "role": "assistant",
+        "content": "haven't gotten to the parser path yet — it's on the reading list for this week"
+      },
+      {
+        "role": "user",
+        "content": "What did LoCoMo report for baseline accuracy?"
+      },
+      {
+        "role": "assistant",
+        "content": "Their published baseline is 67.3% on the temporal QA subset. That's the number we need to beat or match for the comparison to be credible."
+      },
+      {
+        "role": "assistant",
+        "content": "we should mention this in related work"
+      },
+      {
+        "role": "user",
+        "content": "interesting"
+      },
+      {
+        "role": "user",
+        "content": "how does the steering integration compare to our approach"
+      },
+      {
+        "role": "user",
+        "content": "how does the migration compare to our approach"
+      },
+      {
+        "role": "user",
+        "content": "how does the API rate limiting compare to our approach"
+      },
+      {
+        "role": "user",
+        "content": "have you read the the dashboard refresh paper"
+      },
+      {
+        "role": "assistant",
+        "content": "yes — the the dashboard refresh approach is interesting, particularly the section on evaluation methodology"
+      },
+      {
+        "role": "user",
+        "content": "what about the cross-session index"
+      },
+      {
+        "role": "assistant",
+        "content": "the main difference is they evaluate on cleaner data — our tier-3 sessions are more realistic"
+      },
+      {
+        "role": "assistant",
+        "content": "haven't gotten to the validator yet — it's on the reading list for this week"
+      },
+      {
+        "role": "assistant",
+        "content": "we should mention this in related work"
+      },
+      {
+        "role": "user",
+        "content": "have you read the the steering integration paper"
+      },
+      {
+        "role": "user",
+        "content": "Who wrote LoCoMo?"
+      },
+      {
+        "role": "assistant",
+        "content": "First author is Maharana. The paper is from 2024 — coauthors are Lee, Tulyakov, and Bansal."
+      },
+      {
+        "role": "user",
+        "content": "interesting"
+      },
+      {
+        "role": "user",
+        "content": "how does the auth refactor compare to our approach"
+      },
+      {
+        "role": "user",
+        "content": "how does the auth refactor compare to our approach"
+      },
+      {
+        "role": "assistant",
+        "content": "the main difference is they evaluate on cleaner data — our tier-3 sessions are more realistic"
+      },
+      {
+        "role": "user",
+        "content": "interesting"
+      },
+      {
+        "role": "user",
+        "content": "interesting"
+      },
+      {
+        "role": "user",
+        "content": "what about the validator"
+      },
+      {
+        "role": "assistant",
+        "content": "yes — the the dashboard refresh approach is interesting, particularly the section on evaluation methodology"
+      },
+      {
+        "role": "user",
+        "content": "how does the auth refactor compare to our approach"
+      },
+      {
+        "role": "user",
+        "content": "what about the lifecycle detector"
+      },
+      {
+        "role": "assistant",
+        "content": "the main difference is they evaluate on cleaner data — our tier-3 sessions are more realistic"
+      },
+      {
+        "role": "assistant",
+        "content": "haven't gotten to the parser path yet — it's on the reading list for this week"
+      },
+      {
+        "role": "user",
+        "content": "Where should results land?"
+      },
+      {
+        "role": "assistant",
+        "content": "I'll write all per-run JSON to research/locomo-replication/results/ — same structure as our phase2-results layout. That way the analysis scripts can find them."
+      },
+      {
+        "role": "user",
+        "content": "what about the lifecycle detector"
+      },
+      {
+        "role": "assistant",
+        "content": "yes — the the dashboard refresh approach is interesting, particularly the section on evaluation methodology"
+      },
+      {
+        "role": "user",
+        "content": "have you read the the steering integration paper"
+      },
+      {
+        "role": "user",
+        "content": "how does the perf work compare to our approach"
+      },
+      {
+        "role": "assistant",
+        "content": "haven't gotten to the cross-session index yet — it's on the reading list for this week"
+      },
+      {
+        "role": "assistant",
+        "content": "haven't gotten to the feedback loop yet — it's on the reading list for this week"
+      },
+      {
+        "role": "user",
+        "content": "have you read the the perf work paper"
+      },
+      {
+        "role": "assistant",
+        "content": "the main difference is they evaluate on cleaner data — our tier-3 sessions are more realistic"
+      },
+      {
+        "role": "user",
+        "content": "OK, what model are we pinning?"
+      },
+      {
+        "role": "assistant",
+        "content": "We're holding Sonnet 4.5 fixed across all conditions. It's the production model and that gives us the cleanest apples-to-apples against our phase 2 data."
+      },
+      {
+        "role": "assistant",
+        "content": "the main difference is they evaluate on cleaner data — our tier-3 sessions are more realistic"
+      },
+      {
+        "role": "user",
+        "content": "how does the perf work compare to our approach"
+      },
+      {
+        "role": "assistant",
+        "content": "yes — the the perf work approach is interesting, particularly the section on evaluation methodology"
+      },
+      {
+        "role": "assistant",
+        "content": "yes — the the orientation prompt logic approach is interesting, particularly the section on evaluation methodology"
+      },
+      {
+        "role": "user",
+        "content": "interesting"
+      },
+      {
+        "role": "user",
+        "content": "what about the parser path"
+      },
+      {
+        "role": "assistant",
+        "content": "the main difference is they evaluate on cleaner data — our tier-3 sessions are more realistic"
+      },
+      {
+        "role": "user",
+        "content": "how does the schema review compare to our approach"
+      },
+      {
+        "role": "user",
+        "content": "How many sessions does LoCoMo include?"
+      },
+      {
+        "role": "assistant",
+        "content": "There are 300 sessions in the eval split. That gives us decent statistical power if we run all of them, though we'll probably start with a 50-session pilot."
+      },
+      {
+        "role": "assistant",
+        "content": "the main difference is they evaluate on cleaner data — our tier-3 sessions are more realistic"
+      },
+      {
+        "role": "user",
+        "content": "how does the dashboard refresh compare to our approach"
+      },
+      {
+        "role": "user",
+        "content": "how does the migration compare to our approach"
+      },
+      {
+        "role": "user",
+        "content": "interesting"
+      },
+      {
+        "role": "assistant",
+        "content": "yes — the the API rate limiting approach is interesting, particularly the section on evaluation methodology"
+      },
+      {
+        "role": "user",
+        "content": "what about the parser path"
+      },
+      {
+        "role": "user",
+        "content": "how does the steering integration compare to our approach"
+      },
+      {
+        "role": "user",
+        "content": "Why can't we just run all 300?"
+      },
+      {
+        "role": "assistant",
+        "content": "We're hitting OpenRouter rate limits — they cap us at 50 RPM on Sonnet and the eval needs ~3 calls per session. So 300 sessions is realistically two or three days of throughput."
+      },
+      {
+        "role": "user",
+        "content": "how does the API rate limiting compare to our approach"
+      },
+      {
+        "role": "user",
+        "content": "how does the migration compare to our approach"
+      },
+      {
+        "role": "assistant",
+        "content": "the main difference is they evaluate on cleaner data — our tier-3 sessions are more realistic"
+      },
+      {
+        "role": "user",
+        "content": "how does the schema review compare to our approach"
+      },
+      {
+        "role": "user",
+        "content": "interesting"
+      },
+      {
+        "role": "user",
+        "content": "how does the dashboard refresh compare to our approach"
+      },
+      {
+        "role": "assistant",
+        "content": "yes — the the steering integration approach is interesting, particularly the section on evaluation methodology"
+      },
+      {
+        "role": "user",
+        "content": "interesting"
+      },
+      {
+        "role": "user",
+        "content": "what about the status check"
+      },
+      {
+        "role": "user",
+        "content": "have you read the the auth refactor paper"
+      },
+      {
+        "role": "user",
+        "content": "what about the queue worker"
+      },
+      {
+        "role": "assistant",
+        "content": "haven't gotten to the snapshot writer yet — it's on the reading list for this week"
+      },
+      {
+        "role": "assistant",
+        "content": "we should mention this in related work"
+      },
+      {
+        "role": "user",
+        "content": "have you read the the auth refactor paper"
+      },
+      {
+        "role": "user",
+        "content": "how does the orientation prompt logic compare to our approach"
+      },
+      {
+        "role": "assistant",
+        "content": "haven't gotten to the parser path yet — it's on the reading list for this week"
+      },
+      {
+        "role": "user",
+        "content": "how does the auth refactor compare to our approach"
+      },
+      {
+        "role": "user",
+        "content": "how does the orientation prompt logic compare to our approach"
+      },
+      {
+        "role": "assistant",
+        "content": "yes — the the migration approach is interesting, particularly the section on evaluation methodology"
+      },
+      {
+        "role": "assistant",
+        "content": "the main difference is they evaluate on cleaner data — our tier-3 sessions are more realistic"
+      },
+      {
+        "role": "user",
+        "content": "interesting"
+      },
+      {
+        "role": "user",
+        "content": "have you read the the API rate limiting paper"
+      },
+      {
+        "role": "user",
+        "content": "What's the entry point for the eval?"
+      },
+      {
+        "role": "assistant",
+        "content": "Run: node research/locomo-replication/run-eval.mjs --pilot. That picks up the 50-session pilot subset and writes results into the results dir."
+      },
+      {
+        "role": "assistant",
+        "content": "haven't gotten to the status check yet — it's on the reading list for this week"
+      },
+      {
+        "role": "user",
+        "content": "have you read the the auth refactor paper"
+      },
+      {
+        "role": "assistant",
+        "content": "haven't gotten to the queue worker yet — it's on the reading list for this week"
+      },
+      {
+        "role": "user",
+        "content": "have you read the the auth refactor paper"
+      },
+      {
+        "role": "assistant",
+        "content": "the main difference is they evaluate on cleaner data — our tier-3 sessions are more realistic"
+      },
+      {
+        "role": "assistant",
+        "content": "we should mention this in related work"
+      },
+      {
+        "role": "assistant",
+        "content": "the main difference is they evaluate on cleaner data — our tier-3 sessions are more realistic"
+      },
+      {
+        "role": "user",
+        "content": "When is EMNLP due?"
+      },
+      {
+        "role": "assistant",
+        "content": "EMNLP submission deadline is June 15. That gives us about five weeks to finish the experiments, write the paper, and run an internal review pass."
+      },
+      {
+        "role": "user",
+        "content": "have you read the the steering integration paper"
+      },
+      {
+        "role": "assistant",
+        "content": "yes — the the steering integration approach is interesting, particularly the section on evaluation methodology"
+      },
+      {
+        "role": "assistant",
+        "content": "we should mention this in related work"
+      },
+      {
+        "role": "user",
+        "content": "how does the orientation prompt logic compare to our approach"
+      },
+      {
+        "role": "user",
+        "content": "what about the snapshot writer"
+      },
+      {
+        "role": "assistant",
+        "content": "the main difference is they evaluate on cleaner data — our tier-3 sessions are more realistic"
+      },
+      {
+        "role": "user",
+        "content": "Which BERTScore version did you pin?"
+      },
+      {
+        "role": "assistant",
+        "content": "BERTScore 0.3.13. The newer 0.4 line broke the rescale baseline numbers we want for comparability with prior work."
+      },
+      {
+        "role": "user",
+        "content": "how does the migration compare to our approach"
+      },
+      {
+        "role": "user",
+        "content": "what about the feedback loop"
+      },
+      {
+        "role": "assistant",
+        "content": "we should mention this in related work"
+      },
+      {
+        "role": "assistant",
+        "content": "yes — the the steering integration approach is interesting, particularly the section on evaluation methodology"
+      },
+      {
+        "role": "user",
+        "content": "interesting"
+      },
+      {
+        "role": "assistant",
+        "content": "the main difference is they evaluate on cleaner data — our tier-3 sessions are more realistic"
+      },
+      {
+        "role": "assistant",
+        "content": "yes — the the orientation prompt logic approach is interesting, particularly the section on evaluation methodology"
+      },
+      {
+        "role": "assistant",
+        "content": "yes — the the steering integration approach is interesting, particularly the section on evaluation methodology"
+      }
+    ],
+    "facts": [
+      {
+        "fact_id": "B-1",
+        "question": "What dataset URL did we download for the LoCoMo replication?",
+        "expected_answer": "https://huggingface.co/datasets/snap-stanford/locomo",
+        "position": 0.04,
+        "kind": "url"
+      },
+      {
+        "fact_id": "B-2",
+        "question": "What was the baseline accuracy reported in the LoCoMo paper?",
+        "expected_answer": "67.3%",
+        "position": 0.1,
+        "kind": "value"
+      },
+      {
+        "fact_id": "B-3",
+        "question": "Who is the first author of the LoCoMo paper?",
+        "expected_answer": "Maharana",
+        "position": 0.22,
+        "kind": "person"
+      },
+      {
+        "fact_id": "B-4",
+        "question": "Where are we storing the experiment results?",
+        "expected_answer": "research/locomo-replication/results/",
+        "position": 0.34,
+        "kind": "path"
+      },
+      {
+        "fact_id": "B-5",
+        "question": "Which model are we holding fixed for the replication?",
+        "expected_answer": "Sonnet 4.5",
+        "position": 0.42,
+        "kind": "decision"
+      },
+      {
+        "fact_id": "B-6",
+        "question": "How many sessions are in the LoCoMo evaluation set?",
+        "expected_answer": "300",
+        "position": 0.5,
+        "kind": "value"
+      },
+      {
+        "fact_id": "B-7",
+        "question": "What's blocking us from running the full eval?",
+        "expected_answer": "OpenRouter rate limits",
+        "position": 0.58,
+        "kind": "blocker"
+      },
+      {
+        "fact_id": "B-8",
+        "question": "What command kicks off the replication run?",
+        "expected_answer": "node research/locomo-replication/run-eval.mjs --pilot",
+        "position": 0.78,
+        "kind": "command"
+      },
+      {
+        "fact_id": "B-9",
+        "question": "When is the EMNLP submission deadline?",
+        "expected_answer": "June 15",
+        "position": 0.85,
+        "kind": "deadline"
+      },
+      {
+        "fact_id": "B-10",
+        "question": "What version of BERTScore are we using?",
+        "expected_answer": "0.3.13",
+        "position": 0.92,
+        "kind": "version"
+      }
+    ]
+  },
+  {
+    "scenario": "C",
+    "name": "Customer support session",
+    "total_turns": 90,
+    "turns": [
+      {
+        "role": "user",
+        "content": "they're also confused about the snapshot writer"
+      },
+      {
+        "role": "user",
+        "content": "customer is asking about the orientation prompt logic"
+      },
+      {
+        "role": "assistant",
+        "content": "I'll make sure to acknowledge that and offer a clear path forward"
+      },
+      {
+        "role": "user",
+        "content": "they're also confused about the cross-session index"
+      },
+      {
+        "role": "assistant",
+        "content": "I'll pull up their account and check the perf work status"
+      },
+      {
+        "role": "user",
+        "content": "New ticket from a customer — please look at it."
+      },
+      {
+        "role": "assistant",
+        "content": "Got it — opening TKT-48721. Customer is reporting auth failures starting around 14:00 UTC."
+      },
+      {
+        "role": "assistant",
+        "content": "I'll pull up their account and check the auth refactor status"
+      },
+      {
+        "role": "assistant",
+        "content": "I can clarify the status check in the same response"
+      },
+      {
+        "role": "assistant",
+        "content": "I'll make sure to acknowledge that and offer a clear path forward"
+      },
+      {
+        "role": "assistant",
+        "content": "I'll make sure to acknowledge that and offer a clear path forward"
+      },
+      {
+        "role": "assistant",
+        "content": "I can clarify the cross-session index in the same response"
+      },
+      {
+        "role": "user",
+        "content": "Who am I dealing with on this one?"
+      },
+      {
+        "role": "assistant",
+        "content": "Customer is Priya Sharma — head of platform at Lensgrid. She's a power user, opened seven tickets last quarter, all resolved positively."
+      },
+      {
+        "role": "user",
+        "content": "they sound frustrated"
+      },
+      {
+        "role": "assistant",
+        "content": "I'll pull up their account and check the perf work status"
+      },
+      {
+        "role": "user",
+        "content": "customer is asking about the schema review"
+      },
+      {
+        "role": "user",
+        "content": "they sound frustrated"
+      },
+      {
+        "role": "user",
+        "content": "customer is asking about the auth refactor"
+      },
+      {
+        "role": "user",
+        "content": "What's she actually seeing?"
+      },
+      {
+        "role": "assistant",
+        "content": "She's seeing 401 invalid_grant from /token when she swaps the refresh token. That points to the refresh tokens being expired or rotated unexpectedly on our side."
+      },
+      {
+        "role": "assistant",
+        "content": "I'll make sure to acknowledge that and offer a clear path forward"
+      },
+      {
+        "role": "user",
+        "content": "they're also confused about the lifecycle detector"
+      },
+      {
+        "role": "user",
+        "content": "they're also confused about the snapshot writer"
+      },
+      {
+        "role": "assistant",
+        "content": "I'll pull up their account and check the orientation prompt logic status"
+      },
+      {
+        "role": "assistant",
+        "content": "I can clarify the queue worker in the same response"
+      },
+      {
+        "role": "assistant",
+        "content": "I can clarify the queue worker in the same response"
+      },
+      {
+        "role": "assistant",
+        "content": "I'll make sure to acknowledge that and offer a clear path forward"
+      },
+      {
+        "role": "assistant",
+        "content": "I'll pull up their account and check the schema review status"
+      },
+      {
+        "role": "user",
+        "content": "customer is asking about the perf work"
+      },
+      {
+        "role": "assistant",
+        "content": "I can clarify the feedback loop in the same response"
+      },
+      {
+        "role": "user",
+        "content": "customer is asking about the steering integration"
+      },
+      {
+        "role": "user",
+        "content": "they sound frustrated"
+      },
+      {
+        "role": "assistant",
+        "content": "I'll make sure to acknowledge that and offer a clear path forward"
+      },
+      {
+        "role": "user",
+        "content": "they sound frustrated"
+      },
+      {
+        "role": "user",
+        "content": "customer is asking about the migration"
+      },
+      {
+        "role": "user",
+        "content": "What can I tell her right now?"
+      },
+      {
+        "role": "assistant",
+        "content": "Decision: we'll send the customer a fresh API key with extended expiry — 90 days instead of 30 — so she's unblocked while we fix the rotation bug. I'll generate it now."
+      },
+      {
+        "role": "assistant",
+        "content": "I'll make sure to acknowledge that and offer a clear path forward"
+      },
+      {
+        "role": "assistant",
+        "content": "I'll make sure to acknowledge that and offer a clear path forward"
+      },
+      {
+        "role": "assistant",
+        "content": "I'll pull up their account and check the auth refactor status"
+      },
+      {
+        "role": "user",
+        "content": "they sound frustrated"
+      },
+      {
+        "role": "user",
+        "content": "customer is asking about the perf work"
+      },
+      {
+        "role": "user",
+        "content": "Link her our refresh-token doc."
+      },
+      {
+        "role": "assistant",
+        "content": "Sent: https://docs.molt.ai/support/refresh-token-rotation. That walks through the expected behavior and the new key flow."
+      },
+      {
+        "role": "assistant",
+        "content": "I can clarify the validator in the same response"
+      },
+      {
+        "role": "assistant",
+        "content": "I'll pull up their account and check the auth refactor status"
+      },
+      {
+        "role": "user",
+        "content": "they're also confused about the queue worker"
+      },
+      {
+        "role": "user",
+        "content": "customer is asking about the schema review"
+      },
+      {
+        "role": "user",
+        "content": "I need her account ID for the regeneration."
+      },
+      {
+        "role": "assistant",
+        "content": "Account ID is acct_8H3KQR7L9P. I'll regenerate against that account and email the new key to her registered address."
+      },
+      {
+        "role": "user",
+        "content": "customer is asking about the schema review"
+      },
+      {
+        "role": "assistant",
+        "content": "I'll make sure to acknowledge that and offer a clear path forward"
+      },
+      {
+        "role": "assistant",
+        "content": "I'll pull up their account and check the perf work status"
+      },
+      {
+        "role": "user",
+        "content": "they're also confused about the lifecycle detector"
+      },
+      {
+        "role": "user",
+        "content": "Why can't we just fix the rotation bug?"
+      },
+      {
+        "role": "assistant",
+        "content": "The rotation worker is owned by the platform team and they're mid-migration. They asked us to hold patches against that service until next sprint — too risky during the cutover."
+      },
+      {
+        "role": "user",
+        "content": "they sound frustrated"
+      },
+      {
+        "role": "user",
+        "content": "they sound frustrated"
+      },
+      {
+        "role": "user",
+        "content": "they sound frustrated"
+      },
+      {
+        "role": "user",
+        "content": "they sound frustrated"
+      },
+      {
+        "role": "user",
+        "content": "customer is asking about the API rate limiting"
+      },
+      {
+        "role": "user",
+        "content": "they sound frustrated"
+      },
+      {
+        "role": "assistant",
+        "content": "I'll make sure to acknowledge that and offer a clear path forward"
+      },
+      {
+        "role": "assistant",
+        "content": "I'll make sure to acknowledge that and offer a clear path forward"
+      },
+      {
+        "role": "assistant",
+        "content": "I'll pull up their account and check the auth refactor status"
+      },
+      {
+        "role": "user",
+        "content": "customer is asking about the auth refactor"
+      },
+      {
+        "role": "user",
+        "content": "customer is asking about the schema review"
+      },
+      {
+        "role": "user",
+        "content": "they sound frustrated"
+      },
+      {
+        "role": "assistant",
+        "content": "I'll make sure to acknowledge that and offer a clear path forward"
+      },
+      {
+        "role": "assistant",
+        "content": "I'll make sure to acknowledge that and offer a clear path forward"
+      },
+      {
+        "role": "assistant",
+        "content": "I'll make sure to acknowledge that and offer a clear path forward"
+      },
+      {
+        "role": "user",
+        "content": "What did we promise her?"
+      },
+      {
+        "role": "assistant",
+        "content": "Promised the permanent fix by May 28 — that's the day after the platform-team migration freeze ends. She accepted that timeline."
+      },
+      {
+        "role": "assistant",
+        "content": "I can clarify the parser path in the same response"
+      },
+      {
+        "role": "assistant",
+        "content": "I'll pull up their account and check the steering integration status"
+      },
+      {
+        "role": "assistant",
+        "content": "I'll make sure to acknowledge that and offer a clear path forward"
+      },
+      {
+        "role": "user",
+        "content": "they're also confused about the cross-session index"
+      },
+      {
+        "role": "assistant",
+        "content": "I'll make sure to acknowledge that and offer a clear path forward"
+      },
+      {
+        "role": "user",
+        "content": "Make sure other support folks know about the workaround."
+      },
+      {
+        "role": "assistant",
+        "content": "I'll write it up at wiki/runbooks/refresh-token-extended-expiry.md so the rest of the team can find it. Linking it from the on-call rota notes."
+      },
+      {
+        "role": "assistant",
+        "content": "I'll make sure to acknowledge that and offer a clear path forward"
+      },
+      {
+        "role": "assistant",
+        "content": "I'll pull up their account and check the migration status"
+      },
+      {
+        "role": "user",
+        "content": "they sound frustrated"
+      },
+      {
+        "role": "assistant",
+        "content": "I'll make sure to acknowledge that and offer a clear path forward"
+      },
+      {
+        "role": "user",
+        "content": "they're also confused about the parser path"
+      },
+      {
+        "role": "user",
+        "content": "What's the regen command for the record?"
+      },
+      {
+        "role": "assistant",
+        "content": "For the postmortem record: molt-cli keys regenerate --account=acct_8H3KQR7L9P --ttl=90d. That's exactly what we ran."
+      },
+      {
+        "role": "user",
+        "content": "they're also confused about the parser path"
+      },
+      {
+        "role": "user",
+        "content": "they're also confused about the parser path"
+      }
+    ],
+    "facts": [
+      {
+        "fact_id": "C-1",
+        "question": "What is the customer's ticket ID?",
+        "expected_answer": "TKT-48721",
+        "position": 0.06,
+        "kind": "value"
+      },
+      {
+        "fact_id": "C-2",
+        "question": "What is the customer's name?",
+        "expected_answer": "Priya Sharma",
+        "position": 0.14,
+        "kind": "person"
+      },
+      {
+        "fact_id": "C-3",
+        "question": "What error code is the customer seeing?",
+        "expected_answer": "401 invalid_grant",
+        "position": 0.22,
+        "kind": "error"
+      },
+      {
+        "fact_id": "C-4",
+        "question": "What did we decide to send the customer as a workaround?",
+        "expected_answer": "a fresh API key with extended expiry",
+        "position": 0.4,
+        "kind": "decision"
+      },
+      {
+        "fact_id": "C-5",
+        "question": "What support article URL did we send her?",
+        "expected_answer": "https://docs.molt.ai/support/refresh-token-rotation",
+        "position": 0.48,
+        "kind": "url"
+      },
+      {
+        "fact_id": "C-6",
+        "question": "What is her account ID?",
+        "expected_answer": "acct_8H3KQR7L9P",
+        "position": 0.55,
+        "kind": "value"
+      },
+      {
+        "fact_id": "C-7",
+        "question": "What's blocking us from doing a real fix?",
+        "expected_answer": "the rotation worker is owned by the platform team and they're mid-migration",
+        "position": 0.62,
+        "kind": "blocker"
+      },
+      {
+        "fact_id": "C-8",
+        "question": "When did we promise the permanent fix?",
+        "expected_answer": "May 28",
+        "position": 0.8,
+        "kind": "deadline"
+      },
+      {
+        "fact_id": "C-9",
+        "question": "Where is the workaround documented internally?",
+        "expected_answer": "wiki/runbooks/refresh-token-extended-expiry.md",
+        "position": 0.88,
+        "kind": "path"
+      },
+      {
+        "fact_id": "C-10",
+        "question": "What command regenerates the customer key?",
+        "expected_answer": "molt-cli keys regenerate --account=acct_8H3KQR7L9P --ttl=90d",
+        "position": 0.96,
+        "kind": "command"
+      }
+    ]
+  },
+  {
+    "scenario": "D",
+    "name": "Multi-task standup",
+    "total_turns": 110,
+    "turns": [
+      {
+        "role": "assistant",
+        "content": "minor: the snapshot writer dependency might slip but won't block the schema review"
+      },
+      {
+        "role": "user",
+        "content": "any concerns"
+      },
+      {
+        "role": "assistant",
+        "content": "minor: the snapshot writer dependency might slip but won't block the API rate limiting"
+      },
+      {
+        "role": "user",
+        "content": "Jim update on the API rate limiting"
+      },
+      {
+        "role": "user",
+        "content": "any concerns"
+      },
+      {
+        "role": "user",
+        "content": "Who's on the dashboard work this week?"
+      },
+      {
+        "role": "assistant",
+        "content": "Daniel is leading the dashboard work. He picked it up after the reorg and it's been moving faster than the previous owner had it going."
+      },
+      {
+        "role": "user",
+        "content": "any concerns"
+      },
+      {
+        "role": "assistant",
+        "content": "minor: the validator dependency might slip but won't block the migration"
+      },
+      {
+        "role": "user",
+        "content": "the on-call update on the auth refactor"
+      },
+      {
+        "role": "assistant",
+        "content": "minor: the validator dependency might slip but won't block the orientation prompt logic"
+      },
+      {
+        "role": "assistant",
+        "content": "minor: the status check dependency might slip but won't block the auth refactor"
+      },
+      {
+        "role": "assistant",
+        "content": "minor: the snapshot writer dependency might slip but won't block the migration"
+      },
+      {
+        "role": "user",
+        "content": "What version of React are we on?"
+      },
+      {
+        "role": "assistant",
+        "content": "Dashboard is on React 19.0.0-rc.1. We jumped to the RC because we wanted the new use() hook for the streaming data sections. Will downgrade to stable once 19.0 ships."
+      },
+      {
+        "role": "user",
+        "content": "any concerns"
+      },
+      {
+        "role": "assistant",
+        "content": "Walton reported the perf work is on track for end of week"
+      },
+      {
+        "role": "assistant",
+        "content": "Jim reported the dashboard refresh is on track for end of week"
+      },
+      {
+        "role": "assistant",
+        "content": "minor: the parser path dependency might slip but won't block the migration"
+      },
+      {
+        "role": "assistant",
+        "content": "minor: the parser path dependency might slip but won't block the steering integration"
+      },
+      {
+        "role": "assistant",
+        "content": "Daniel reported the perf work is on track for end of week"
+      },
+      {
+        "role": "assistant",
+        "content": "Andrew reported the API rate limiting is on track for end of week"
+      },
+      {
+        "role": "user",
+        "content": "How big is the dashboard beta now?"
+      },
+      {
+        "role": "assistant",
+        "content": "14 beta customers active. We added four more last week — three from the inbound waitlist and one from a partner intro."
+      },
+      {
+        "role": "user",
+        "content": "any concerns"
+      },
+      {
+        "role": "user",
+        "content": "any concerns"
+      },
+      {
+        "role": "assistant",
+        "content": "minor: the queue worker dependency might slip but won't block the perf work"
+      },
+      {
+        "role": "assistant",
+        "content": "Jim reported the dashboard refresh is on track for end of week"
+      },
+      {
+        "role": "assistant",
+        "content": "Anna reported the schema review is on track for end of week"
+      },
+      {
+        "role": "user",
+        "content": "any concerns"
+      },
+      {
+        "role": "assistant",
+        "content": "Walton reported the API rate limiting is on track for end of week"
+      },
+      {
+        "role": "user",
+        "content": "Andrew update on the steering integration"
+      },
+      {
+        "role": "user",
+        "content": "Daniel update on the perf work"
+      },
+      {
+        "role": "user",
+        "content": "Anna update on the auth refactor"
+      },
+      {
+        "role": "user",
+        "content": "any concerns"
+      },
+      {
+        "role": "assistant",
+        "content": "minor: the feedback loop dependency might slip but won't block the perf work"
+      },
+      {
+        "role": "user",
+        "content": "any concerns"
+      },
+      {
+        "role": "user",
+        "content": "any concerns"
+      },
+      {
+        "role": "assistant",
+        "content": "the customer reported the steering integration is on track for end of week"
+      },
+      {
+        "role": "user",
+        "content": "Andrew update on the migration"
+      },
+      {
+        "role": "user",
+        "content": "any concerns"
+      },
+      {
+        "role": "user",
+        "content": "Where can I see the staging dashboard?"
+      },
+      {
+        "role": "assistant",
+        "content": "Staging is at https://dashboard-stg.molt.ai. Login uses your Molt SSO — same creds as the main app."
+      },
+      {
+        "role": "assistant",
+        "content": "the customer reported the dashboard refresh is on track for end of week"
+      },
+      {
+        "role": "assistant",
+        "content": "Andrew reported the auth refactor is on track for end of week"
+      },
+      {
+        "role": "assistant",
+        "content": "the customer reported the schema review is on track for end of week"
+      },
+      {
+        "role": "user",
+        "content": "any concerns"
+      },
+      {
+        "role": "user",
+        "content": "the customer update on the auth refactor"
+      },
+      {
+        "role": "user",
+        "content": "any concerns"
+      },
+      {
+        "role": "user",
+        "content": "Are we shipping data export with v1?"
+      },
+      {
+        "role": "assistant",
+        "content": "Decision: punt to Q3, not in v1. Three customers have asked for it but it complicates the auth model and we don't want to delay v1 over it. We'll revisit in the Q3 planning."
+      },
+      {
+        "role": "assistant",
+        "content": "the on-call reported the schema review is on track for end of week"
+      },
+      {
+        "role": "assistant",
+        "content": "minor: the validator dependency might slip but won't block the steering integration"
+      },
+      {
+        "role": "assistant",
+        "content": "minor: the queue worker dependency might slip but won't block the API rate limiting"
+      },
+      {
+        "role": "assistant",
+        "content": "minor: the queue worker dependency might slip but won't block the perf work"
+      },
+      {
+        "role": "user",
+        "content": "Jim update on the steering integration"
+      },
+      {
+        "role": "user",
+        "content": "Anna update on the auth refactor"
+      },
+      {
+        "role": "user",
+        "content": "any concerns"
+      },
+      {
+        "role": "user",
+        "content": "Anything from QA on metrics?"
+      },
+      {
+        "role": "assistant",
+        "content": "QA reported NaN displayed when no data is present. The aggregation function returns NaN and the formatter doesn't guard against it. Daniel has a fix in PR but it hasn't merged yet."
+      },
+      {
+        "role": "user",
+        "content": "the customer update on the steering integration"
+      },
+      {
+        "role": "assistant",
+        "content": "minor: the validator dependency might slip but won't block the perf work"
+      },
+      {
+        "role": "assistant",
+        "content": "minor: the feedback loop dependency might slip but won't block the API rate limiting"
+      },
+      {
+        "role": "user",
+        "content": "the customer update on the steering integration"
+      },
+      {
+        "role": "assistant",
+        "content": "Daniel reported the migration is on track for end of week"
+      },
+      {
+        "role": "user",
+        "content": "the customer update on the orientation prompt logic"
+      },
+      {
+        "role": "user",
+        "content": "Repo for dashboard?"
+      },
+      {
+        "role": "assistant",
+        "content": "github.com/moltaicorp/molt-dashboard. Daniel owns it; PRs route to him for review."
+      },
+      {
+        "role": "user",
+        "content": "Daniel update on the dashboard refresh"
+      },
+      {
+        "role": "assistant",
+        "content": "Walton reported the orientation prompt logic is on track for end of week"
+      },
+      {
+        "role": "user",
+        "content": "any concerns"
+      },
+      {
+        "role": "assistant",
+        "content": "Anna reported the migration is on track for end of week"
+      },
+      {
+        "role": "user",
+        "content": "the customer update on the dashboard refresh"
+      },
+      {
+        "role": "assistant",
+        "content": "Anna reported the perf work is on track for end of week"
+      },
+      {
+        "role": "user",
+        "content": "any concerns"
+      },
+      {
+        "role": "assistant",
+        "content": "minor: the parser path dependency might slip but won't block the schema review"
+      },
+      {
+        "role": "assistant",
+        "content": "Walton reported the auth refactor is on track for end of week"
+      },
+      {
+        "role": "user",
+        "content": "any concerns"
+      },
+      {
+        "role": "assistant",
+        "content": "Thomson reported the perf work is on track for end of week"
+      },
+      {
+        "role": "assistant",
+        "content": "minor: the cross-session index dependency might slip but won't block the API rate limiting"
+      },
+      {
+        "role": "assistant",
+        "content": "minor: the parser path dependency might slip but won't block the schema review"
+      },
+      {
+        "role": "user",
+        "content": "any concerns"
+      },
+      {
+        "role": "assistant",
+        "content": "minor: the snapshot writer dependency might slip but won't block the auth refactor"
+      },
+      {
+        "role": "assistant",
+        "content": "minor: the status check dependency might slip but won't block the steering integration"
+      },
+      {
+        "role": "assistant",
+        "content": "minor: the queue worker dependency might slip but won't block the schema review"
+      },
+      {
+        "role": "user",
+        "content": "Why is the analytics piece stalled?"
+      },
+      {
+        "role": "assistant",
+        "content": "We're waiting on Segment API access. Anna submitted the request two weeks ago but their onboarding is slow. That's the only blocker — instrumentation code is ready."
+      },
+      {
+        "role": "user",
+        "content": "Andrew update on the API rate limiting"
+      },
+      {
+        "role": "assistant",
+        "content": "minor: the cross-session index dependency might slip but won't block the dashboard refresh"
+      },
+      {
+        "role": "assistant",
+        "content": "minor: the cross-session index dependency might slip but won't block the schema review"
+      },
+      {
+        "role": "user",
+        "content": "any concerns"
+      },
+      {
+        "role": "user",
+        "content": "the customer update on the API rate limiting"
+      },
+      {
+        "role": "assistant",
+        "content": "minor: the queue worker dependency might slip but won't block the API rate limiting"
+      },
+      {
+        "role": "user",
+        "content": "any concerns"
+      },
+      {
+        "role": "user",
+        "content": "GA date for dashboard?"
+      },
+      {
+        "role": "assistant",
+        "content": "Dashboard v1 GA is June 30. That's firm — investor demo on July 2 needs it live."
+      },
+      {
+        "role": "assistant",
+        "content": "Jim reported the API rate limiting is on track for end of week"
+      },
+      {
+        "role": "user",
+        "content": "any concerns"
+      },
+      {
+        "role": "assistant",
+        "content": "the customer reported the perf work is on track for end of week"
+      },
+      {
+        "role": "user",
+        "content": "any concerns"
+      },
+      {
+        "role": "user",
+        "content": "Jim update on the schema review"
+      },
+      {
+        "role": "assistant",
+        "content": "the on-call reported the orientation prompt logic is on track for end of week"
+      },
+      {
+        "role": "assistant",
+        "content": "minor: the snapshot writer dependency might slip but won't block the schema review"
+      },
+      {
+        "role": "user",
+        "content": "How do I run dashboard tests?"
+      },
+      {
+        "role": "assistant",
+        "content": "pnpm test --filter=dashboard. That isolates the dashboard package; full monorepo run takes too long for inner-loop work."
+      },
+      {
+        "role": "assistant",
+        "content": "Jim reported the dashboard refresh is on track for end of week"
+      },
+      {
+        "role": "user",
+        "content": "the on-call update on the dashboard refresh"
+      },
+      {
+        "role": "assistant",
+        "content": "minor: the parser path dependency might slip but won't block the orientation prompt logic"
+      },
+      {
+        "role": "user",
+        "content": "Anna update on the auth refactor"
+      },
+      {
+        "role": "user",
+        "content": "any concerns"
+      }
+    ],
+    "facts": [
+      {
+        "fact_id": "D-1",
+        "question": "Who is leading the dashboard work?",
+        "expected_answer": "Daniel",
+        "position": 0.05,
+        "kind": "person"
+      },
+      {
+        "fact_id": "D-2",
+        "question": "What version of React is the dashboard targeting?",
+        "expected_answer": "19.0.0-rc.1",
+        "position": 0.12,
+        "kind": "version"
+      },
+      {
+        "fact_id": "D-3",
+        "question": "How many beta customers are using the dashboard?",
+        "expected_answer": "14",
+        "position": 0.2,
+        "kind": "value"
+      },
+      {
+        "fact_id": "D-4",
+        "question": "What URL is the dashboard staging environment at?",
+        "expected_answer": "https://dashboard-stg.molt.ai",
+        "position": 0.38,
+        "kind": "url"
+      },
+      {
+        "fact_id": "D-5",
+        "question": "What did we decide about the data export feature?",
+        "expected_answer": "punt to Q3, not in v1",
+        "position": 0.45,
+        "kind": "decision"
+      },
+      {
+        "fact_id": "D-6",
+        "question": "What error did the QA team report on the metrics page?",
+        "expected_answer": "NaN displayed when no data is present",
+        "position": 0.53,
+        "kind": "error"
+      },
+      {
+        "fact_id": "D-7",
+        "question": "What's the path to the dashboard repo?",
+        "expected_answer": "github.com/moltaicorp/molt-dashboard",
+        "position": 0.6,
+        "kind": "path"
+      },
+      {
+        "fact_id": "D-8",
+        "question": "What's blocking the analytics integration?",
+        "expected_answer": "waiting on Segment API access",
+        "position": 0.78,
+        "kind": "blocker"
+      },
+      {
+        "fact_id": "D-9",
+        "question": "When is the dashboard v1 GA?",
+        "expected_answer": "June 30",
+        "position": 0.86,
+        "kind": "deadline"
+      },
+      {
+        "fact_id": "D-10",
+        "question": "How do we run the dashboard tests locally?",
+        "expected_answer": "pnpm test --filter=dashboard",
+        "position": 0.94,
+        "kind": "command"
+      }
+    ]
+  },
+  {
+    "scenario": "E",
+    "name": "Cross-thread debug",
+    "total_turns": 130,
+    "turns": [
+      {
+        "role": "assistant",
+        "content": "looking at logs — the the orientation prompt logic flow seems to fail intermittently"
+      },
+      {
+        "role": "assistant",
+        "content": "classic timing issue — narrowing down the race condition now"
+      },
+      {
+        "role": "assistant",
+        "content": "I'll trace through the snapshot writer to see if it's related"
+      },
+      {
+        "role": "user",
+        "content": "we're seeing weird behavior in the steering integration"
+      },
+      {
+        "role": "user",
+        "content": "we're seeing weird behavior in the migration"
+      },
+      {
+        "role": "user",
+        "content": "Something's wrong with the API — alerts are firing."
+      },
+      {
+        "role": "assistant",
+        "content": "I see it: p99 latency jumped from 80ms to 2400ms starting around 10 minutes ago. Error rate is also up but more modestly — 0.3% to 1.1%."
+      },
+      {
+        "role": "assistant",
+        "content": "I'll trace through the validator to see if it's related"
+      },
+      {
+        "role": "user",
+        "content": "check the queue worker too"
+      },
+      {
+        "role": "user",
+        "content": "reproduces only sometimes"
+      },
+      {
+        "role": "user",
+        "content": "we're seeing weird behavior in the auth refactor"
+      },
+      {
+        "role": "assistant",
+        "content": "classic timing issue — narrowing down the race condition now"
+      },
+      {
+        "role": "user",
+        "content": "we're seeing weird behavior in the perf work"
+      },
+      {
+        "role": "user",
+        "content": "When did this start exactly?"
+      },
+      {
+        "role": "assistant",
+        "content": "Regression started at 08:42 UTC according to the latency dashboard. The change is sharp — looks like a deploy, not gradual drift."
+      },
+      {
+        "role": "user",
+        "content": "reproduces only sometimes"
+      },
+      {
+        "role": "user",
+        "content": "we're seeing weird behavior in the perf work"
+      },
+      {
+        "role": "assistant",
+        "content": "I'll trace through the status check to see if it's related"
+      },
+      {
+        "role": "user",
+        "content": "reproduces only sometimes"
+      },
+      {
+        "role": "assistant",
+        "content": "classic timing issue — narrowing down the race condition now"
+      },
+      {
+        "role": "user",
+        "content": "we're seeing weird behavior in the schema review"
+      },
+      {
+        "role": "assistant",
+        "content": "I'll trace through the snapshot writer to see if it's related"
+      },
+      {
+        "role": "user",
+        "content": "check the parser path too"
+      },
+      {
+        "role": "assistant",
+        "content": "classic timing issue — narrowing down the race condition now"
+      },
+      {
+        "role": "user",
+        "content": "we're seeing weird behavior in the dashboard refresh"
+      },
+      {
+        "role": "user",
+        "content": "check the queue worker too"
+      },
+      {
+        "role": "assistant",
+        "content": "I'll trace through the queue worker to see if it's related"
+      },
+      {
+        "role": "assistant",
+        "content": "I'll trace through the snapshot writer to see if it's related"
+      },
+      {
+        "role": "user",
+        "content": "Whose deploy was it?"
+      },
+      {
+        "role": "assistant",
+        "content": "Anna pushed the deploy at 08:40, two minutes before the regression started. The PR was a refactor of the response-serialization path — looks like it accidentally introduced a synchronous DB call."
+      },
+      {
+        "role": "assistant",
+        "content": "classic timing issue — narrowing down the race condition now"
+      },
+      {
+        "role": "assistant",
+        "content": "looking at logs — the the steering integration flow seems to fail intermittently"
+      },
+      {
+        "role": "assistant",
+        "content": "I'll trace through the lifecycle detector to see if it's related"
+      },
+      {
+        "role": "assistant",
+        "content": "classic timing issue — narrowing down the race condition now"
+      },
+      {
+        "role": "assistant",
+        "content": "looking at logs — the the steering integration flow seems to fail intermittently"
+      },
+      {
+        "role": "user",
+        "content": "we're seeing weird behavior in the perf work"
+      },
+      {
+        "role": "assistant",
+        "content": "classic timing issue — narrowing down the race condition now"
+      },
+      {
+        "role": "assistant",
+        "content": "I'll trace through the snapshot writer to see if it's related"
+      },
+      {
+        "role": "assistant",
+        "content": "looking at logs — the the schema review flow seems to fail intermittently"
+      },
+      {
+        "role": "user",
+        "content": "Which file has the bug?"
+      },
+      {
+        "role": "assistant",
+        "content": "The bug is in src/server/serialize.ts. The new code path calls a sync helper that hits the DB on every response — was supposed to be async and cached."
+      },
+      {
+        "role": "assistant",
+        "content": "classic timing issue — narrowing down the race condition now"
+      },
+      {
+        "role": "user",
+        "content": "check the feedback loop too"
+      },
+      {
+        "role": "assistant",
+        "content": "classic timing issue — narrowing down the race condition now"
+      },
+      {
+        "role": "assistant",
+        "content": "looking at logs — the the migration flow seems to fail intermittently"
+      },
+      {
+        "role": "user",
+        "content": "we're seeing weird behavior in the auth refactor"
+      },
+      {
+        "role": "user",
+        "content": "check the validator too"
+      },
+      {
+        "role": "user",
+        "content": "check the validator too"
+      },
+      {
+        "role": "assistant",
+        "content": "I'll trace through the cross-session index to see if it's related"
+      },
+      {
+        "role": "assistant",
+        "content": "I'll trace through the feedback loop to see if it's related"
+      },
+      {
+        "role": "assistant",
+        "content": "classic timing issue — narrowing down the race condition now"
+      },
+      {
+        "role": "assistant",
+        "content": "I'll trace through the cross-session index to see if it's related"
+      },
+      {
+        "role": "assistant",
+        "content": "looking at logs — the the auth refactor flow seems to fail intermittently"
+      },
+      {
+        "role": "assistant",
+        "content": "looking at logs — the the steering integration flow seems to fail intermittently"
+      },
+      {
+        "role": "user",
+        "content": "Rollback or hotfix?"
+      },
+      {
+        "role": "assistant",
+        "content": "Decision: rollback first, hotfix in PR. We get latency back to baseline immediately and Anna can finish the actual fix in code review without prod pressure. Standard incident pattern."
+      },
+      {
+        "role": "assistant",
+        "content": "looking at logs — the the migration flow seems to fail intermittently"
+      },
+      {
+        "role": "assistant",
+        "content": "classic timing issue — narrowing down the race condition now"
+      },
+      {
+        "role": "assistant",
+        "content": "looking at logs — the the perf work flow seems to fail intermittently"
+      },
+      {
+        "role": "assistant",
+        "content": "I'll trace through the status check to see if it's related"
+      },
+      {
+        "role": "user",
+        "content": "check the status check too"
+      },
+      {
+        "role": "user",
+        "content": "we're seeing weird behavior in the auth refactor"
+      },
+      {
+        "role": "user",
+        "content": "reproduces only sometimes"
+      },
+      {
+        "role": "assistant",
+        "content": "looking at logs — the the auth refactor flow seems to fail intermittently"
+      },
+      {
+        "role": "user",
+        "content": "we're seeing weird behavior in the steering integration"
+      },
+      {
+        "role": "user",
+        "content": "What's the rollback command?"
+      },
+      {
+        "role": "assistant",
+        "content": "Ran: molt-deploy rollback --service=api --to=v2.14.7. That pins us to the last good build. Latency should normalize within about three minutes as new pods replace old ones."
+      },
+      {
+        "role": "assistant",
+        "content": "I'll trace through the cross-session index to see if it's related"
+      },
+      {
+        "role": "assistant",
+        "content": "classic timing issue — narrowing down the race condition now"
+      },
+      {
+        "role": "assistant",
+        "content": "classic timing issue — narrowing down the race condition now"
+      },
+      {
+        "role": "user",
+        "content": "reproduces only sometimes"
+      },
+      {
+        "role": "assistant",
+        "content": "classic timing issue — narrowing down the race condition now"
+      },
+      {
+        "role": "assistant",
+        "content": "looking at logs — the the auth refactor flow seems to fail intermittently"
+      },
+      {
+        "role": "user",
+        "content": "reproduces only sometimes"
+      },
+      {
+        "role": "user",
+        "content": "reproduces only sometimes"
+      },
+      {
+        "role": "user",
+        "content": "Which version are we on now?"
+      },
+      {
+        "role": "assistant",
+        "content": "Currently running v2.14.7 in prod. That's last Tuesday's release — known good, all dashboards green at that version."
+      },
+      {
+        "role": "assistant",
+        "content": "classic timing issue — narrowing down the race condition now"
+      },
+      {
+        "role": "user",
+        "content": "we're seeing weird behavior in the orientation prompt logic"
+      },
+      {
+        "role": "assistant",
+        "content": "classic timing issue — narrowing down the race condition now"
+      },
+      {
+        "role": "assistant",
+        "content": "classic timing issue — narrowing down the race condition now"
+      },
+      {
+        "role": "user",
+        "content": "we're seeing weird behavior in the orientation prompt logic"
+      },
+      {
+        "role": "assistant",
+        "content": "looking at logs — the the steering integration flow seems to fail intermittently"
+      },
+      {
+        "role": "assistant",
+        "content": "I'll trace through the status check to see if it's related"
+      },
+      {
+        "role": "user",
+        "content": "reproduces only sometimes"
+      },
+      {
+        "role": "user",
+        "content": "check the parser path too"
+      },
+      {
+        "role": "assistant",
+        "content": "I'll trace through the status check to see if it's related"
+      },
+      {
+        "role": "assistant",
+        "content": "classic timing issue — narrowing down the race condition now"
+      },
+      {
+        "role": "assistant",
+        "content": "classic timing issue — narrowing down the race condition now"
+      },
+      {
+        "role": "user",
+        "content": "check the parser path too"
+      },
+      {
+        "role": "user",
+        "content": "check the parser path too"
+      },
+      {
+        "role": "user",
+        "content": "check the cross-session index too"
+      },
+      {
+        "role": "assistant",
+        "content": "classic timing issue — narrowing down the race condition now"
+      },
+      {
+        "role": "user",
+        "content": "reproduces only sometimes"
+      },
+      {
+        "role": "user",
+        "content": "reproduces only sometimes"
+      },
+      {
+        "role": "assistant",
+        "content": "classic timing issue — narrowing down the race condition now"
+      },
+      {
+        "role": "user",
+        "content": "check the lifecycle detector too"
+      },
+      {
+        "role": "user",
+        "content": "check the validator too"
+      },
+      {
+        "role": "assistant",
+        "content": "I'll trace through the queue worker to see if it's related"
+      },
+      {
+        "role": "user",
+        "content": "check the status check too"
+      },
+      {
+        "role": "assistant",
+        "content": "looking at logs — the the API rate limiting flow seems to fail intermittently"
+      },
+      {
+        "role": "user",
+        "content": "Where's the postmortem doc?"
+      },
+      {
+        "role": "assistant",
+        "content": "I started the doc at https://wiki.molt.ai/incidents/2026-05-12-api-latency. Skeleton in place — timeline, contributing factors, action items. Anna and I will fill it in this afternoon."
+      },
+      {
+        "role": "user",
+        "content": "reproduces only sometimes"
+      },
+      {
+        "role": "assistant",
+        "content": "classic timing issue — narrowing down the race condition now"
+      },
+      {
+        "role": "user",
+        "content": "reproduces only sometimes"
+      },
+      {
+        "role": "user",
+        "content": "reproduces only sometimes"
+      },
+      {
+        "role": "assistant",
+        "content": "I'll trace through the parser path to see if it's related"
+      },
+      {
+        "role": "assistant",
+        "content": "looking at logs — the the steering integration flow seems to fail intermittently"
+      },
+      {
+        "role": "user",
+        "content": "reproduces only sometimes"
+      },
+      {
+        "role": "user",
+        "content": "Why hasn't the hotfix landed yet?"
+      },
+      {
+        "role": "assistant",
+        "content": "CI flake on the new test — the regression test Anna added is timing-sensitive and fails about 1 in 5 runs. She's rewriting it to use fake timers; once that's clean the PR will merge."
+      },
+      {
+        "role": "assistant",
+        "content": "I'll trace through the feedback loop to see if it's related"
+      },
+      {
+        "role": "assistant",
+        "content": "I'll trace through the status check to see if it's related"
+      },
+      {
+        "role": "assistant",
+        "content": "I'll trace through the parser path to see if it's related"
+      },
+      {
+        "role": "user",
+        "content": "reproduces only sometimes"
+      },
+      {
+        "role": "user",
+        "content": "we're seeing weird behavior in the orientation prompt logic"
+      },
+      {
+        "role": "assistant",
+        "content": "I'll trace through the snapshot writer to see if it's related"
+      },
+      {
+        "role": "assistant",
+        "content": "classic timing issue — narrowing down the race condition now"
+      },
+      {
+        "role": "assistant",
+        "content": "looking at logs — the the dashboard refresh flow seems to fail intermittently"
+      },
+      {
+        "role": "assistant",
+        "content": "I'll trace through the queue worker to see if it's related"
+      },
+      {
+        "role": "assistant",
+        "content": "classic timing issue — narrowing down the race condition now"
+      },
+      {
+        "role": "user",
+        "content": "When are we reviewing action items?"
+      },
+      {
+        "role": "assistant",
+        "content": "Action-item review is Friday 3pm MT. Standard incident cadence — 48 hours after resolution. I'll send invites once the postmortem doc is fleshed out."
+      },
+      {
+        "role": "assistant",
+        "content": "looking at logs — the the API rate limiting flow seems to fail intermittently"
+      },
+      {
+        "role": "assistant",
+        "content": "looking at logs — the the orientation prompt logic flow seems to fail intermittently"
+      },
+      {
+        "role": "user",
+        "content": "reproduces only sometimes"
+      },
+      {
+        "role": "user",
+        "content": "reproduces only sometimes"
+      },
+      {
+        "role": "user",
+        "content": "check the feedback loop too"
+      },
+      {
+        "role": "assistant",
+        "content": "looking at logs — the the API rate limiting flow seems to fail intermittently"
+      }
+    ],
+    "facts": [
+      {
+        "fact_id": "E-1",
+        "question": "What was the original error symptom?",
+        "expected_answer": "p99 latency jumped from 80ms to 2400ms",
+        "position": 0.04,
+        "kind": "error"
+      },
+      {
+        "fact_id": "E-2",
+        "question": "What time did the regression start?",
+        "expected_answer": "08:42 UTC",
+        "position": 0.1,
+        "kind": "value"
+      },
+      {
+        "fact_id": "E-3",
+        "question": "Who pushed the deploy that caused it?",
+        "expected_answer": "Anna",
+        "position": 0.22,
+        "kind": "person"
+      },
+      {
+        "fact_id": "E-4",
+        "question": "What file contains the bug?",
+        "expected_answer": "src/server/serialize.ts",
+        "position": 0.3,
+        "kind": "path"
+      },
+      {
+        "fact_id": "E-5",
+        "question": "What did we decide to do — rollback or hotfix?",
+        "expected_answer": "rollback first, hotfix in PR",
+        "position": 0.42,
+        "kind": "decision"
+      },
+      {
+        "fact_id": "E-6",
+        "question": "What command rolled back the deploy?",
+        "expected_answer": "molt-deploy rollback --service=api --to=v2.14.7",
+        "position": 0.5,
+        "kind": "command"
+      },
+      {
+        "fact_id": "E-7",
+        "question": "What version are we rolled back to?",
+        "expected_answer": "v2.14.7",
+        "position": 0.58,
+        "kind": "version"
+      },
+      {
+        "fact_id": "E-8",
+        "question": "Where is the incident postmortem doc?",
+        "expected_answer": "https://wiki.molt.ai/incidents/2026-05-12-api-latency",
+        "position": 0.78,
+        "kind": "url"
+      },
+      {
+        "fact_id": "E-9",
+        "question": "What's blocking the proper fix from merging?",
+        "expected_answer": "CI flake on the new test",
+        "position": 0.85,
+        "kind": "blocker"
+      },
+      {
+        "fact_id": "E-10",
+        "question": "When does the action-item review happen?",
+        "expected_answer": "Friday 3pm MT",
+        "position": 0.94,
+        "kind": "deadline"
+      }
+    ]
+  }
+]

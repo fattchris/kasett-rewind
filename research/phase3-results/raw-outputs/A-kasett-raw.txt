@@ -1,0 +1,99 @@
+The session focused on coordinating multiple parallel workstreams for the Molt platform, with particular attention to auth infrastructure and deployment logistics. The team is working toward an August 1 launch date set by Walton, contingent on marketing budget availability. Several key technical decisions were made: the auth flow will use JWT rather than OAuth to simplify the SDK story for partners, and the postgres migration will target version 15.4 to get partitioning improvements without committing to the still-spotty RDS support for version 16 in their region.
+
+The staging auth gateway was deployed to https://api-staging.molt.ai using existing cert provisioning. The gateway reads its config from /etc/molt/gateway.toml at startup, controlling upstream routing, rate-limit policy, and JWT verifier settings. The prod gateway is currently configured for 250 requests per second per tenant, with plans to raise limits after observing real traffic patterns. Rolling restarts after config changes use `kubectl rollout restart deploy/gateway -n molt-prod`, completing in about 90 seconds with their PodDisruptionBudget.
+
+Several blockers and coordination points emerged. Andrew hit ECONNREFUSED on port 18790 when starting the local gateway, likely due to a previous run not cleaning up. The SDK is code-complete and tests are green, but shipping is blocked waiting on legal review of the EULA — Andrew submitted it last week but counsel is backed up. The SOC 2 audit starts September 15, giving the team about six weeks for evidence collection.
+
+Multiple workstreams are in progress or queued: auth refactor, schema review, steering integration, dashboard refresh, perf work, orientation prompt logic, lifecycle detector, parser path, status check, feedback loop, API rate limiting, cross-session index, queue worker, snapshot writer, and validator. Most are progressing cleanly or queued behind other work, with typical coordination overhead across teams.
+
+```json
+{
+  "main": "Coordinating parallel workstreams for Molt platform launch targeting August 1",
+  "sub": [
+    {
+      "id": "auth-infrastructure",
+      "label": "Auth gateway deployment and JWT implementation",
+      "status": "active"
+    },
+    {
+      "id": "postgres-migration",
+      "label": "Postgres 15.4 migration for partitioning improvements",
+      "status": "active"
+    },
+    {
+      "id": "sdk-legal-review",
+      "label": "SDK shipping blocked on EULA legal review",
+      "status": "blocked"
+    },
+    {
+      "id": "soc2-prep",
+      "label": "SOC 2 audit evidence collection prep",
+      "status": "active"
+    },
+    {
+      "id": "andrew-local-gateway",
+      "label": "Andrew's local gateway port conflict",
+      "status": "completed"
+    }
+  ],
+  "decisions": [
+    "Use JWT instead of OAuth for auth flow to simplify SDK story for partners",
+    "Target Postgres 15.4 for migration to get partitioning improvements without committing to version 16",
+    "Set prod gateway rate limit at 250 req/sec per tenant, raise after observing real traffic",
+    "Launch date set for August 1 pending Walton's marketing budget unlock"
+  ],
+  "open_questions": [
+    "When will legal counsel complete EULA review for SDK shipping?"
+  ],
+  "key_state": [
+    {
+      "kind": "url",
+      "value": "https://api-staging.molt.ai",
+      "label": "staging auth gateway endpoint",
+      "thread_id": "auth-infrastructure"
+    },
+    {
+      "kind": "path",
+      "value": "/etc/molt/gateway.toml",
+      "label": "gateway config file location",
+      "thread_id": "auth-infrastructure"
+    },
+    {
+      "kind": "version",
+      "value": "15.4",
+      "label": "target Postgres version",
+      "thread_id": "postgres-migration"
+    },
+    {
+      "kind": "config",
+      "value": "250 requests per second per tenant",
+      "label": "prod gateway rate limit",
+      "thread_id": "auth-infrastructure"
+    },
+    {
+      "kind": "value",
+      "value": "August 1",
+      "label": "target launch date"
+    },
+    {
+      "kind": "value",
+      "value": "September 15",
+      "label": "SOC 2 audit start date",
+      "thread_id": "soc2-prep"
+    },
+    {
+      "kind": "value",
+      "value": "kubectl rollout restart deploy/gateway -n molt-prod",
+      "label": "gateway pod rollout command",
+      "thread_id": "auth-infrastructure"
+    },
+    {
+      "kind": "value",
+      "value": "port 18790",
+      "label": "local gateway port",
+      "context": "Andrew's ECONNREFUSED error",
+      "thread_id": "andrew-local-gateway"
+    }
+  ]
+}
+```

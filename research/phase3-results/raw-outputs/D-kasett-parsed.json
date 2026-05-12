@@ -1,0 +1,116 @@
+{
+  "summary": "The session covered status updates and logistics for the dashboard v1 release, which is locked for GA on June 30 (firm date due to July 2 investor demo). Daniel is leading the dashboard work after the reorg and has been moving it faster than the previous owner. The dashboard beta now has 14 active customers (added four last week). The team is running React 19.0.0-rc.1 to use the new use() hook for streaming data sections, with plans to downgrade to stable once 19.0 ships.\n\nMultiple work streams are progressing toward end-of-week milestones: API rate limiting (Andrew, Walton, Jim), perf work (Walton, Daniel, Thomson, Anna), dashboard refresh (Jim, Daniel), auth refactor (Anna, Andrew, Walton), schema review (Anna, Jim), steering integration (Andrew, Jim), migration (Andrew, Anna, Daniel), and orientation prompt logic (Walton). Various minor dependencies (snapshot writer, validator, parser path, queue worker, status check, feedback loop, cross-session index) were flagged as potentially slipping but not blocking their dependent work.\n\nTwo key decisions emerged: data export was punted to Q3 (not in v1) despite three customer requests, because it complicates the auth model and the team doesn't want to delay v1. Analytics instrumentation is stalled waiting on Segment API access — Anna submitted the request two weeks ago but their onboarding is slow; the instrumentation code itself is ready. QA reported a bug where NaN displays when no data is present (aggregation function returns NaN and formatter doesn't guard); Daniel has a fix in PR but it hasn't merged yet.",
+  "meta": {
+    "main": "Dashboard v1 release coordination and status updates across multiple work streams",
+    "sub": [
+      {
+        "id": "dashboard-v1-ga",
+        "label": "Dashboard v1 GA release locked for June 30",
+        "status": "active"
+      },
+      {
+        "id": "analytics-segment-blocker",
+        "label": "Analytics stalled waiting on Segment API access",
+        "status": "blocked"
+      },
+      {
+        "id": "data-export-punt",
+        "label": "Data export feature punted to Q3",
+        "status": "completed"
+      },
+      {
+        "id": "nan-display-bug",
+        "label": "NaN display bug fix in PR awaiting merge",
+        "status": "active"
+      }
+    ],
+    "decisions": [
+      "Data export punted to Q3, not in v1, despite three customer requests — complicates auth model and team doesn't want to delay v1.",
+      "Dashboard v1 GA date is June 30 (firm — investor demo July 2 needs it live)."
+    ],
+    "open_questions": [
+      "When will Segment API access be granted? Anna submitted request two weeks ago but onboarding is slow."
+    ],
+    "key_state": [
+      {
+        "kind": "url",
+        "value": "https://dashboard-stg.molt.ai",
+        "label": "staging dashboard URL"
+      },
+      {
+        "kind": "version",
+        "value": "19.0.0-rc.1",
+        "label": "React version (dashboard)",
+        "context": "using RC for use() hook, will downgrade to stable once 19.0 ships"
+      },
+      {
+        "kind": "url",
+        "value": "github.com/moltaicorp/molt-dashboard",
+        "label": "dashboard repo",
+        "context": "Daniel owns it, PRs route to him"
+      },
+      {
+        "kind": "value",
+        "value": "14",
+        "label": "beta customers active",
+        "context": "added four last week"
+      },
+      {
+        "kind": "value",
+        "value": "June 30",
+        "label": "dashboard v1 GA date"
+      },
+      {
+        "kind": "value",
+        "value": "July 2",
+        "label": "investor demo date"
+      },
+      {
+        "kind": "config",
+        "value": "pnpm test --filter=dashboard",
+        "label": "dashboard test command"
+      }
+    ]
+  },
+  "metaV2": {
+    "main": "Dashboard v1 release coordination and status updates across multiple work streams",
+    "sub": [
+      {
+        "id": "dashboard-v1-ga",
+        "label": "Dashboard v1 GA release locked for June 30",
+        "status": "active"
+      },
+      {
+        "id": "analytics-segment-blocker",
+        "label": "Analytics stalled waiting on Segment API access",
+        "status": "blocked"
+      },
+      {
+        "id": "data-export-punt",
+        "label": "Data export feature punted to Q3",
+        "status": "completed"
+      },
+      {
+        "id": "nan-display-bug",
+        "label": "NaN display bug fix in PR awaiting merge",
+        "status": "active"
+      }
+    ],
+    "decisions": [
+      "Data export punted to Q3, not in v1, despite three customer requests — complicates auth model and team doesn't want to delay v1.",
+      "Dashboard v1 GA date is June 30 (firm — investor demo July 2 needs it live)."
+    ],
+    "open_questions": [
+      "When will Segment API access be granted? Anna submitted request two weeks ago but onboarding is slow."
+    ]
+  },
+  "metaV1": {
+    "main": "Dashboard v1 release coordination and status updates across multiple work streams",
+    "sub": [
+      "Dashboard v1 GA release locked for June 30",
+      "Analytics stalled waiting on Segment API access",
+      "Data export feature punted to Q3"
+    ]
+  },
+  "errors": []
+}

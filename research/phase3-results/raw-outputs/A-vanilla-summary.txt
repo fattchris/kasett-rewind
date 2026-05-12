@@ -1,0 +1,50 @@
+# Conversation Summary
+
+## Key Decisions
+- **Auth Flow**: Using JWT instead of OAuth. OAuth would complicate SDK integration for partners, and third-party auth providers aren't needed in this phase. JWT keeps the API surface minimal with option to revisit later if needed.
+- **Postgres Version**: Targeting Postgres 15.4 for the migration to get partitioning improvements without committing to version 16 yet (RDS support for 16 is still spotty in the region).
+
+## Technical Configuration & Infrastructure
+- **Staging Deployment URL**: https://api-staging.molt.ai (standard staging endpoint with certs already provisioned)
+- **Gateway Config Location**: `/etc/molt/gateway.toml` - controls upstream routing, rate-limit policy, and JWT verifier settings
+- **Production Rate Limit**: 250 requests per second per tenant (will be raised after observing real traffic patterns)
+- **Gateway Restart Command**: `kubectl rollout restart deploy/gateway -n molt-prod` (rolling restart takes ~90 seconds with PDB)
+
+## Issues & Resolutions
+- **Andrew's Error**: Hit ECONNREFUSED on port 18790 when starting local gateway - likely caused by previous process not cleaning up properly
+
+## Timeline & Milestones
+- **Launch Date**: August 1 (per Walton - when marketing budget unlocks, contingent on auth work staying on track)
+- **SOC 2 Audit Start**: September 15 (approximately 6 weeks to complete evidence collection)
+
+## Blockers
+- **SDK Shipment**: Blocked on legal review of EULA. Andrew submitted last week but counsel is backed up. Code is ready and tests are green.
+
+## Work In Progress & Dependencies
+Multiple work streams with various dependencies:
+- **Auth refactor**: In progress, cleaner than expected
+- **Steering integration**: In progress, cleaner than expected  
+- **Schema review**: In progress, small test setup issues being resolved
+- **Dashboard refresh**: In progress, small test setup issues being resolved
+- **Perf work**: In progress, small test setup issues being resolved
+- **API rate limiting**: In progress, cleaner than expected
+- **Orientation prompt logic**: In progress, cleaner than expected
+
+## Queued Work (starting tomorrow morning)
+- Status check (behind steering integration/schema review)
+- Feedback loop (behind orientation prompt logic/perf work/dashboard refresh/schema review)
+- Lifecycle detector (behind perf work/orientation prompt logic)
+- Queue worker (behind schema review/perf work)
+- Parser path (behind migration)
+- Cross-session index (behind perf work)
+
+## Planned Work (after current tasks wrap)
+- Snapshot writer (after dashboard refresh)
+- Lifecycle detector (after auth refactor/dashboard refresh)
+- Status check (after schema review)
+- Queue worker (after orientation prompt logic)
+- Validator (after schema review)
+- Cross-session index (after auth refactor)
+
+## Coordination Dependencies
+Coordination overhead noted with multiple teams: lifecycle detector team, queue worker team, snapshot writer team, status check team, validator team, cross-session index team.

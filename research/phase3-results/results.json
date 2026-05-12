@@ -1,0 +1,1111 @@
+{
+  "scenarios": [
+    {
+      "scenario": "A",
+      "name": "Multi-thread engineering work",
+      "total_turns": 140,
+      "vanilla_summary_chars": 3009,
+      "kasett_raw_chars": 4522,
+      "kasett_sy": 18,
+      "kasett_has_meta": true,
+      "probes": [
+        {
+          "fact_id": "A-1",
+          "kind": "url",
+          "position": 0.05,
+          "question": "What URL did we deploy the staging API to?",
+          "expected_answer": "https://api-staging.molt.ai",
+          "vanilla": {
+            "answer": "https://api-staging.molt.ai",
+            "exact_match": 1,
+            "semantic_match": 1,
+            "hallucinated": 0,
+            "no_answer": 0
+          },
+          "kasett": {
+            "answer": "The staging auth gateway was deployed to https://api-staging.molt.ai",
+            "exact_match": 1,
+            "semantic_match": 1,
+            "hallucinated": 0,
+            "no_answer": 0
+          }
+        },
+        {
+          "fact_id": "A-2",
+          "kind": "version",
+          "position": 0.12,
+          "question": "What version of postgres did we settle on?",
+          "expected_answer": "15.4",
+          "vanilla": {
+            "answer": "Postgres 15.4",
+            "exact_match": 1,
+            "semantic_match": 1,
+            "hallucinated": 0,
+            "no_answer": 0
+          },
+          "kasett": {
+            "answer": "We settled on Postgres version 15.4. This was chosen to get partitioning improvements without committing to version 16, which still has spotty RDS support in your region.",
+            "exact_match": 1,
+            "semantic_match": 1,
+            "hallucinated": 0,
+            "no_answer": 0
+          }
+        },
+        {
+          "fact_id": "A-3",
+          "kind": "person",
+          "position": 0.2,
+          "question": "Who said the launch should be August 1?",
+          "expected_answer": "Walton",
+          "vanilla": {
+            "answer": "Walton said the launch should be August 1.",
+            "exact_match": 1,
+            "semantic_match": 1,
+            "hallucinated": 0,
+            "no_answer": 0
+          },
+          "kasett": {
+            "answer": "Walton set the August 1 launch date, contingent on marketing budget availability.",
+            "exact_match": 1,
+            "semantic_match": 1,
+            "hallucinated": 0,
+            "no_answer": 0
+          }
+        },
+        {
+          "fact_id": "A-4",
+          "kind": "path",
+          "position": 0.38,
+          "question": "What's the path to the gateway config file?",
+          "expected_answer": "/etc/molt/gateway.toml",
+          "vanilla": {
+            "answer": "The path to the gateway config file is `/etc/molt/gateway.toml`",
+            "exact_match": 1,
+            "semantic_match": 1,
+            "hallucinated": 0,
+            "no_answer": 0
+          },
+          "kasett": {
+            "answer": "The gateway config file is located at `/etc/molt/gateway.toml`.",
+            "exact_match": 1,
+            "semantic_match": 1,
+            "hallucinated": 0,
+            "no_answer": 0
+          }
+        },
+        {
+          "fact_id": "A-5",
+          "kind": "decision",
+          "position": 0.46,
+          "question": "What did we decide about the auth flow?",
+          "expected_answer": "Use JWT, not OAuth",
+          "vanilla": {
+            "answer": "You decided to use **JWT instead of OAuth**. The reasoning was that OAuth would complicate SDK integration for partners, and third-party auth providers aren't needed in this phase. JWT keeps the API surface minimal, with the option to revisit later if needed.",
+            "exact_match": 0,
+            "semantic_match": 1,
+            "hallucinated": 0,
+            "no_answer": 0
+          },
+          "kasett": {
+            "answer": "You decided to use JWT instead of OAuth for the auth flow. The reason was to simplify the SDK story for partners.",
+            "exact_match": 0,
+            "semantic_match": 1,
+            "hallucinated": 0,
+            "no_answer": 0
+          }
+        },
+        {
+          "fact_id": "A-6",
+          "kind": "error",
+          "position": 0.54,
+          "question": "What error did Andrew hit?",
+          "expected_answer": "ECONNREFUSED on port 18790",
+          "vanilla": {
+            "answer": "Andrew hit an ECONNREFUSED error on port 18790 when starting the local gateway. This was likely caused by a previous process not cleaning up properly.",
+            "exact_match": 0,
+            "semantic_match": 1,
+            "hallucinated": 0,
+            "no_answer": 0
+          },
+          "kasett": {
+            "answer": "Andrew hit an ECONNREFUSED error on port 18790 when starting the local gateway, likely due to a previous run not cleaning up.",
+            "exact_match": 0,
+            "semantic_match": 1,
+            "hallucinated": 0,
+            "no_answer": 0
+          }
+        },
+        {
+          "fact_id": "A-7",
+          "kind": "value",
+          "position": 0.62,
+          "question": "How many requests per second is the rate limit set to?",
+          "expected_answer": "250",
+          "vanilla": {
+            "answer": "The production rate limit is set to **250 requests per second per tenant**. This will be raised after observing real traffic patterns.",
+            "exact_match": 1,
+            "semantic_match": 1,
+            "hallucinated": 0,
+            "no_answer": 0
+          },
+          "kasett": {
+            "answer": "The prod gateway rate limit is set to **250 requests per second per tenant**. The team plans to raise this limit after observing real traffic patterns.",
+            "exact_match": 1,
+            "semantic_match": 1,
+            "hallucinated": 0,
+            "no_answer": 0
+          }
+        },
+        {
+          "fact_id": "A-8",
+          "kind": "command",
+          "position": 0.78,
+          "question": "What kubectl command did we use to roll the gateway pods?",
+          "expected_answer": "kubectl rollout restart deploy/gateway -n molt-prod",
+          "vanilla": {
+            "answer": "`kubectl rollout restart deploy/gateway -n molt-prod`\n\n(This performs a rolling restart that takes approximately 90 seconds with PDB)",
+            "exact_match": 1,
+            "semantic_match": 1,
+            "hallucinated": 0,
+            "no_answer": 0
+          },
+          "kasett": {
+            "answer": "The kubectl command used to roll the gateway pods is:\n\n`kubectl rollout restart deploy/gateway -n molt-prod`\n\nThis completes in about 90 seconds with your PodDisruptionBudget.",
+            "exact_match": 1,
+            "semantic_match": 1,
+            "hallucinated": 0,
+            "no_answer": 0
+          }
+        },
+        {
+          "fact_id": "A-9",
+          "kind": "blocker",
+          "position": 0.86,
+          "question": "What's currently blocking the SDK release?",
+          "expected_answer": "waiting on legal review of the EULA",
+          "vanilla": {
+            "answer": "The SDK release is blocked on **legal review of the EULA**. Andrew submitted it last week, but counsel is backed up. The code itself is ready and tests are green.",
+            "exact_match": 0,
+            "semantic_match": 1,
+            "hallucinated": 0,
+            "no_answer": 0
+          },
+          "kasett": {
+            "answer": "The SDK release is blocked on legal review of the EULA. Andrew submitted it last week, but counsel is backed up.",
+            "exact_match": 0,
+            "semantic_match": 1,
+            "hallucinated": 0,
+            "no_answer": 0
+          }
+        },
+        {
+          "fact_id": "A-10",
+          "kind": "deadline",
+          "position": 0.94,
+          "question": "When does the SOC 2 audit start?",
+          "expected_answer": "September 15",
+          "vanilla": {
+            "answer": "The SOC 2 audit starts on September 15.",
+            "exact_match": 1,
+            "semantic_match": 1,
+            "hallucinated": 0,
+            "no_answer": 0
+          },
+          "kasett": {
+            "answer": "The SOC 2 audit starts September 15.",
+            "exact_match": 1,
+            "semantic_match": 1,
+            "hallucinated": 0,
+            "no_answer": 0
+          }
+        }
+      ]
+    },
+    {
+      "scenario": "B",
+      "name": "Multi-day research project",
+      "total_turns": 120,
+      "vanilla_summary_chars": 1816,
+      "kasett_raw_chars": 3613,
+      "kasett_sy": 19,
+      "kasett_has_meta": true,
+      "probes": [
+        {
+          "fact_id": "B-1",
+          "kind": "url",
+          "position": 0.04,
+          "question": "What dataset URL did we download for the LoCoMo replication?",
+          "expected_answer": "https://huggingface.co/datasets/snap-stanford/locomo",
+          "vanilla": {
+            "answer": "https://huggingface.co/datasets/snap-stanford/locomo",
+            "exact_match": 1,
+            "semantic_match": 1,
+            "hallucinated": 0,
+            "no_answer": 0
+          },
+          "kasett": {
+            "answer": "https://huggingface.co/datasets/snap-stanford/locomo",
+            "exact_match": 1,
+            "semantic_match": 1,
+            "hallucinated": 0,
+            "no_answer": 0
+          }
+        },
+        {
+          "fact_id": "B-2",
+          "kind": "value",
+          "position": 0.1,
+          "question": "What was the baseline accuracy reported in the LoCoMo paper?",
+          "expected_answer": "67.3%",
+          "vanilla": {
+            "answer": "The baseline accuracy reported in the LoCoMo paper was 67.3% on the temporal QA subset.",
+            "exact_match": 1,
+            "semantic_match": 1,
+            "hallucinated": 0,
+            "no_answer": 0
+          },
+          "kasett": {
+            "answer": "The baseline accuracy reported in the LoCoMo paper was 67.3% on the temporal QA subset.",
+            "exact_match": 1,
+            "semantic_match": 1,
+            "hallucinated": 0,
+            "no_answer": 0
+          }
+        },
+        {
+          "fact_id": "B-3",
+          "kind": "person",
+          "position": 0.22,
+          "question": "Who is the first author of the LoCoMo paper?",
+          "expected_answer": "Maharana",
+          "vanilla": {
+            "answer": "The first author of the LoCoMo paper is Maharana.",
+            "exact_match": 1,
+            "semantic_match": 1,
+            "hallucinated": 0,
+            "no_answer": 0
+          },
+          "kasett": {
+            "answer": "The first author of the LoCoMo paper is Maharana (2024).",
+            "exact_match": 1,
+            "semantic_match": 1,
+            "hallucinated": 0,
+            "no_answer": 0
+          }
+        },
+        {
+          "fact_id": "B-4",
+          "kind": "path",
+          "position": 0.34,
+          "question": "Where are we storing the experiment results?",
+          "expected_answer": "research/locomo-replication/results/",
+          "vanilla": {
+            "answer": "The experiment results are being stored in `research/locomo-replication/results/`, using the same structure as the phase2-results layout.",
+            "exact_match": 1,
+            "semantic_match": 1,
+            "hallucinated": 0,
+            "no_answer": 0
+          },
+          "kasett": {
+            "answer": "The experiment results are being stored in `research/locomo-replication/results/`, using the same directory structure as the phase2-results layout for analysis script compatibility.",
+            "exact_match": 1,
+            "semantic_match": 1,
+            "hallucinated": 0,
+            "no_answer": 0
+          }
+        },
+        {
+          "fact_id": "B-5",
+          "kind": "decision",
+          "position": 0.42,
+          "question": "Which model are we holding fixed for the replication?",
+          "expected_answer": "Sonnet 4.5",
+          "vanilla": {
+            "answer": "Sonnet 4.5 is being held fixed (pinned) across all conditions for the replication study to ensure a clean comparison with phase 2 data.",
+            "exact_match": 1,
+            "semantic_match": 1,
+            "hallucinated": 0,
+            "no_answer": 0
+          },
+          "kasett": {
+            "answer": "Sonnet 4.5 - it's pinned across all conditions for clean apples-to-apples comparison with the phase 2 data.",
+            "exact_match": 1,
+            "semantic_match": 1,
+            "hallucinated": 0,
+            "no_answer": 0
+          }
+        },
+        {
+          "fact_id": "B-6",
+          "kind": "value",
+          "position": 0.5,
+          "question": "How many sessions are in the LoCoMo evaluation set?",
+          "expected_answer": "300",
+          "vanilla": {
+            "answer": "The LoCoMo evaluation set contains 300 sessions.",
+            "exact_match": 1,
+            "semantic_match": 1,
+            "hallucinated": 0,
+            "no_answer": 0
+          },
+          "kasett": {
+            "answer": "The LoCoMo evaluation set contains 300 sessions total. However, you're starting with a 50-session pilot subset due to OpenRouter rate limits on Sonnet 4.5.",
+            "exact_match": 1,
+            "semantic_match": 1,
+            "hallucinated": 0,
+            "no_answer": 0
+          }
+        },
+        {
+          "fact_id": "B-7",
+          "kind": "blocker",
+          "position": 0.58,
+          "question": "What's blocking us from running the full eval?",
+          "expected_answer": "OpenRouter rate limits",
+          "vanilla": {
+            "answer": "Based on the context summary, the main blocking factor for running the full evaluation is **rate limits**. Specifically:\n\n- OpenRouter caps at 50 RPM (requests per minute) on Sonnet\n- The full evaluation requires 300 sessions with ~3 API calls per session\n- This results in a 2-3 day throughput timeline due to these rate limits\n\nThe plan is to first run a 50-session pilot subset before attempting the full 300-session evaluation.",
+            "exact_match": 0,
+            "semantic_match": 1,
+            "hallucinated": 0,
+            "no_answer": 0
+          },
+          "kasett": {
+            "answer": "OpenRouter rate limits on Sonnet 4.5 are blocking the full 300-session evaluation. The rate limits mean the full run would take 2-3 days to complete, which is why you're starting with a 50-session pilot first.",
+            "exact_match": 1,
+            "semantic_match": 1,
+            "hallucinated": 0,
+            "no_answer": 0
+          }
+        },
+        {
+          "fact_id": "B-8",
+          "kind": "command",
+          "position": 0.78,
+          "question": "What command kicks off the replication run?",
+          "expected_answer": "node research/locomo-replication/run-eval.mjs --pilot",
+          "vanilla": {
+            "answer": "The command to kick off the replication run is:\n\n`node research/locomo-replication/run-eval.mjs --pilot`",
+            "exact_match": 1,
+            "semantic_match": 1,
+            "hallucinated": 0,
+            "no_answer": 0
+          },
+          "kasett": {
+            "answer": "The command to kick off the replication run is:\n\n```\nnode research/locomo-replication/run-eval.mjs --pilot\n```\n\nThis runs the 50-session pilot evaluation. To run the full 300-session evaluation, you would omit the `--pilot` flag.",
+            "exact_match": 1,
+            "semantic_match": 1,
+            "hallucinated": 0,
+            "no_answer": 0
+          }
+        },
+        {
+          "fact_id": "B-9",
+          "kind": "deadline",
+          "position": 0.85,
+          "question": "When is the EMNLP submission deadline?",
+          "expected_answer": "June 15",
+          "vanilla": {
+            "answer": "The EMNLP submission deadline is June 15, which is approximately 5 weeks away from the time of the conversation.",
+            "exact_match": 1,
+            "semantic_match": 1,
+            "hallucinated": 0,
+            "no_answer": 0
+          },
+          "kasett": {
+            "answer": "The EMNLP submission deadline is June 15.",
+            "exact_match": 1,
+            "semantic_match": 1,
+            "hallucinated": 0,
+            "no_answer": 0
+          }
+        },
+        {
+          "fact_id": "B-10",
+          "kind": "version",
+          "position": 0.92,
+          "question": "What version of BERTScore are we using?",
+          "expected_answer": "0.3.13",
+          "vanilla": {
+            "answer": "We are using BERTScore version 0.3.13, which is pinned for the study. Version 0.4 breaks rescale baseline comparability, so we're staying with 0.3.13.",
+            "exact_match": 1,
+            "semantic_match": 1,
+            "hallucinated": 0,
+            "no_answer": 0
+          },
+          "kasett": {
+            "answer": "We're using BERTScore version 0.3.13, which has been locked/pinned because the 0.4 line broke rescale baseline numbers needed for comparability.",
+            "exact_match": 1,
+            "semantic_match": 1,
+            "hallucinated": 0,
+            "no_answer": 0
+          }
+        }
+      ]
+    },
+    {
+      "scenario": "C",
+      "name": "Customer support session",
+      "total_turns": 90,
+      "vanilla_summary_chars": 1897,
+      "kasett_raw_chars": 3142,
+      "kasett_sy": 11,
+      "kasett_has_meta": true,
+      "probes": [
+        {
+          "fact_id": "C-1",
+          "kind": "value",
+          "position": 0.06,
+          "question": "What is the customer's ticket ID?",
+          "expected_answer": "TKT-48721",
+          "vanilla": {
+            "answer": "The customer's ticket ID is **TKT-48721**.",
+            "exact_match": 1,
+            "semantic_match": 1,
+            "hallucinated": 0,
+            "no_answer": 0
+          },
+          "kasett": {
+            "answer": "I don't have that information. The context does not mention a ticket ID for Priya Sharma's escalation.",
+            "exact_match": 0,
+            "semantic_match": 0,
+            "hallucinated": 0,
+            "no_answer": 1
+          }
+        },
+        {
+          "fact_id": "C-2",
+          "kind": "person",
+          "position": 0.14,
+          "question": "What is the customer's name?",
+          "expected_answer": "Priya Sharma",
+          "vanilla": {
+            "answer": "The customer's name is Priya Sharma.",
+            "exact_match": 1,
+            "semantic_match": 1,
+            "hallucinated": 0,
+            "no_answer": 0
+          },
+          "kasett": {
+            "answer": "The customer's name is Priya Sharma.",
+            "exact_match": 1,
+            "semantic_match": 1,
+            "hallucinated": 0,
+            "no_answer": 0
+          }
+        },
+        {
+          "fact_id": "C-3",
+          "kind": "error",
+          "position": 0.22,
+          "question": "What error code is the customer seeing?",
+          "expected_answer": "401 invalid_grant",
+          "vanilla": {
+            "answer": "The customer is seeing a **401 `invalid_grant`** error code from the `/token` endpoint.",
+            "exact_match": 0,
+            "semantic_match": 1,
+            "hallucinated": 0,
+            "no_answer": 0
+          },
+          "kasett": {
+            "answer": "The customer is seeing **401 invalid_grant** errors when swapping refresh tokens.",
+            "exact_match": 1,
+            "semantic_match": 1,
+            "hallucinated": 0,
+            "no_answer": 0
+          }
+        },
+        {
+          "fact_id": "C-4",
+          "kind": "decision",
+          "position": 0.4,
+          "question": "What did we decide to send the customer as a workaround?",
+          "expected_answer": "a fresh API key with extended expiry",
+          "vanilla": {
+            "answer": "Based on the summary, the workaround sent to the customer was:\n\n**A fresh API key with extended expiry (90 days instead of the standard 30 days)** for account `acct_8H3KQR7L9P`, which was emailed to the customer's registered address.\n\nAdditionally, documentation was sent explaining the refresh token rotation behavior: https://docs.molt.ai/support/refresh-token-rotation",
+            "exact_match": 1,
+            "semantic_match": 1,
+            "hallucinated": 0,
+            "no_answer": 0
+          },
+          "kasett": {
+            "answer": "We decided to issue a fresh API key with an extended 90-day expiry (instead of the standard 30-day expiry) as a workaround. We also sent her the refresh token documentation at https://docs.molt.ai/support/refresh-token-rotation and regenerated credentials against her account using the command `molt-cli keys regenerate --account=acct_8H3KQR7L9P --ttl=90d`.",
+            "exact_match": 0,
+            "semantic_match": 1,
+            "hallucinated": 0,
+            "no_answer": 0
+          }
+        },
+        {
+          "fact_id": "C-5",
+          "kind": "url",
+          "position": 0.48,
+          "question": "What support article URL did we send her?",
+          "expected_answer": "https://docs.molt.ai/support/refresh-token-rotation",
+          "vanilla": {
+            "answer": "https://docs.molt.ai/support/refresh-token-rotation",
+            "exact_match": 1,
+            "semantic_match": 1,
+            "hallucinated": 0,
+            "no_answer": 0
+          },
+          "kasett": {
+            "answer": "We sent her the refresh token documentation at https://docs.molt.ai/support/refresh-token-rotation",
+            "exact_match": 1,
+            "semantic_match": 1,
+            "hallucinated": 0,
+            "no_answer": 0
+          }
+        },
+        {
+          "fact_id": "C-6",
+          "kind": "value",
+          "position": 0.55,
+          "question": "What is her account ID?",
+          "expected_answer": "acct_8H3KQR7L9P",
+          "vanilla": {
+            "answer": "Her account ID is `acct_8H3KQR7L9P`.",
+            "exact_match": 1,
+            "semantic_match": 1,
+            "hallucinated": 0,
+            "no_answer": 0
+          },
+          "kasett": {
+            "answer": "Her account ID is acct_8H3KQR7L9P.",
+            "exact_match": 1,
+            "semantic_match": 1,
+            "hallucinated": 0,
+            "no_answer": 0
+          }
+        },
+        {
+          "fact_id": "C-7",
+          "kind": "blocker",
+          "position": 0.62,
+          "question": "What's blocking us from doing a real fix?",
+          "expected_answer": "the rotation worker is owned by the platform team and they're mid-migration",
+          "vanilla": {
+            "answer": "According to the summary, the permanent fix is blocked because **the platform team is currently mid-migration**. The rotation worker patches are on hold until after the migration cutover, which is scheduled for the next sprint.",
+            "exact_match": 0,
+            "semantic_match": 1,
+            "hallucinated": 0,
+            "no_answer": 0
+          },
+          "kasett": {
+            "answer": "The platform team's rotation worker has a bug, but we can't patch it immediately because they're in the middle of a migration and have asked us to hold all patches until next sprint due to cutover risk. Their migration freeze ends May 27, and we've promised the permanent fix by May 28.",
+            "exact_match": 0,
+            "semantic_match": 1,
+            "hallucinated": 0,
+            "no_answer": 0
+          }
+        },
+        {
+          "fact_id": "C-8",
+          "kind": "deadline",
+          "position": 0.8,
+          "question": "When did we promise the permanent fix?",
+          "expected_answer": "May 28",
+          "vanilla": {
+            "answer": "We promised the permanent fix by **May 28**.\n\nThe delay was because the platform team is mid-migration, and rotation worker patches are on hold until after the migration cutover in the next sprint.",
+            "exact_match": 1,
+            "semantic_match": 1,
+            "hallucinated": 0,
+            "no_answer": 0
+          },
+          "kasett": {
+            "answer": "We promised the permanent fix by May 28, the day after the platform team's migration freeze ends (May 27).",
+            "exact_match": 1,
+            "semantic_match": 1,
+            "hallucinated": 0,
+            "no_answer": 0
+          }
+        },
+        {
+          "fact_id": "C-9",
+          "kind": "path",
+          "position": 0.88,
+          "question": "Where is the workaround documented internally?",
+          "expected_answer": "wiki/runbooks/refresh-token-extended-expiry.md",
+          "vanilla": {
+            "answer": "The workaround is documented internally in a runbook at `wiki/runbooks/refresh-token-extended-expiry.md`, which is also linked from the on-call rota notes.",
+            "exact_match": 1,
+            "semantic_match": 1,
+            "hallucinated": 0,
+            "no_answer": 0
+          },
+          "kasett": {
+            "answer": "The workaround is documented internally at `wiki/runbooks/refresh-token-extended-expiry.md` and is also linked from the on-call rota notes.",
+            "exact_match": 1,
+            "semantic_match": 1,
+            "hallucinated": 0,
+            "no_answer": 0
+          }
+        },
+        {
+          "fact_id": "C-10",
+          "kind": "command",
+          "position": 0.96,
+          "question": "What command regenerates the customer key?",
+          "expected_answer": "molt-cli keys regenerate --account=acct_8H3KQR7L9P --ttl=90d",
+          "vanilla": {
+            "answer": "The command used to regenerate the customer key was:\n\n`molt-cli keys regenerate --account=acct_8H3KQR7L9P --ttl=90d`",
+            "exact_match": 1,
+            "semantic_match": 1,
+            "hallucinated": 0,
+            "no_answer": 0
+          },
+          "kasett": {
+            "answer": "The command to regenerate the customer key is:\n\n```\nmolt-cli keys regenerate --account=acct_8H3KQR7L9P --ttl=90d\n```\n\nThis command was used to regenerate credentials for Priya Sharma's account with an extended 90-day expiry as a workaround.",
+            "exact_match": 1,
+            "semantic_match": 1,
+            "hallucinated": 0,
+            "no_answer": 0
+          }
+        }
+      ]
+    },
+    {
+      "scenario": "D",
+      "name": "Multi-task standup",
+      "total_turns": 110,
+      "vanilla_summary_chars": 3032,
+      "kasett_raw_chars": 3582,
+      "kasett_sy": 14,
+      "kasett_has_meta": true,
+      "probes": [
+        {
+          "fact_id": "D-1",
+          "kind": "person",
+          "position": 0.05,
+          "question": "Who is leading the dashboard work?",
+          "expected_answer": "Daniel",
+          "vanilla": {
+            "answer": "Daniel is leading the dashboard work. He picked it up after a reorg and is moving faster than the previous owner. He also owns the dashboard repo.",
+            "exact_match": 1,
+            "semantic_match": 1,
+            "hallucinated": 0,
+            "no_answer": 0
+          },
+          "kasett": {
+            "answer": "Daniel is leading the dashboard work after the reorg and has been moving it faster than the previous owner.",
+            "exact_match": 1,
+            "semantic_match": 1,
+            "hallucinated": 0,
+            "no_answer": 0
+          }
+        },
+        {
+          "fact_id": "D-2",
+          "kind": "version",
+          "position": 0.12,
+          "question": "What version of React is the dashboard targeting?",
+          "expected_answer": "19.0.0-rc.1",
+          "vanilla": {
+            "answer": "The dashboard is using React 19.0.0-rc.1 (release candidate). They're using the RC specifically for the new `use()` hook for streaming data sections, and plan to downgrade to the stable version once React 19.0 ships.",
+            "exact_match": 1,
+            "semantic_match": 1,
+            "hallucinated": 0,
+            "no_answer": 0
+          },
+          "kasett": {
+            "answer": "The dashboard is currently running React 19.0.0-rc.1 (release candidate) to use the new use() hook for streaming data sections. The team plans to downgrade to the stable version once React 19.0 ships.",
+            "exact_match": 1,
+            "semantic_match": 1,
+            "hallucinated": 0,
+            "no_answer": 0
+          }
+        },
+        {
+          "fact_id": "D-3",
+          "kind": "value",
+          "position": 0.2,
+          "question": "How many beta customers are using the dashboard?",
+          "expected_answer": "14",
+          "vanilla": {
+            "answer": "14 beta customers are currently active, with 4 added last week (3 from inbound waitlist and 1 from a partner intro).",
+            "exact_match": 1,
+            "semantic_match": 1,
+            "hallucinated": 0,
+            "no_answer": 0
+          },
+          "kasett": {
+            "answer": "Based on the context provided, there are **14 active beta customers** using the dashboard. Four of these were added last week.",
+            "exact_match": 1,
+            "semantic_match": 1,
+            "hallucinated": 0,
+            "no_answer": 0
+          }
+        },
+        {
+          "fact_id": "D-4",
+          "kind": "url",
+          "position": 0.38,
+          "question": "What URL is the dashboard staging environment at?",
+          "expected_answer": "https://dashboard-stg.molt.ai",
+          "vanilla": {
+            "answer": "The dashboard staging environment is at https://dashboard-stg.molt.ai",
+            "exact_match": 1,
+            "semantic_match": 1,
+            "hallucinated": 0,
+            "no_answer": 0
+          },
+          "kasett": {
+            "answer": "The dashboard staging environment is at https://dashboard-stg.molt.ai",
+            "exact_match": 1,
+            "semantic_match": 1,
+            "hallucinated": 0,
+            "no_answer": 0
+          }
+        },
+        {
+          "fact_id": "D-5",
+          "kind": "decision",
+          "position": 0.45,
+          "question": "What did we decide about the data export feature?",
+          "expected_answer": "punt to Q3, not in v1",
+          "vanilla": {
+            "answer": "You decided to punt the data export feature to Q3 and not include it in v1. The rationale was that while 3 customers requested it, it would complicate the auth model and you didn't want to delay v1. You plan to revisit it in Q3 planning.",
+            "exact_match": 0,
+            "semantic_match": 1,
+            "hallucinated": 0,
+            "no_answer": 0
+          },
+          "kasett": {
+            "answer": "Based on the context provided, the team decided to **punt the data export feature to Q3** and not include it in v1. This decision was made despite having three customer requests for it, because the feature complicates the auth model and the team doesn't want to delay the v1 release.",
+            "exact_match": 0,
+            "semantic_match": 1,
+            "hallucinated": 0,
+            "no_answer": 0
+          }
+        },
+        {
+          "fact_id": "D-6",
+          "kind": "error",
+          "position": 0.53,
+          "question": "What error did the QA team report on the metrics page?",
+          "expected_answer": "NaN displayed when no data is present",
+          "vanilla": {
+            "answer": "The QA team reported that NaN (Not a Number) is displayed when no data is present. This happens because the aggregation function returns NaN and the formatter doesn't guard against it. Daniel has a fix in a PR that hasn't been merged yet.",
+            "exact_match": 0,
+            "semantic_match": 1,
+            "hallucinated": 0,
+            "no_answer": 0
+          },
+          "kasett": {
+            "answer": "The QA team reported a bug where NaN (Not a Number) displays when no data is present. This happens because the aggregation function returns NaN and the formatter doesn't guard against it. Daniel has a fix in PR but it hasn't merged yet.",
+            "exact_match": 0,
+            "semantic_match": 1,
+            "hallucinated": 0,
+            "no_answer": 0
+          }
+        },
+        {
+          "fact_id": "D-7",
+          "kind": "path",
+          "position": 0.6,
+          "question": "What's the path to the dashboard repo?",
+          "expected_answer": "github.com/moltaicorp/molt-dashboard",
+          "vanilla": {
+            "answer": "The dashboard repository path is **github.com/moltaicorp/molt-dashboard**.",
+            "exact_match": 1,
+            "semantic_match": 1,
+            "hallucinated": 0,
+            "no_answer": 0
+          },
+          "kasett": {
+            "answer": "The dashboard repo is at `github.com/moltaicorp/molt-dashboard`.",
+            "exact_match": 1,
+            "semantic_match": 1,
+            "hallucinated": 0,
+            "no_answer": 0
+          }
+        },
+        {
+          "fact_id": "D-8",
+          "kind": "blocker",
+          "position": 0.78,
+          "question": "What's blocking the analytics integration?",
+          "expected_answer": "waiting on Segment API access",
+          "vanilla": {
+            "answer": "The analytics integration is blocked by waiting on Segment API access. Anna submitted the access request 2 weeks ago, but the onboarding process has been slow. The instrumentation code is already ready to go.",
+            "exact_match": 1,
+            "semantic_match": 1,
+            "hallucinated": 0,
+            "no_answer": 0
+          },
+          "kasett": {
+            "answer": "The analytics integration is blocked waiting on Segment API access. Anna submitted the access request two weeks ago, but Segment's onboarding process is slow. The instrumentation code itself is already ready to go.",
+            "exact_match": 1,
+            "semantic_match": 1,
+            "hallucinated": 0,
+            "no_answer": 0
+          }
+        },
+        {
+          "fact_id": "D-9",
+          "kind": "deadline",
+          "position": 0.86,
+          "question": "When is the dashboard v1 GA?",
+          "expected_answer": "June 30",
+          "vanilla": {
+            "answer": "The dashboard v1 GA is scheduled for **June 30**. This is a firm deadline because there is an investor demo on July 2 that needs it to be live.",
+            "exact_match": 1,
+            "semantic_match": 1,
+            "hallucinated": 0,
+            "no_answer": 0
+          },
+          "kasett": {
+            "answer": "The dashboard v1 GA is **June 30**. This is a firm date because there's an investor demo on July 2 that needs it live.",
+            "exact_match": 1,
+            "semantic_match": 1,
+            "hallucinated": 0,
+            "no_answer": 0
+          }
+        },
+        {
+          "fact_id": "D-10",
+          "kind": "command",
+          "position": 0.94,
+          "question": "How do we run the dashboard tests locally?",
+          "expected_answer": "pnpm test --filter=dashboard",
+          "vanilla": {
+            "answer": "Run `pnpm test --filter=dashboard` to isolate the dashboard package tests. This approach is used because running tests for the full monorepo takes too long.",
+            "exact_match": 1,
+            "semantic_match": 1,
+            "hallucinated": 0,
+            "no_answer": 0
+          },
+          "kasett": {
+            "answer": "Based on the context provided, you run the dashboard tests locally with:\n\n```\npnpm test --filter=dashboard\n```",
+            "exact_match": 1,
+            "semantic_match": 1,
+            "hallucinated": 0,
+            "no_answer": 0
+          }
+        }
+      ]
+    },
+    {
+      "scenario": "E",
+      "name": "Cross-thread debug",
+      "total_turns": 130,
+      "vanilla_summary_chars": 1932,
+      "kasett_raw_chars": 2297,
+      "kasett_sy": 9,
+      "kasett_has_meta": true,
+      "probes": [
+        {
+          "fact_id": "E-1",
+          "kind": "error",
+          "position": 0.04,
+          "question": "What was the original error symptom?",
+          "expected_answer": "p99 latency jumped from 80ms to 2400ms",
+          "vanilla": {
+            "answer": "The original error symptom was a **production API latency spike**: p99 latency jumped from 80ms to 2400ms, and the error rate increased from 0.3% to 1.1%. This was detected at 08:42 UTC.",
+            "exact_match": 1,
+            "semantic_match": 1,
+            "hallucinated": 0,
+            "no_answer": 0
+          },
+          "kasett": {
+            "answer": "The original error symptom was a latency spike from 80ms to 2400ms at 08:42 UTC, with error rates climbing from 0.3% to 1.1%.",
+            "exact_match": 0,
+            "semantic_match": 1,
+            "hallucinated": 0,
+            "no_answer": 0
+          }
+        },
+        {
+          "fact_id": "E-2",
+          "kind": "value",
+          "position": 0.1,
+          "question": "What time did the regression start?",
+          "expected_answer": "08:42 UTC",
+          "vanilla": {
+            "answer": "The regression started at **08:42 UTC**, which is when the production API latency incident was detected (2 minutes after Anna's deploy at 08:40 UTC).",
+            "exact_match": 1,
+            "semantic_match": 1,
+            "hallucinated": 0,
+            "no_answer": 0
+          },
+          "kasett": {
+            "answer": "The regression started at 08:42 UTC.",
+            "exact_match": 1,
+            "semantic_match": 1,
+            "hallucinated": 0,
+            "no_answer": 0
+          }
+        },
+        {
+          "fact_id": "E-3",
+          "kind": "person",
+          "position": 0.22,
+          "question": "Who pushed the deploy that caused it?",
+          "expected_answer": "Anna",
+          "vanilla": {
+            "answer": "Anna pushed the deploy that caused the incident. It was her PR refactoring the response-serialization path that accidentally introduced a synchronous DB call on every response.",
+            "exact_match": 1,
+            "semantic_match": 1,
+            "hallucinated": 0,
+            "no_answer": 0
+          },
+          "kasett": {
+            "answer": "Anna pushed the deploy that caused the incident.",
+            "exact_match": 1,
+            "semantic_match": 1,
+            "hallucinated": 0,
+            "no_answer": 0
+          }
+        },
+        {
+          "fact_id": "E-4",
+          "kind": "path",
+          "position": 0.3,
+          "question": "What file contains the bug?",
+          "expected_answer": "src/server/serialize.ts",
+          "vanilla": {
+            "answer": "The bug is in the file `src/server/serialize.ts`.",
+            "exact_match": 1,
+            "semantic_match": 1,
+            "hallucinated": 0,
+            "no_answer": 0
+          },
+          "kasett": {
+            "answer": "The file containing the bug is `src/server/serialize.ts`.",
+            "exact_match": 1,
+            "semantic_match": 1,
+            "hallucinated": 0,
+            "no_answer": 0
+          }
+        },
+        {
+          "fact_id": "E-5",
+          "kind": "decision",
+          "position": 0.42,
+          "question": "What did we decide to do — rollback or hotfix?",
+          "expected_answer": "rollback first, hotfix in PR",
+          "vanilla": {
+            "answer": "We decided to **rollback first, then hotfix via PR**.\n\nThe rollback was executed to quickly resolve the production incident, rolling back to v2.14.7. The hotfix is being developed separately through Anna's PR and will be merged once the CI issues are resolved.",
+            "exact_match": 0,
+            "semantic_match": 1,
+            "hallucinated": 0,
+            "no_answer": 0
+          },
+          "kasett": {
+            "answer": "We decided to **rollback first** to restore service, then fix properly in code review without production pressure.",
+            "exact_match": 0,
+            "semantic_match": 1,
+            "hallucinated": 0,
+            "no_answer": 0
+          }
+        },
+        {
+          "fact_id": "E-6",
+          "kind": "command",
+          "position": 0.5,
+          "question": "What command rolled back the deploy?",
+          "expected_answer": "molt-deploy rollback --service=api --to=v2.14.7",
+          "vanilla": {
+            "answer": "The rollback command was:\n\n`molt-deploy rollback --service=api --to=v2.14.7`",
+            "exact_match": 1,
+            "semantic_match": 1,
+            "hallucinated": 0,
+            "no_answer": 0
+          },
+          "kasett": {
+            "answer": "The rollback command was:\n\n```\nmolt-deploy rollback --service=api --to=v2.14.7\n```",
+            "exact_match": 1,
+            "semantic_match": 1,
+            "hallucinated": 0,
+            "no_answer": 0
+          }
+        },
+        {
+          "fact_id": "E-7",
+          "kind": "version",
+          "position": 0.58,
+          "question": "What version are we rolled back to?",
+          "expected_answer": "v2.14.7",
+          "vanilla": {
+            "answer": "We are rolled back to **v2.14.7** (last Tuesday's release, which is a known good version).",
+            "exact_match": 1,
+            "semantic_match": 1,
+            "hallucinated": 0,
+            "no_answer": 0
+          },
+          "kasett": {
+            "answer": "We are rolled back to **v2.14.7**, which was last Tuesday's known-good release.",
+            "exact_match": 1,
+            "semantic_match": 1,
+            "hallucinated": 0,
+            "no_answer": 0
+          }
+        },
+        {
+          "fact_id": "E-8",
+          "kind": "url",
+          "position": 0.78,
+          "question": "Where is the incident postmortem doc?",
+          "expected_answer": "https://wiki.molt.ai/incidents/2026-05-12-api-latency",
+          "vanilla": {
+            "answer": "The incident postmortem doc is at: https://wiki.molt.ai/incidents/2026-05-12-api-latency",
+            "exact_match": 1,
+            "semantic_match": 1,
+            "hallucinated": 0,
+            "no_answer": 0
+          },
+          "kasett": {
+            "answer": "The incident postmortem doc is at: https://wiki.molt.ai/incidents/2026-05-12-api-latency",
+            "exact_match": 1,
+            "semantic_match": 1,
+            "hallucinated": 0,
+            "no_answer": 0
+          }
+        },
+        {
+          "fact_id": "E-9",
+          "kind": "blocker",
+          "position": 0.85,
+          "question": "What's blocking the proper fix from merging?",
+          "expected_answer": "CI flake on the new test",
+          "vanilla": {
+            "answer": "The CI flake in Anna's regression test is blocking the proper fix from merging. The test is timing-sensitive and fails approximately 20% of the time. Anna is currently rewriting the test to use fake timers to make it more stable, and the PR will merge once CI is stable.",
+            "exact_match": 0,
+            "semantic_match": 1,
+            "hallucinated": 0,
+            "no_answer": 0
+          },
+          "kasett": {
+            "answer": "The hotfix PR is blocked by a flaky CI test. The new regression test is timing-sensitive and fails about 1 in 5 runs. Anna is currently rewriting it to use fake timers to resolve the flakiness.",
+            "exact_match": 0,
+            "semantic_match": 1,
+            "hallucinated": 0,
+            "no_answer": 0
+          }
+        },
+        {
+          "fact_id": "E-10",
+          "kind": "deadline",
+          "position": 0.94,
+          "question": "When does the action-item review happen?",
+          "expected_answer": "Friday 3pm MT",
+          "vanilla": {
+            "answer": "The action-item review happens **Friday at 3pm MT** (Mountain Time), which is 48 hours post-resolution. Invites are pending.",
+            "exact_match": 0,
+            "semantic_match": 1,
+            "hallucinated": 0,
+            "no_answer": 0
+          },
+          "kasett": {
+            "answer": "The action-item review is scheduled for Friday 3pm MT.",
+            "exact_match": 1,
+            "semantic_match": 1,
+            "hallucinated": 0,
+            "no_answer": 0
+          }
+        }
+      ]
+    }
+  ],
+  "started": "2026-05-12T19:58:22.440Z",
+  "completed": "2026-05-12T20:20:07.733Z"
+}

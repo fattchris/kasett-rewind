@@ -1,0 +1,100 @@
+{
+  "summary": "We handled a customer support escalation from Priya Sharma at Lensgrid, who reported auth failures starting around 14:00 UTC. She was seeing 401 invalid_grant errors when swapping refresh tokens, indicating tokens were being expired or rotated unexpectedly on our side. The customer was frustrated and had multiple questions about various system components including the auth refactor, schema review, perf work, and several other features.\n\nWe decided to unblock her immediately by issuing a fresh API key with extended 90-day expiry (instead of the standard 30 days) while we wait for the permanent fix. We sent her the refresh token documentation at https://docs.molt.ai/support/refresh-token-rotation and regenerated credentials against her account (acct_8H3KQR7L9P) using the command `molt-cli keys regenerate --account=acct_8H3KQR7L9P --ttl=90d`.\n\nThe root cause is a rotation bug in the platform team's rotation worker, but we can't patch it immediately because they're mid-migration and have asked us to hold all patches until next sprint due to cutover risk. We promised Priya the permanent fix by May 28, the day after their migration freeze ends, and she accepted that timeline. We documented the extended-expiry workaround at wiki/runbooks/refresh-token-extended-expiry.md and linked it from the on-call rota notes so other support team members can use the same approach for similar cases.",
+  "meta": {
+    "main": "Customer escalation for OAuth refresh token auth failures",
+    "sub": [
+      {
+        "id": "priya-auth-failure",
+        "label": "Resolve Priya Sharma's 401 invalid_grant errors on token refresh",
+        "status": "completed"
+      },
+      {
+        "id": "extended-key-workaround",
+        "label": "Issue 90-day API key as temporary workaround",
+        "status": "completed"
+      },
+      {
+        "id": "rotation-bug-fix",
+        "label": "Permanent fix for rotation worker bug",
+        "status": "blocked"
+      },
+      {
+        "id": "workaround-documentation",
+        "label": "Document extended-expiry workaround for support team",
+        "status": "completed"
+      }
+    ],
+    "decisions": [
+      "Issue 90-day API keys instead of standard 30-day keys to unblock customers affected by rotation bug",
+      "Hold patches against rotation worker until platform team completes migration (ends May 27)",
+      "Promised permanent fix delivery by May 28"
+    ],
+    "open_questions": [],
+    "key_state": [
+      {
+        "kind": "url",
+        "value": "https://docs.molt.ai/support/refresh-token-rotation",
+        "label": "refresh token documentation",
+        "thread_id": "priya-auth-failure"
+      },
+      {
+        "kind": "id",
+        "value": "acct_8H3KQR7L9P",
+        "label": "Priya Sharma account ID",
+        "thread_id": "priya-auth-failure"
+      },
+      {
+        "kind": "path",
+        "value": "wiki/runbooks/refresh-token-extended-expiry.md",
+        "label": "workaround runbook location",
+        "thread_id": "workaround-documentation"
+      },
+      {
+        "kind": "config",
+        "value": "molt-cli keys regenerate --account=acct_8H3KQR7L9P --ttl=90d",
+        "label": "key regeneration command used",
+        "thread_id": "extended-key-workaround"
+      }
+    ]
+  },
+  "metaV2": {
+    "main": "Customer escalation for OAuth refresh token auth failures",
+    "sub": [
+      {
+        "id": "priya-auth-failure",
+        "label": "Resolve Priya Sharma's 401 invalid_grant errors on token refresh",
+        "status": "completed"
+      },
+      {
+        "id": "extended-key-workaround",
+        "label": "Issue 90-day API key as temporary workaround",
+        "status": "completed"
+      },
+      {
+        "id": "rotation-bug-fix",
+        "label": "Permanent fix for rotation worker bug",
+        "status": "blocked"
+      },
+      {
+        "id": "workaround-documentation",
+        "label": "Document extended-expiry workaround for support team",
+        "status": "completed"
+      }
+    ],
+    "decisions": [
+      "Issue 90-day API keys instead of standard 30-day keys to unblock customers affected by rotation bug",
+      "Hold patches against rotation worker until platform team completes migration (ends May 27)",
+      "Promised permanent fix delivery by May 28"
+    ],
+    "open_questions": []
+  },
+  "metaV1": {
+    "main": "Customer escalation for OAuth refresh token auth failures",
+    "sub": [
+      "Resolve Priya Sharma's 401 invalid_grant errors on token refresh",
+      "Issue 90-day API key as temporary workaround",
+      "Permanent fix for rotation worker bug"
+    ]
+  },
+  "errors": []
+}
