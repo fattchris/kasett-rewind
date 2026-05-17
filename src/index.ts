@@ -46,8 +46,8 @@
  *   - These are two SEPARATE concerns — no cross-contamination.
  */
 
-import { join } from 'node:path';
-import { readdir, appendFile } from 'node:fs/promises';
+import { join, basename, dirname } from 'node:path';
+import { readdir, appendFile, stat } from 'node:fs/promises';
 import { SessionReader, KasettError } from './storage/reader.js';
 import { weightSummaries } from './threads/weight.js';
 import { buildSteeringPrompt, buildOrientationPrompt } from './threads/steering.js';
@@ -232,6 +232,8 @@ let pendingCompactionCtx: {
   sessionKey: string;
   agentId: string;
   stateDir: string;
+  /** Fix 1a: sessionFile captured directly from OC event payload in before_compaction */
+  sessionFile?: string | null;
 } | null = null;
 
 // ---------------------------------------------------------------------------
@@ -278,8 +280,15 @@ export function register(api: PluginAPI): void {
     const agentId = ctx.agentId?.trim() || 'main';
     const stateDir = api.runtime.state.resolveStateDir();
 
-    pendingCompactionCtx = { sessionKey, agentId, stateDir };
-    api.logger.debug(`[kasett-rewind] before_compaction: captured ctx for ${sessionKey}`);
+    // Fix 1a: capture sessionFile directly from OC event payload.
+    // OC passes ctx.params.session.sessionFile (flattened to event.sessionFile) in both
+    // the fire-and-forget path (pi-embedded-runner-C72h-nWV.js:1410) and the
+    // ownsCompaction await path (line 7087). This is the most reliable source.
+    const eventSessionFile = event?.sessionFile ?? null;
+    pendingCompactionCtx = { sessionKey, agentId, stateDir, sessionFile: eventSessionFile };
+    api.logger.debug(
+      `[kasett-rewind] before_compaction: captured ctx for ${sessionKey} sessionFile=${eventSessionFile ?? 'null'}`,
+    );
     void logHookEvent({
       hook: 'before_compaction',
       sessionId: sessionKey,
@@ -288,6 +297,7 @@ export function register(api: PluginAPI): void {
       detail: {
         messageCount: event?.messageCount,
         tokenCount: event?.tokenCount,
+        sessionFile: eventSessionFile,
       },
     });
   });
@@ -346,7 +356,44 @@ export function register(api: PluginAPI): void {
         const sessionFile = await resolveSessionFile(api, ctx, agentId, sessionKey, stateDir);
         if (sessionFile) {
           // Read last N summaries (windowSize), oldest first
-          const recentSummaries = await reader.readLastNSummaries(sessionFile, config.compaction.windowSize);
+          let recentSummaries = await reader.readLastNSummaries(sessionFile, config.compaction.windowSize);
+
+          // Fix 2: If current session has no compactions (e.g. after session rotation),
+          // scan sibling session files for the same topic and read summaries from the
+          // most-recently-modified one. This makes orientation resilient to the normal
+          // OC behaviour of assigning a new session UUID on restart.
+          if (recentSummaries.length === 0) {
+            const topicMatch = sessionKey.match(/:topic:(\d+)$/);
+            if (topicMatch) {
+              const topicId = topicMatch[1];
+              const siblingFile = await findSiblingSessionForTopic(
+                dirname(sessionFile),
+                basename(sessionFile),
+                topicId,
+              );
+              if (siblingFile) {
+                try {
+                  const siblingEntries = await reader.readLastNSummaries(siblingFile, config.compaction.windowSize);
+                  if (siblingEntries.length > 0) {
+                    recentSummaries = siblingEntries;
+                    api.logger.debug(
+                      `[kasett-rewind] before_prompt_build: found ${siblingEntries.length} summaries in sibling session ${basename(siblingFile)}`,
+                    );
+                    void logHookEvent({
+                      hook: 'before_prompt_build',
+                      sessionId: sessionKey,
+                      agentId,
+                      action: 'sibling_fallback',
+                      parsed: false,
+                      detail: { siblingFile: basename(siblingFile), summaryCount: siblingEntries.length },
+                    });
+                  }
+                } catch (sibErr) {
+                  api.logger.debug(`[kasett-rewind] sibling session read failed (non-blocking): ${String(sibErr)}`);
+                }
+              }
+            }
+          }
 
           if (recentSummaries.length > 0) {
             // Parse [THREAD_META] from each, collect valid ones
@@ -568,7 +615,7 @@ export function register(api: PluginAPI): void {
 
 interface SummarizeWithHotSwapParams {
   params: SummarizeParams;
-  capturedCtx: { sessionKey: string; agentId: string; stateDir: string } | null;
+  capturedCtx: { sessionKey: string; agentId: string; stateDir: string; sessionFile?: string | null } | null;
   config: KasettConfig & { enabled: boolean };
   api: PluginAPI;
   reader: SessionReader;
@@ -796,7 +843,7 @@ interface CompactionContext {
 
 interface BuildCompactionContextParams {
   params: SummarizeParams;
-  capturedCtx: { sessionKey: string; agentId: string; stateDir: string } | null;
+  capturedCtx: { sessionKey: string; agentId: string; stateDir: string; sessionFile?: string | null } | null;
   config: KasettConfig;
   api: PluginAPI;
   reader: SessionReader;
@@ -826,12 +873,21 @@ async function buildCompactionContext(
 
   if (capturedCtx && previousSummaries.length < config.compaction.windowSize) {
     try {
-      sessionFile = await resolveSessionFileFromState(
-        api,
-        capturedCtx.stateDir,
-        capturedCtx.agentId,
-        capturedCtx.sessionKey,
-      );
+      // Fix 1b: prefer sessionFile from event payload (captured in before_compaction).
+      // This is the most reliable source — OC passes it directly from
+      // ctx.params.session.sessionFile. Fall through to resolveSessionFileFromState
+      // (which includes the lock-file scan as Strategy 3) when not available.
+      if (capturedCtx.sessionFile) {
+        sessionFile = capturedCtx.sessionFile;
+        api.logger.debug(`[kasett-rewind] buildCompactionContext: using event-payload sessionFile=${sessionFile}`);
+      } else {
+        sessionFile = await resolveSessionFileFromState(
+          api,
+          capturedCtx.stateDir,
+          capturedCtx.agentId,
+          capturedCtx.sessionKey,
+        );
+      }
       if (sessionFile) {
         const needed = config.compaction.windowSize - previousSummaries.length;
         // Read last N+1 to avoid duplication with previousSummary
@@ -1284,6 +1340,62 @@ function resolveStoreEntry(
     if (k.toLowerCase() === lower) return v;
   }
   return undefined;
+}
+
+// ---------------------------------------------------------------------------
+// Fix 2 helper: sibling session lookup for same topic
+// ---------------------------------------------------------------------------
+
+/**
+ * Scan `sessionsDir` for sibling JSONL files that belong to the same topic
+ * (matching the `*-topic-${topicId}.jsonl` suffix). Excludes:
+ *   - the current session file itself
+ *   - sidecar files (`*.kasett-meta.jsonl`)
+ *   - checkpoint files (`*.checkpoint.jsonl`)
+ *
+ * Returns the path of the most-recently-modified sibling, or null if none found.
+ *
+ * Purpose: when a new OC session UUID is assigned for a topic (normal on restart),
+ * the new session starts with 0 compactions. This helper lets before_prompt_build
+ * find the rich summaries written to the prior session's sidecar / JSONL compaction
+ * entries.
+ */
+export async function findSiblingSessionForTopic(
+  sessionsDir: string,
+  currentFilename: string,
+  topicId: string,
+): Promise<string | null> {
+  try {
+    const suffix = `-topic-${topicId}.jsonl`;
+    const files = await readdir(sessionsDir);
+    const candidates = files.filter(
+      (f) =>
+        f.endsWith(suffix) &&
+        f !== currentFilename &&
+        !f.includes('.kasett-meta.') &&
+        !f.includes('.checkpoint.'),
+    );
+    if (candidates.length === 0) return null;
+    // Pick the most recently modified sibling
+    const withMtime = await Promise.all(
+      candidates.map(async (f) => {
+        try {
+          const s = await stat(join(sessionsDir, f));
+          return { f, mtime: s.mtimeMs };
+        } catch {
+          return { f, mtime: 0 };
+        }
+      }),
+    );
+    // Mod 2: 14-day mtime cap — prevents stale-context injection from recycled topics
+    const SIBLING_MAX_AGE_MS = 14 * 24 * 60 * 60 * 1000;
+    const recent = withMtime.filter((x) => Date.now() - x.mtime < SIBLING_MAX_AGE_MS);
+    if (recent.length === 0) return null;
+    recent.sort((a, b) => b.mtime - a.mtime);
+    return join(sessionsDir, recent[0].f);
+  } catch {
+    return null;
+  }
 }
 
 // ---------------------------------------------------------------------------

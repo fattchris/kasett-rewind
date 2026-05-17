@@ -149,6 +149,21 @@ export declare function aggregateContinuityHints(summaries: ReadonlyArray<string
     coreSubIds?: string[];
     previousKeyState?: KeyStateEntry[];
 };
+/**
+ * Scan `sessionsDir` for sibling JSONL files that belong to the same topic
+ * (matching the `*-topic-${topicId}.jsonl` suffix). Excludes:
+ *   - the current session file itself
+ *   - sidecar files (`*.kasett-meta.jsonl`)
+ *   - checkpoint files (`*.checkpoint.jsonl`)
+ *
+ * Returns the path of the most-recently-modified sibling, or null if none found.
+ *
+ * Purpose: when a new OC session UUID is assigned for a topic (normal on restart),
+ * the new session starts with 0 compactions. This helper lets before_prompt_build
+ * find the rich summaries written to the prior session's sidecar / JSONL compaction
+ * entries.
+ */
+export declare function findSiblingSessionForTopic(sessionsDir: string, currentFilename: string, topicId: string): Promise<string | null>;
 export { SessionReader, KasettError } from './storage/reader.js';
 export { weightSummaries, classifyThreadsV2, classifyThreadsV1Fallback, } from './threads/weight.js';
 export type { WeightedSummary, ClassifiedThread, ThreadContinuityClass, } from './threads/weight.js';
