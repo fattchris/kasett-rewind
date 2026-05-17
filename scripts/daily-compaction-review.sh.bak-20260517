@@ -36,57 +36,23 @@ LIFECYCLE_COMPACTIONS=0
 echo "## Sessions Compacted (last 24h)" >> "$OUTPUT"
 echo "" >> "$OUTPUT"
 
-# Phase F fix (2026-05-17): scan JSONLs directly for compaction events in last 24h.
-# Checkpoint files are unreliable (not all code paths emit them, and mtimes age out).
-# Ground truth = "type":"compaction" records inside session JSONLs with timestamp in window.
-CUTOFF_ISO=$(date -u -d '24 hours ago' +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || python3 -c 'import datetime; print((datetime.datetime.utcnow()-datetime.timedelta(hours=24)).isoformat(timespec="seconds")+"Z")')
+# Collect checkpoint files; handle empty glob gracefully
+CHECKPOINT_FILES=()
+while IFS= read -r -d '' f; do
+  CHECKPOINT_FILES+=("$f")
+done < <(find "$SESSIONS_DIR" -name "*.checkpoint.*.jsonl" -mtime -1 -print0 2>/dev/null) || true
 
-COMPACTED_SESSIONS=()
-while IFS= read -r session_file; do
-  COMPACTED_SESSIONS+=("$session_file")
-done < <(python3 -c "
-import os, json, sys, datetime
-sessions_dir = sys.argv[1]
-cutoff_iso = sys.argv[2]
-seen = set()
-# Prefilter by mtime ≤ 7d to keep this fast; older files cannot have a fresh compaction.
-for name in os.listdir(sessions_dir):
-    if not name.endswith('.jsonl'):
-        continue
-    if name.endswith('.kasett-meta.jsonl') or '.checkpoint.' in name or name.startswith('.'):
-        continue
-    path = os.path.join(sessions_dir, name)
-    try:
-        st = os.stat(path)
-    except OSError:
-        continue
-    if (datetime.datetime.utcnow() - datetime.datetime.utcfromtimestamp(st.st_mtime)).days > 7:
-        continue
-    try:
-        with open(path, 'r', encoding='utf-8', errors='replace') as fh:
-            for line in fh:
-                line = line.strip()
-                if not line or '\"type\":\"compaction\"' not in line:
-                    continue
-                try:
-                    obj = json.loads(line)
-                except Exception:
-                    continue
-                if obj.get('type') != 'compaction':
-                    continue
-                ts = obj.get('timestamp') or obj.get('createdAt') or obj.get('ts') or ''
-                if isinstance(ts, str) and ts >= cutoff_iso:
-                    if path not in seen:
-                        seen.add(path)
-                        print(path)
-                    break
-    except OSError:
-        continue
-" "$SESSIONS_DIR" "$CUTOFF_ISO" 2>/dev/null) || true
-
-# Iterate distinct sessions that had a compaction in the last 24h.
-for session_file in "${COMPACTED_SESSIONS[@]+"${COMPACTED_SESSIONS[@]}"}"; do
+# Derive unique session files from checkpoint files
+declare -A SEEN_SESSIONS
+for checkpoint in "${CHECKPOINT_FILES[@]+"${CHECKPOINT_FILES[@]}"}"; do
+  session_file=$(echo "$checkpoint" | sed 's/\.checkpoint\.[^.]*\.jsonl/.jsonl/')
   session_id=$(basename "$session_file" .jsonl)
+
+  # Deduplicate — a session may have multiple checkpoints
+  if [[ -n "${SEEN_SESSIONS[$session_id]+_}" ]]; then
+    continue
+  fi
+  SEEN_SESSIONS[$session_id]=1
 
   COMPACTED=$((COMPACTED + 1))
 
@@ -422,37 +388,15 @@ echo "" >> "$OUTPUT"
 echo "## Observations" >> "$OUTPUT"
 echo "" >> "$OUTPUT"
 
-# Check for sessions that compacted multiple times in the 24h window (stress indicator).
+# Check for sessions that compacted multiple times (stress indicator).
+# Use || true so an empty result doesn't kill the script under pipefail.
 MULTI_COMPACT=0
-if [ ${#COMPACTED_SESSIONS[@]} -gt 0 ]; then
-  MULTI_COMPACT=$(python3 -c "
-import os, json, sys, datetime
-cutoff_iso = sys.argv[1]
-multi = 0
-for path in sys.argv[2:]:
-    n = 0
-    try:
-        with open(path, 'r', encoding='utf-8', errors='replace') as fh:
-            for line in fh:
-                line = line.strip()
-                if not line or '\"type\":\"compaction\"' not in line:
-                    continue
-                try:
-                    obj = json.loads(line)
-                except Exception:
-                    continue
-                if obj.get('type') != 'compaction':
-                    continue
-                ts = obj.get('timestamp') or obj.get('createdAt') or obj.get('ts') or ''
-                if isinstance(ts, str) and ts >= cutoff_iso:
-                    n += 1
-                    if n >= 2:
-                        multi += 1
-                        break
-    except OSError:
-        continue
-print(multi)
-" "$CUTOFF_ISO" "${COMPACTED_SESSIONS[@]}" 2>/dev/null) || MULTI_COMPACT=0
+if [ ${#CHECKPOINT_FILES[@]} -gt 0 ]; then
+  MULTI_COMPACT=$(printf '%s\n' "${CHECKPOINT_FILES[@]}" \
+    | sed 's/\.checkpoint\.[^.]*\.jsonl//' \
+    | sort \
+    | uniq -d \
+    | wc -l) || MULTI_COMPACT=0
 fi
 
 if [ "$MULTI_COMPACT" -gt 0 ]; then
