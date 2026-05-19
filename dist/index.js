@@ -621,6 +621,23 @@ async function buildCompactionContext(p) {
                 api.logger.debug(`[kasett-rewind] buildCompactionContext: using event-payload sessionFile=${sessionFile}`);
             }
             else {
+                // Fix 3 (Bug 3 — Path C): when both sessionFile AND sessionKey are null/empty,
+                // this is a token-overflow compaction from compact-CNsgTXwX.js. Log a distinct
+                // breadcrumb so we can count Path C occurrences in production.
+                const isPathC = !capturedCtx.sessionFile && !capturedCtx.sessionKey?.trim();
+                if (isPathC) {
+                    void logHookEvent({
+                        hook: 'before_compaction',
+                        sessionId: capturedCtx.sessionKey,
+                        agentId: capturedCtx.agentId,
+                        action: 'null_sessionkey_fallback',
+                        detail: {
+                            path: 'C',
+                            description: 'token-overflow compaction (compact-CNsgTXwX.js) — no sessionFile or sessionKey in event payload',
+                        },
+                    });
+                    api.logger.info('[kasett-rewind] buildCompactionContext: Path C detected — token-overflow compaction without sessionKey; using lock-file scan');
+                }
                 sessionFile = await resolveSessionFileFromState(api, capturedCtx.stateDir, capturedCtx.agentId, capturedCtx.sessionKey);
             }
             if (sessionFile) {
@@ -930,11 +947,37 @@ async function resolveSessionFile(api, ctx, agentId, sessionKey, stateDir) {
     return null;
 }
 async function resolveSessionFileFromState(api, stateDir, agentId, sessionKey) {
+    // Fix 3 (Bug 3 — Path C): When sessionKey is null/empty (OC token-overflow
+    // compaction via compact-CNsgTXwX.js does NOT pass sessionKey in the hook
+    // payload), skip all key-based strategies and go directly to the lock-file
+    // scan. The lock file is OC's authoritative source of "which session file is
+    // currently active" — it's written by OC before compaction starts.
+    const effectiveKey = sessionKey?.trim() || '';
+    if (!effectiveKey) {
+        const sessionsDir = join(stateDir, 'agents', agentId, 'sessions');
+        try {
+            const files = await readdir(sessionsDir);
+            const lockFiles = files.filter((f) => f.endsWith('.jsonl.lock'));
+            if (lockFiles.length === 1) {
+                const sessionFilename = lockFiles[0].replace(/\.lock$/, '');
+                const resolved = join(sessionsDir, sessionFilename);
+                void api.logger.debug(`[kasett-rewind] resolveSessionFileFromState: null_sessionkey_fallback → ${resolved}`);
+                return resolved;
+            }
+            // Multiple locks or no locks — can't determine which session to target
+            api.logger.warn(`[kasett-rewind] resolveSessionFileFromState: null sessionKey, ` +
+                `found ${lockFiles.length} lock file(s) — cannot resolve unambiguously`);
+        }
+        catch {
+            // sessionsDir unreadable — fall through
+        }
+        return null;
+    }
     // Strategy 1: session store lookup
     try {
         const storePath = api.runtime.agent.session.resolveStorePath(api.config?.session, { agentId });
         const store = api.runtime.agent.session.loadSessionStore(storePath);
-        const entry = resolveStoreEntry(store, sessionKey);
+        const entry = resolveStoreEntry(store, effectiveKey);
         if (entry?.sessionFile)
             return entry.sessionFile;
     }
@@ -949,12 +992,12 @@ async function resolveSessionFileFromState(api, stateDir, agentId, sessionKey) {
         const files = await readdir(sessionsDir);
         const jsonlFiles = files.filter((f) => f.endsWith('.jsonl') && !f.endsWith('.lock'));
         // Exact stem match first
-        const exactMatch = jsonlFiles.find((f) => f === `${sessionKey}.jsonl` || f.replace(/\.jsonl$/, '') === sessionKey);
+        const exactMatch = jsonlFiles.find((f) => f === `${effectiveKey}.jsonl` || f.replace(/\.jsonl$/, '') === effectiveKey);
         if (exactMatch)
             return join(sessionsDir, exactMatch);
-        // Substring match (sessionKey is a prefix or substring of the filename)
-        const safeKey = sessionKey.replace(/[^a-z0-9_\-:.]/gi, '_');
-        const partialMatch = jsonlFiles.find((f) => f.includes(sessionKey) || f.includes(safeKey));
+        // Substring match (effectiveKey is a prefix or substring of the filename)
+        const safeKey = effectiveKey.replace(/[^a-z0-9_\-:.]/gi, '_');
+        const partialMatch = jsonlFiles.find((f) => f.includes(effectiveKey) || f.includes(safeKey));
         if (partialMatch)
             return join(sessionsDir, partialMatch);
         // Strategy 3: find the lock file — the session that triggered compaction holds a write lock.
@@ -970,7 +1013,7 @@ async function resolveSessionFileFromState(api, stateDir, agentId, sessionKey) {
         // Directory doesn't exist or is unreadable — fall through
     }
     // Strategy 4: derive a candidate path from stateDir (best guess, may not exist yet)
-    const safeName = sessionKey.replace(/[^a-z0-9_\-:.]/gi, '_');
+    const safeName = effectiveKey.replace(/[^a-z0-9_\-:.]/gi, '_');
     const candidate = join(stateDir, 'agents', agentId, 'sessions', `${safeName}.jsonl`);
     return candidate;
 }
