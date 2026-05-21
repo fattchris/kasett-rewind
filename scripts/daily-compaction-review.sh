@@ -33,6 +33,7 @@ LIFECYCLE_COMPLETED=0
 LIFECYCLE_RENAMED=0
 LIFECYCLE_MERGED=0
 LIFECYCLE_SPLIT=0
+LIFECYCLE_RECONCEPTUALIZED=0
 LIFECYCLE_COMPACTIONS=0
 TOTAL_THREADS_SEEN=0
 
@@ -213,6 +214,7 @@ completed = 0
 renamed = 0
 merged = 0
 split = 0
+reconceptualized = 0
 compactions_with = 0
 threads_seen = 0
 if os.path.exists(path):
@@ -237,6 +239,7 @@ if os.path.exists(path):
                         elif k == 'renamed': renamed += 1
                         elif k == 'merged': merged += 1
                         elif k == 'split': split += 1
+                        elif k == 'reconceptualized': reconceptualized += 1
                 # Count unique thread IDs seen in this sidecar entry for turnover_rate denominator
                 tm = obj.get('thread_meta_v3') or obj.get('thread_meta_v2')
                 if isinstance(tm, dict):
@@ -245,22 +248,24 @@ if os.path.exists(path):
                         threads_seen += len(subs)
     except Exception:
         pass
-print(f'{total} {created} {completed} {renamed} {merged} {split} {compactions_with} {threads_seen}')
-" "$session_file" 2>/dev/null) || LC_STATS="0 0 0 0 0 0 0 0"
+print(f'{total} {created} {completed} {renamed} {merged} {split} {reconceptualized} {compactions_with} {threads_seen}')
+" "$session_file" 2>/dev/null) || LC_STATS="0 0 0 0 0 0 0 0 0"
   LC_TOTAL=$(echo "$LC_STATS" | awk '{print $1}')
   LC_CREATED=$(echo "$LC_STATS" | awk '{print $2}')
   LC_COMPLETED=$(echo "$LC_STATS" | awk '{print $3}')
   LC_RENAMED=$(echo "$LC_STATS" | awk '{print $4}')
   LC_MERGED=$(echo "$LC_STATS" | awk '{print $5}')
   LC_SPLIT=$(echo "$LC_STATS" | awk '{print $6}')
-  LC_COMP=$(echo "$LC_STATS" | awk '{print $7}')
-  LC_THREADS=$(echo "$LC_STATS" | awk '{print $8}')
+  LC_RECONCEPTUALIZED=$(echo "$LC_STATS" | awk '{print $7}')
+  LC_COMP=$(echo "$LC_STATS" | awk '{print $8}')
+  LC_THREADS=$(echo "$LC_STATS" | awk '{print $9}')
   TOTAL_LIFECYCLE_EVENTS=$((TOTAL_LIFECYCLE_EVENTS + LC_TOTAL))
   LIFECYCLE_CREATED=$((LIFECYCLE_CREATED + LC_CREATED))
   LIFECYCLE_COMPLETED=$((LIFECYCLE_COMPLETED + LC_COMPLETED))
   LIFECYCLE_RENAMED=$((LIFECYCLE_RENAMED + LC_RENAMED))
   LIFECYCLE_MERGED=$((LIFECYCLE_MERGED + LC_MERGED))
   LIFECYCLE_SPLIT=$((LIFECYCLE_SPLIT + LC_SPLIT))
+  LIFECYCLE_RECONCEPTUALIZED=$((LIFECYCLE_RECONCEPTUALIZED + LC_RECONCEPTUALIZED))
   LIFECYCLE_COMPACTIONS=$((LIFECYCLE_COMPACTIONS + LC_COMP))
   TOTAL_THREADS_SEEN=$((TOTAL_THREADS_SEEN + LC_THREADS))
 
@@ -384,7 +389,7 @@ echo "" >> "$OUTPUT"
 echo "- Total lifecycle events: $TOTAL_LIFECYCLE_EVENTS" >> "$OUTPUT"
 echo "- Compactions with lifecycle events: $LIFECYCLE_COMPACTIONS" >> "$OUTPUT"
 echo "- Created: $LIFECYCLE_CREATED  Completed: $LIFECYCLE_COMPLETED" >> "$OUTPUT"
-echo "- Renamed: $LIFECYCLE_RENAMED  Merged: $LIFECYCLE_MERGED  Split: $LIFECYCLE_SPLIT" >> "$OUTPUT"
+echo "- Renamed: $LIFECYCLE_RENAMED  Merged: $LIFECYCLE_MERGED  Split: $LIFECYCLE_SPLIT  Reconceptualized: $LIFECYCLE_RECONCEPTUALIZED" >> "$OUTPUT"
 # Turnover rate: (created + completed) / max(total_threads_seen, 1)
 TURNOVER_NUMERATOR=$((LIFECYCLE_CREATED + LIFECYCLE_COMPLETED))
 if [ "$TOTAL_THREADS_SEEN" -gt 0 ]; then

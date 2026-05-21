@@ -5,14 +5,17 @@
  * sets, derive a list of LifecycleEvents that describe how threads evolved
  * between compaction N-1 and N:
  *
- *   - created   — present in `current` but no match in `previous`
- *   - completed — present in `previous`, missing from `current`, status
- *                 was active/blocked → assumed completed (we can't
- *                 distinguish from "abandoned" without more context)
- *   - blocked   — status transitioned to blocked
- *   - renamed   — matched but label changed (matcher.evolved=true)
- *   - merged    — multiple `previous` threads matched onto one `current`
- *   - split     — one `previous` thread matched by multiple `current`
+ *   - created        — present in `current` but no match in `previous`
+ *   - completed      — present in `previous`, missing from `current`, status
+ *                      was active/blocked → assumed completed (we can't
+ *                      distinguish from "abandoned" without more context)
+ *   - blocked        — status transitioned to blocked
+ *   - renamed        — matched but label changed (matcher.evolved=true)
+ *   - merged         — multiple `previous` threads matched onto one `current`
+ *   - split          — one `previous` thread matched by multiple `current`
+ *   - reconceptualized — ≥80% of previous threads disappeared AND at least one
+ *                        cross-compaction Jaccard match in [0.1, 0.5) exists
+ *                        — the LLM rewrote the entire work model
  *                 (rare; happens when the matcher's lexical/semantic tier
  *                 picks the same predecessor for two new threads)
  *
@@ -63,6 +66,26 @@ export type LifecycleEvent = {
     kind: 'split';
     from_id: string;
     into_ids: string[];
+} | {
+    /**
+     * reconceptualized: the LLM rewrote the entire work model.
+     * Fires when ≥80% of prior threads vanish AND at least one loose
+     * Jaccard match [0.1, 0.5) exists between old and new thread labels,
+     * indicating the work is related but expressed very differently.
+     *
+     * The `links` array pairs old thread IDs with new thread IDs by
+     * best Jaccard match (0.1–0.49). May be empty when all new threads
+     * are genuinely unrelated to any prior label.
+     */
+    kind: 'reconceptualized';
+    turnover_rate: number;
+    links: Array<{
+        from_id: string;
+        to_id: string;
+        from_label: string;
+        to_label: string;
+        jaccard: number;
+    }>;
 };
 /**
  * Detect lifecycle events between two compactions.

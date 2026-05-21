@@ -5,14 +5,17 @@
  * sets, derive a list of LifecycleEvents that describe how threads evolved
  * between compaction N-1 and N:
  *
- *   - created   — present in `current` but no match in `previous`
- *   - completed — present in `previous`, missing from `current`, status
- *                 was active/blocked → assumed completed (we can't
- *                 distinguish from "abandoned" without more context)
- *   - blocked   — status transitioned to blocked
- *   - renamed   — matched but label changed (matcher.evolved=true)
- *   - merged    — multiple `previous` threads matched onto one `current`
- *   - split     — one `previous` thread matched by multiple `current`
+ *   - created        — present in `current` but no match in `previous`
+ *   - completed      — present in `previous`, missing from `current`, status
+ *                      was active/blocked → assumed completed (we can't
+ *                      distinguish from "abandoned" without more context)
+ *   - blocked        — status transitioned to blocked
+ *   - renamed        — matched but label changed (matcher.evolved=true)
+ *   - merged         — multiple `previous` threads matched onto one `current`
+ *   - split          — one `previous` thread matched by multiple `current`
+ *   - reconceptualized — ≥80% of previous threads disappeared AND at least one
+ *                        cross-compaction Jaccard match in [0.1, 0.5) exists
+ *                        — the LLM rewrote the entire work model
  *                 (rare; happens when the matcher's lexical/semantic tier
  *                 picks the same predecessor for two new threads)
  *
@@ -52,7 +55,28 @@ export type LifecycleEvent =
       confidence: number;
     }
   | { kind: 'merged'; from_ids: string[]; into_id: string }
-  | { kind: 'split'; from_id: string; into_ids: string[] };
+  | { kind: 'split'; from_id: string; into_ids: string[] }
+  | {
+      /**
+       * reconceptualized: the LLM rewrote the entire work model.
+       * Fires when ≥80% of prior threads vanish AND at least one loose
+       * Jaccard match [0.1, 0.5) exists between old and new thread labels,
+       * indicating the work is related but expressed very differently.
+       *
+       * The `links` array pairs old thread IDs with new thread IDs by
+       * best Jaccard match (0.1–0.49). May be empty when all new threads
+       * are genuinely unrelated to any prior label.
+       */
+      kind: 'reconceptualized';
+      turnover_rate: number;   // fraction (0–1) of prior threads that vanished
+      links: Array<{
+        from_id: string;
+        to_id: string;
+        from_label: string;
+        to_label: string;
+        jaccard: number;
+      }>;
+    };
 
 /**
  * Detect lifecycle events between two compactions.
@@ -274,6 +298,60 @@ export function detectLifecycleEvents(
     }
   }
 
+  // Reconceptualized detection (Fix 4).
+  //
+  // Fires when the LLM completely rewrites its work model across a compaction:
+  //   1. >= 80% of previous threads are not matched by ANY current thread
+  //      (neither via primary matcher nor the label-similarity fallback).
+  //   2. At least one loose Jaccard match in [0.1, 0.5) exists between old
+  //      and new thread labels (proving work is related but expressed differently,
+  //      not a completely different conversation).
+  //
+  // The links[] array pairs each unmatched previous thread with its best
+  // matching current thread by Jaccard score (Jaccard in [0.1, 0.5)).
+  if (previous.length >= 2) {
+    // Count vanished previous threads (not matched by any current).
+    const vanishedCount = previous.filter((p) => !matchedPrevIds.has(p.id)).length;
+    const turnoverRate = vanishedCount / previous.length;
+
+    if (turnoverRate >= 0.8) {
+      // Check for loose Jaccard matches [0.1, 0.5) between unmatched previous
+      // and any current thread.
+      const reLinks: Array<{ from_id: string; to_id: string; from_label: string; to_label: string; jaccard: number }> = [];
+      for (const p of previous) {
+        const pTok = tokenize(p.label);
+        let bestScore = 0;
+        let bestCurrent: ThreadSubV2 | undefined;
+        for (const c of current) {
+          const score = jaccard(pTok, tokenize(c.label));
+          if (score >= 0.1 && score < 0.5 && score > bestScore) {
+            bestScore = score;
+            bestCurrent = c;
+          }
+        }
+        if (bestCurrent) {
+          reLinks.push({
+            from_id: p.id,
+            to_id: bestCurrent.id,
+            from_label: p.label,
+            to_label: bestCurrent.label,
+            jaccard: bestScore,
+          });
+        }
+      }
+
+      // Require at least one weak link to confirm this is a reconceptualization
+      // (not a clean break to a completely different conversation topic).
+      if (reLinks.length >= 1) {
+        events.push({
+          kind: 'reconceptualized',
+          turnover_rate: turnoverRate,
+          links: reLinks,
+        });
+      }
+    }
+  }
+
   return events;
 }
 
@@ -291,6 +369,7 @@ export function summarizeLifecycle(
     renamed: 0,
     merged: 0,
     split: 0,
+    reconceptualized: 0,
   };
   for (const e of events) out[e.kind] += 1;
   return out;

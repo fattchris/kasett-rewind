@@ -175,6 +175,85 @@ describe('detectLifecycleEvents', () => {
   });
 });
 
+describe('detectLifecycleEvents — reconceptualized (Fix 4)', () => {
+  test('detects reconceptualized when >= 80% turnover with weak Jaccard links', () => {
+    // 5 previous threads, all vanish (100% turnover), but labels have weak overlap
+    const previous = [
+      sub('deploy-api', 'Deploy API to staging environment'),
+      sub('oauth-fix', 'Fix OAuth redirect token issue'),
+      sub('db-migrate', 'Database schema migration prep'),
+      sub('perf-test', 'Performance testing load runner setup'),
+      sub('docs-update', 'Update API documentation pages'),
+    ];
+    // New threads with different IDs but some shared tokens (Jaccard 0.1-0.49)
+    const current = [
+      sub('new-deploy', 'Deploy services to staging'),        // shares 'deploy', 'staging'
+      sub('new-oauth', 'OAuth token refresh debugging'),       // shares 'oauth', 'token'
+      sub('new-db', 'Database migration execution phase'),     // shares 'database', 'migration'
+    ];
+    const matches = matchAllThreads(current, previous);
+    const events = detectLifecycleEvents(previous, current, matches);
+    const reconceptualized = events.filter((e) => e.kind === 'reconceptualized');
+    assert.ok(reconceptualized.length >= 1, 'should detect reconceptualized event');
+    if (reconceptualized[0].kind === 'reconceptualized') {
+      assert.ok(reconceptualized[0].turnover_rate >= 0.8, 'turnover_rate should be >= 0.8');
+      assert.ok(reconceptualized[0].links.length >= 1, 'should have at least one link');
+    }
+  });
+
+  test('does NOT fire reconceptualized when < 80% turnover', () => {
+    // Only 1 of 3 previous threads vanishes (33% turnover)
+    const previous = [
+      sub('thread-a', 'Deploy API to staging'),
+      sub('thread-b', 'Fix OAuth redirect'),
+      sub('thread-c', 'Database migration'),
+    ];
+    const current = [
+      sub('thread-a', 'Deploy API to staging'),   // exact match
+      sub('thread-b', 'Fix OAuth redirect'),       // exact match
+      sub('thread-new', 'Something completely unrelated'),
+    ];
+    const matches = matchAllThreads(current, previous);
+    const events = detectLifecycleEvents(previous, current, matches);
+    const reconceptualized = events.filter((e) => e.kind === 'reconceptualized');
+    assert.equal(reconceptualized.length, 0, 'should NOT fire when < 80% turnover');
+  });
+
+  test('does NOT fire reconceptualized when 100% turnover but no Jaccard links', () => {
+    // All previous threads vanish, but new threads have ZERO token overlap
+    const previous = [
+      sub('thread-a', 'zymurgy alpha'),
+      sub('thread-b', 'quorum bета'),
+    ];
+    const current = [
+      sub('new-x', 'jupiter perihelion'),
+      sub('new-y', 'lunar eclipse'),
+    ];
+    const matches = matchAllThreads(current, previous);
+    const events = detectLifecycleEvents(previous, current, matches);
+    const reconceptualized = events.filter((e) => e.kind === 'reconceptualized');
+    assert.equal(reconceptualized.length, 0, 'should NOT fire without any Jaccard links >= 0.1');
+  });
+
+  test('summarizeLifecycle counts reconceptualized', () => {
+    const previous = [
+      sub('p1', 'Deploy API to staging environment'),
+      sub('p2', 'Fix OAuth redirect token issue'),
+      sub('p3', 'Database schema migration prep'),
+    ];
+    const current = [
+      sub('c1', 'Deploy services to staging'),
+      sub('c2', 'OAuth token refresh'),
+    ];
+    const matches = matchAllThreads(current, previous);
+    const events = detectLifecycleEvents(previous, current, matches);
+    const summary = summarizeLifecycle(events);
+    // Verify summary has the reconceptualized field (may be 0 or 1)
+    assert.ok('reconceptualized' in summary, 'summarizeLifecycle should include reconceptualized count');
+    assert.equal(typeof summary.reconceptualized, 'number');
+  });
+});
+
 describe('summarizeLifecycle', () => {
   test('counts events by kind', () => {
     const previous = [sub('a', 'A'), sub('b', 'B')];
