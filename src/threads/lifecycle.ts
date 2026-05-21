@@ -36,6 +36,7 @@
 
 import type { ThreadSubV2 } from './schema.js';
 import type { IdentityMatch } from './identity.js';
+import { tokenize, jaccard } from './identity.js';
 
 export type LifecycleEvent =
   | { kind: 'created'; thread_id: string; label: string }
@@ -70,6 +71,39 @@ export function detectLifecycleEvents(
 
   const prevById = new Map<string, ThreadSubV2>();
   for (const p of previous) prevById.set(p.id, p);
+
+  // Build a label-similarity fallback map: current.id → best previous thread
+  // by Jaccard token overlap (threshold 0.1 — looser than the identity tier
+  // which uses 0.5, to catch high-turnover regimes where even 0.1 overlap
+  // is meaningful continuity signal).
+  //
+  // Used for `blocked` detection: in real-world compactions the LLM mints
+  // 100% fresh IDs every compaction, so exact-id matches never fire, and
+  // even Jaccard-0.5 rarely fires on short labels. Without this fallback,
+  // `blocked` events are NEVER detected (confirmed by 2026-05-21 analysis).
+  //
+  // The label-similarity fallback is used ONLY for blocked detection, not
+  // for rename/merge/split (which require higher confidence).
+  const labelSimilarityFallback = new Map<string, string>(); // current.id → prev.id
+  for (const c of current) {
+    if (matches.get(c.id)?.strategy !== 'none') continue; // already matched
+    const curTok = tokenize(c.label);
+    let bestScore = 0;
+    let bestPrevId: string | undefined;
+    for (const p of previous) {
+      const score = jaccard(curTok, tokenize(p.label));
+      if (score > bestScore) {
+        bestScore = score;
+        bestPrevId = p.id;
+      }
+    }
+    // Any non-zero overlap (>= 0.1 requires at least one shared token) is
+    // used as a weak match for blocked detection. We do NOT emit a rename
+    // event from this — only blocked.
+    if (bestScore >= 0.1 && bestPrevId) {
+      labelSimilarityFallback.set(c.id, bestPrevId);
+    }
+  }
 
   // Build reverse map: previous_id -> current_ids that matched it. Used
   // for split detection.
@@ -136,6 +170,7 @@ export function detectLifecycleEvents(
     }
 
     // Status transition: previous active → current blocked
+    // Primary path: explicit match via exact-id or lexical tier.
     if (prev && prev.status !== 'blocked' && c.status === 'blocked') {
       events.push({ kind: 'blocked', thread_id: c.id, label: c.label });
     }
@@ -143,6 +178,48 @@ export function detectLifecycleEvents(
     if (prev && prev.status !== 'completed' && c.status === 'completed') {
       events.push({ kind: 'completed', thread_id: c.id, label: c.label });
     }
+  }
+
+  // Label-similarity fallback for `blocked` detection (Fix 3).
+  //
+  // In high-turnover regimes (LLM mints 100% fresh IDs every compaction),
+  // exact-id matches never fire and lexical-0.5 rarely fires on short labels.
+  // Without this fallback, `blocked` events are never detected.
+  //
+  // Scope: only applies to threads that were NOT matched by the primary
+  // matcher (strategy === 'none'). For matched threads, the primary blocked
+  // detection path already handles them correctly (including stable-blocked
+  // suppression via prev.status !== 'blocked' check).
+  //
+  // For each unmatched-current thread with status=blocked, check the
+  // label-similarity fallback map:
+  //   - If fallback found a previous thread that was NOT blocked → emit blocked.
+  //   - If fallback found NO previous thread (genuinely new) → emit blocked.
+  //   - If fallback found a previous thread that WAS blocked → suppress (stable).
+  const blockedEventIds = new Set(events.filter((e) => e.kind === 'blocked').map((e) => {
+    if (e.kind === 'blocked') return e.thread_id;
+    return '';
+  }));
+  // Track which current threads were matched by the primary matcher.
+  const primaryMatchedCurrentIds = new Set<string>();
+  for (const c of current) {
+    const m = matches.get(c.id);
+    if (m && m.strategy !== 'none') primaryMatchedCurrentIds.add(c.id);
+  }
+  for (const c of current) {
+    if (c.status !== 'blocked') continue;
+    if (blockedEventIds.has(c.id)) continue; // already emitted via primary path
+    if (primaryMatchedCurrentIds.has(c.id)) continue; // handled by primary path (suppressed correctly)
+    // Only unmatched threads reach here (strategy === 'none' in primary matcher).
+    const fallbackPrevId = labelSimilarityFallback.get(c.id);
+    const fallbackPrev = fallbackPrevId ? prevById.get(fallbackPrevId) : undefined;
+    if (fallbackPrev && fallbackPrev.status === 'blocked') {
+      // Previous was already blocked — suppress (stable blocked state, not a new event).
+      continue;
+    }
+    // Either fallbackPrev was not blocked, or there's no fallback evidence
+    // at all (new thread showing up already blocked) — emit blocked event.
+    events.push({ kind: 'blocked', thread_id: c.id, label: c.label });
   }
 
   // Threads in previous with no corresponding current → completed (only

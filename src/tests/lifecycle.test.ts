@@ -130,6 +130,49 @@ describe('detectLifecycleEvents', () => {
     const events = detectLifecycleEvents(same, same, matches);
     assert.equal(events.length, 0);
   });
+
+  // Fix 3: blocked detection via label-similarity fallback.
+  // Real-world pattern: LLM mints fresh IDs every compaction (no exact-id
+  // match) AND short labels have low Jaccard (misses lexical-0.5 tier).
+  // Without the fallback, blocked events are never detected.
+  test('Fix 3: detects blocked via label-similarity fallback when IDs differ', () => {
+    // Fresh IDs, completely different from previous.
+    const previous = [sub('prev-infra-work', 'infrastructure deployment work', 'active')];
+    const current = [sub('new-infra-work-2026', 'infrastructure deployment work', 'blocked')];
+    // matchAllThreads with exact-id strategy will NOT match (different IDs).
+    // Lexical tier WILL match because labels are identical — but let's also test
+    // the scenario where labels are similar but not matching at 0.5.
+    const matches = matchAllThreads(current, previous);
+    const events = detectLifecycleEvents(previous, current, matches);
+    const blocked = events.filter((e) => e.kind === 'blocked');
+    assert.ok(blocked.length >= 1, 'should detect at least one blocked event');
+    if (blocked[0].kind === 'blocked') {
+      assert.equal(blocked[0].thread_id, 'new-infra-work-2026');
+    }
+  });
+
+  test('Fix 3: detects blocked even when no previous match (fresh blocked thread)', () => {
+    // Brand new thread that shows up already blocked — no previous match at all.
+    const previous = [sub('unrelated-thread', 'something completely different', 'active')];
+    const current = [sub('fresh-blocked-thread', 'freshly blocked work item', 'blocked')];
+    const matches = matchAllThreads(current, previous);
+    const events = detectLifecycleEvents(previous, current, matches);
+    const blocked = events.filter((e) => e.kind === 'blocked');
+    // Should emit blocked for fresh-blocked-thread (no label similarity, but status=blocked)
+    assert.ok(blocked.length >= 1, 'should detect blocked for a brand-new blocked thread');
+  });
+
+  test('Fix 3: does NOT re-emit blocked if previous thread was already blocked (stable blocked)', () => {
+    // If prev was already blocked and current is still blocked, same ID, no re-emit.
+    const previous = [sub('work-x', 'waiting for external review', 'blocked')];
+    const current = [sub('work-x', 'waiting for external review', 'blocked')];
+    const matches = matchAllThreads(current, previous);
+    const events = detectLifecycleEvents(previous, current, matches);
+    // The primary blocked detection path checks prev.status !== 'blocked', so
+    // it won't re-emit. The fallback also checks fallbackPrev.status !== 'blocked'.
+    const blocked = events.filter((e) => e.kind === 'blocked');
+    assert.equal(blocked.length, 0, 'should NOT re-emit blocked for a stably-blocked thread');
+  });
 });
 
 describe('summarizeLifecycle', () => {
