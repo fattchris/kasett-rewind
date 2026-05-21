@@ -46,15 +46,15 @@ describe('buildSteeringPrompt — V3 schema embedding', () => {
     assert.equal(out.includes("Previous compaction's `key_state`"), false);
   });
 
-  test('caps candidate display at 30 entries', () => {
-    const candidates: KeyStateEntry[] = Array.from({ length: 50 }, (_, i) => ({
+  test('caps candidate display at 50 entries', () => {
+    const candidates: KeyStateEntry[] = Array.from({ length: 80 }, (_, i) => ({
       kind: 'value',
       value: `v${i}`,
     }));
     const out = buildSteeringPrompt([], { candidateKeyState: candidates });
     assert.match(out, /v0/);
-    assert.match(out, /v29/);
-    assert.equal(out.includes('v30'), false);
+    assert.match(out, /v49/);
+    assert.equal(out.includes('v50'), false);
   });
 
   test('field guidance mentions key_state with field semantics', () => {

@@ -1,0 +1,134 @@
+# Conversation Summary: Infrastructure Migration & Security Standup
+
+## 1. GKE Migration (EKS → GKE)
+**Cost Reduction:** $28,400/month (EKS) → $11,200/month (GKE) = ~60% savings
+
+**Infrastructure Details:**
+- Source: `arn:aws:eks:us-east-1:492372116065:cluster/molt-prod`
+- Target: `gke-prod-molt-us-central1-a` (us-central1-a zone)
+- Node pool: standard-32-spot-pool
+- Single-zone deployment to minimize cross-zone egress costs during validation
+
+**Migration Plan:**
+- Stateless API workers migrate first
+- Customer dashboard migrates **last** (blocked by 504 issue)
+- Target spend: $11,200/month
+
+---
+
+## 2. OIDC Authentication Migration
+**Current State:** In progress - cutting over auth middleware
+
+**Configuration:**
+- OIDC issuer: `https://auth.moltai.com/realms/prod`
+- Key ID: `kid-2026-05-prod-001`
+- Session TTL: 8 hours (matches old static config)
+
+**Rollout Timeline:**
+- Dual-path validation for 30 days (backwards compatibility)
+- Soft launch tomorrow: read-only headers, no enforcement
+- Hard cutover: end of week (pending 504 fix)
+- After 30 days: drop static JWT path, OIDC-only
+
+---
+
+## 3. Dashboard 504 Errors
+**Issue:** Sentry PROJ-12847
+
+**Details:**
+- Error rate: 0.7% (above 0.5% threshold)
+- Endpoint: `/api/v2/dashboard/metrics` (consistent)
+- Root cause: Upstream timeout to analytics service
+- Pre-existing issue, recently exceeded threshold
+
+**Actions Taken:**
+- Rollback attempted - issue persisted on previous build
+- **Blocking:** GKE migration of dashboard until resolved
+
+---
+
+## 4. Rate Limiter Rollout
+**Status:** In progress
+
+**Infrastructure:**
+- Redis backend: `redis://rl-prod.cache.amazonaws.com:6379/3`
+- API gateway: `agi-9k3jx7q2vp`
+
+**Rate Limits (by tier):**
+- Free: 100 req/min
+- Paid: 1,000 req/min
+- Enterprise: 10,000 req/min
+- Default (no claim): 1,000 req/min
+- All keyed by token claims
+
+**Deployment:**
+- Soft launch tomorrow (read-only headers)
+- Hard cutover end of week (pending 504 fix)
+
+---
+
+## 5. Database Credential Rotation
+**Status:** In progress - 24h grace period active
+
+**Vault Paths:**
+- Namespace: `admin/molt-prod`
+- New credentials: `kv/prod/db/master/v3`
+- Old credentials: `kv/prod/db/master/v2` (active for 24h)
+- Endpoint: `molt-prod.cluster-cqm9w.us-east-1.rds.amazonaws.com:5432`
+
+**Timeline:**
+- v2 deletion: 24h after all services confirm v3 auth success
+- Manual revocation after metrics dashboard confirms all clear
+
+---
+
+## 6. VPC Peering Terraform Module
+**Status:** Ready for review - awaiting network lead approval
+
+**Details:**
+- PR: #1247 (infra repo)
+- Peering connection: `pcx-0a8c4e7f23b9d1e5a`
+- Test plan: Sandbox first (successful), then prod
+- Sandbox validation: Successful peering across two VPCs
+
+---
+
+## 7. SRE Onboarding
+**New Hire:** Maya Lin
+
+**Details:**
+- Start date: Monday
+- Email: `maya.lin@moltaicorp.com`
+- Day 1: Runbook walkthrough
+- Runbook URL: `https://wiki.moltaicorp.com/sre/runbooks/incident-response-v4`
+  - Updated for OIDC migration and rate limiter rollout
+- Shadowing: Pairing with senior on-call for first two weeks
+
+---
+
+## 8. SOC 2 Type II Audit
+**Audit Window:** 2026-04-01 to 2026-06-30
+
+**Contacts & Storage:**
+- Auditor PM: `audit-pm@trustwave.com`
+- Evidence bucket: `s3://moltai-soc2-evidence/2026-q2/`
+- Access: Audit IAM role only
+- Security: SSE-KMS, versioning, MFA delete enabled
+
+**Outstanding Items:**
+- Credential rotation evidence (covered by v3 vault path)
+- OIDC cutover documentation
+- Both expected to land this week
+
+---
+
+## Key Blockers & Dependencies
+1. **504 errors** blocking dashboard GKE migration
+2. **Network lead approval** needed for VPC peering (PR #1247)
+3. **OIDC hard cutover** dependent on 504 resolution
+
+## Active Work Streams
+- OIDC middleware refactoring
+- Rate limiter implementation
+- VPC peering Terraform module
+- SOC 2 evidence collection

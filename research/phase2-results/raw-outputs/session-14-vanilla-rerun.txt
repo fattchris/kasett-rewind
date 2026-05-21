@@ -1,0 +1,42 @@
+# Conversation Summary
+
+## Five Active Work Tracks
+
+### 1. **Notifications Service Unification**
+- **Decision**: Merging `molt-email-notifications` and `molt-push-notifications` into unified `molt-notifications`
+- **Repository**: `github.com/moltaicorp/molt-notifications`
+- **Migration Plan**: 
+  - Start with email channel first
+  - Then add push channel
+  - Retire both old services once parity confirmed
+- **Status**: No updates since initial discussion
+
+### 2. **Datadog Logging Consolidation**
+- **Target Platform**: Datadog (datadoghq.com)
+- **API Key Location**: `kv/prod/datadog/api-key`
+- **Retention**: 90 days
+- **CloudWatch Strategy**: Retained for AWS-native logs only; all application logs flow to Datadog via agent
+- **Status**: No updates since initial discussion
+
+### 3. **Admin Tooling for Customer Success**
+- **URL**: `https://admin.moltaicorp.com`
+- **Access Control**: Scoped to `CustomerSuccessAdmin` role
+- **Features**: Customer lookup, plan changes, refund issuance, audit trail
+- **Status**: No updates since initial discussion
+
+### 4. **SDK Generation Pipeline**
+- **TypeScript SDK**: Published to `npm:@moltai/sdk`
+- **Python SDK**: Published to `pypi:moltai-sdk`
+- **Current Version**: 3.4.0
+- **Automation**: GitHub Actions auto-publishes both SDKs on git tags matching `v*`
+- **Status**: No updates since initial discussion
+
+### 5. **Read Replica Provisioning for Reporting**
+- **Endpoint**: `molt-prod-ro.cluster-ro-xyz.us-east-1.rds.amazonaws.com`
+- **Instance Class**: `db.r6g.2xlarge` (sufficient for current load)
+- **Database Role**: `reporting_ro`
+- **Connected Tools**: Tableau and Looker
+- **Status**: No updates since initial discussion
+
+## Current State
+All five tracks have been defined with specific technical details, but no progress updates have been reported since the initial planning discussion.

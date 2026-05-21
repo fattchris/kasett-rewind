@@ -381,13 +381,16 @@ function buildJsonInstructions(previousSubIds, candidateKeyState, previousKeySta
         }
     }
     if (candidateKeyState && candidateKeyState.length > 0) {
+        const cappedCandidates = candidateKeyState.slice(0, 50);
         lines.push('');
-        lines.push('#### Detected candidate values from this conversation (KEEP the still-relevant ones)');
+        lines.push(`#### Detected candidate values from this conversation (${cappedCandidates.length} candidates — MUST preserve relevant ones)`);
         lines.push('');
-        lines.push('These were auto-detected by regex — they are HINTS, not commands. ' +
-            'Drop ones that are no longer relevant. Add ones we missed. Keep the values exact.');
+        lines.push(`Below are ${cappedCandidates.length} candidate key facts detected from the conversation. ` +
+            'Your key_state output MUST include facts from this list when they are still relevant. ' +
+            'Do not invent new facts not grounded in the conversation; select and preserve from the candidates below. ' +
+            'Drop candidates that are clearly superseded or no longer relevant. Keep the values verbatim.');
         lines.push('');
-        for (const e of candidateKeyState.slice(0, 30)) {
+        for (const e of cappedCandidates) {
             lines.push(`  - ${formatKeyStateHint(e)}`);
         }
     }

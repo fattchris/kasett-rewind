@@ -1,0 +1,167 @@
+The session covered a multi-threaded standup across infrastructure migration, authentication refactoring, operational issues, and compliance work. The primary focus was migrating from EKS to GKE to reduce monthly compute costs from $28,400 to approximately $11,200 — a 60% reduction. The new GKE cluster `gke-prod-molt-us-central1-a` is being deployed in a single zone initially to minimize cross-zone egress costs during validation. Migration will proceed in phases, starting with stateless API workers, but the customer dashboard migration is blocked pending resolution of a 504 error issue.
+
+The OIDC authentication cutover is in progress, moving from static JWT validation to an OIDC issuer at `https://auth.moltai.com/realms/prod`. The new key id `kid-2026-05-prod-001` will be validated with an 8-hour session TTL. A 30-day dual-path validation period will maintain backwards compatibility with old tokens before the static path is dropped. Soft launch is planned for tomorrow with read-only headers, followed by hard cutover end of week contingent on the dashboard 504 issue being resolved.
+
+The dashboard 504 errors (Sentry issue PROJ-12847) are affecting `/api/v2/dashboard/metrics` specifically, with a 0.7% error rate just above the 0.5% threshold. Rolling back the recent deploy did not resolve the issue, indicating a pre-existing problem that only recently crossed the threshold. The issue appears to be an upstream timeout to the analytics service and is blocking the GKE migration of the dashboard workload.
+
+Rate limiting infrastructure is being deployed with a Redis backend at `redis://rl-prod.cache.amazonaws.com:6379/3` and API gateway `agi-9k3jx7q2vp`. Default policy is 1000 req/min per token, with tier-specific overrides: free tier 100/min, paid 1000/min, enterprise 10000/min. Database credential rotation is underway with new credentials at vault path `kv/prod/db/master/v3` and a 24-hour grace period for the old `v2` credentials. The RDS endpoint remains `molt-prod.cluster-cqm9w.us-east-1.rds.amazonaws.com:5432`.
+
+A new VPC peering Terraform module is ready for review in PR #1247, with peering connection `pcx-0a8c4e7f23b9d1e5a` already validated in sandbox. Network lead sign-off is required before prod apply. New SRE Maya Lin starts Monday and will pair with senior on-call for two weeks, beginning with the incident response runbook at `https://wiki.moltaicorp.com/sre/runbooks/incident-response-v4`. SOC 2 Type II audit preparation is underway for the 2026-04-01 to 2026-06-30 window, with evidence being collected in `s3://moltai-soc2-evidence/2026-q2/` and auditor contact at `audit-pm@trustwave.com`.
+
+```json
+{
+  "main": "Multi-threaded infrastructure standup covering EKS-to-GKE migration, OIDC cutover, dashboard 504 debugging, rate limiter rollout, DB rotation, VPC peering, SRE onboarding, and SOC 2 prep",
+  "sub": [
+    {
+      "id": "eks-to-gke-migration",
+      "label": "Migrate from EKS to GKE to reduce monthly compute costs from $28,400 to $11,200",
+      "status": "active"
+    },
+    {
+      "id": "oidc-auth-cutover",
+      "label": "Refactor auth middleware from static JWTs to OIDC validation",
+      "status": "active"
+    },
+    {
+      "id": "dashboard-504-debugging",
+      "label": "Debug 504 errors on /api/v2/dashboard/metrics (0.7% error rate)",
+      "status": "blocked"
+    },
+    {
+      "id": "rate-limiter-rollout",
+      "label": "Deploy rate limiting on public API gateway with Redis backend",
+      "status": "active"
+    },
+    {
+      "id": "db-credential-rotation",
+      "label": "Rotate RDS master credentials with 24h grace period",
+      "status": "active"
+    },
+    {
+      "id": "vpc-peering-terraform",
+      "label": "Build and review Terraform module for VPC peering setup",
+      "status": "active"
+    },
+    {
+      "id": "sre-onboarding",
+      "label": "Onboard new SRE Maya Lin starting Monday",
+      "status": "active"
+    },
+    {
+      "id": "soc2-audit-prep",
+      "label": "Prepare SOC 2 Type II audit evidence for Q2 2026 window",
+      "status": "active"
+    }
+  ],
+  "decisions": [
+    "Deploy GKE in single zone (us-central1-a) initially to minimize cross-zone egress costs during validation",
+    "Migrate stateless API workers first; hold dashboard migration until 504 issue resolved",
+    "Maintain 30-day dual-path validation for old JWT tokens during OIDC cutover",
+    "Soft launch rate limiter tomorrow with read-only headers; hard cutover end of week if 504 fixed",
+    "24-hour grace period for old DB credentials at v2 path before manual revocation"
+  ],
+  "open_questions": [
+    "Root cause of dashboard 504 errors on /api/v2/dashboard/metrics — appears to be upstream analytics service timeout",
+    "When will network lead provide sign-off on VPC peering PR #1247?",
+    "Will credential rotation evidence and OIDC cutover docs land this week as planned?"
+  ],
+  "key_state": [
+    {
+      "kind": "id",
+      "value": "gke-prod-molt-us-central1-a",
+      "label": "GKE prod cluster id",
+      "thread_id": "eks-to-gke-migration"
+    },
+    {
+      "kind": "id",
+      "value": "arn:aws:eks:us-east-1:492372116065:cluster/molt-prod",
+      "label": "EKS prod cluster being migrated from",
+      "thread_id": "eks-to-gke-migration"
+    },
+    {
+      "kind": "url",
+      "value": "https://auth.moltai.com/realms/prod",
+      "label": "OIDC issuer endpoint",
+      "thread_id": "oidc-auth-cutover"
+    },
+    {
+      "kind": "id",
+      "value": "kid-2026-05-prod-001",
+      "label": "OIDC JWT key id",
+      "thread_id": "oidc-auth-cutover"
+    },
+    {
+      "kind": "path",
+      "value": "/api/v2/dashboard/metrics",
+      "label": "Dashboard endpoint with 504 errors",
+      "thread_id": "dashboard-504-debugging"
+    },
+    {
+      "kind": "id",
+      "value": "PROJ-12847",
+      "label": "Sentry issue tracking dashboard 504s",
+      "thread_id": "dashboard-504-debugging"
+    },
+    {
+      "kind": "url",
+      "value": "redis://rl-prod.cache.amazonaws.com:6379/3",
+      "label": "Rate limiter Redis backend",
+      "thread_id": "rate-limiter-rollout"
+    },
+    {
+      "kind": "id",
+      "value": "agi-9k3jx7q2vp",
+      "label": "API gateway id for rate limiter",
+      "thread_id": "rate-limiter-rollout"
+    },
+    {
+      "kind": "path",
+      "value": "kv/prod/db/master/v3",
+      "label": "New DB master credentials vault path",
+      "thread_id": "db-credential-rotation"
+    },
+    {
+      "kind": "path",
+      "value": "kv/prod/db/master/v2",
+      "label": "Old DB master credentials vault path (24h grace)",
+      "thread_id": "db-credential-rotation"
+    },
+    {
+      "kind": "url",
+      "value": "molt-prod.cluster-cqm9w.us-east-1.rds.amazonaws.com:5432",
+      "label": "RDS master endpoint",
+      "thread_id": "db-credential-rotation"
+    },
+    {
+      "kind": "id",
+      "value": "pcx-0a8c4e7f23b9d1e5a",
+      "label": "VPC peering connection id",
+      "thread_id": "vpc-peering-terraform"
+    },
+    {
+      "kind": "url",
+      "value": "https://wiki.moltaicorp.com/sre/runbooks/incident-response-v4",
+      "label": "SRE incident response runbook",
+      "thread_id": "sre-onboarding"
+    },
+    {
+      "kind": "value",
+      "value": "maya.lin@moltaicorp.com",
+      "label": "New SRE email",
+      "thread_id": "sre-onboarding"
+    },
+    {
+      "kind": "path",
+      "value": "s3://moltai-soc2-evidence/2026-q2/",
+      "label": "SOC 2 evidence S3 bucket",
+      "thread_id": "soc2-audit-prep"
+    },
+    {
+      "kind": "value",
+      "value": "audit-pm@trustwave.com",
+      "label": "SOC 2 auditor PM contact",
+      "thread_id": "soc2-audit-prep"
+    }
+  ]
+}
+```

@@ -98,6 +98,17 @@ export async function runHotSwapWorker(params) {
         const schemaVersion = parsed.version;
         const keyStateCount = parsed.metaV3?.key_state?.length ?? 0;
         const keyStateDetectedCount = keyStateCandidates.length;
+        // Fix 1 — count how many candidate values actually appear in the LLM's output key_state.
+        // "preserved" = candidate value string appears verbatim in at least one output key_state entry.
+        const candidatesSent = Math.min(keyStateCandidates.length, 50);
+        let candidatesPreserved = 0;
+        if (keyStateCandidates.length > 0 && parsed.metaV3?.key_state && parsed.metaV3.key_state.length > 0) {
+            const outputValues = new Set(parsed.metaV3.key_state.map((e) => e.value));
+            for (const c of keyStateCandidates.slice(0, 50)) {
+                if (outputValues.has(c.value))
+                    candidatesPreserved += 1;
+            }
+        }
         if (schemaVersion === 'none' && parsed.errors.length > 0) {
             await diag(`PARSE_NONE stub=${stubId} v3_errors=${parsed.errors.slice(0, 2).join('; ').slice(0, 200)}`);
         }
@@ -213,7 +224,29 @@ export async function runHotSwapWorker(params) {
         }
         const metaMain = parsed.metaV3?.main ?? parsed.metaV2?.main ?? parsed.metaV1?.main ?? null;
         logger.info(`[kasett-rewind:sidecar] Sidecar entry written for stub ${stubId} (${fullSummary.length} chars, schema=${schemaVersion}, meta_main=${metaMain ?? 'null'}, key_state=${keyStateCount}/${keyStateDetectedCount})`);
-        await diag(`SIDECAR_WRITTEN stub=${stubId} path=${sidecarPath} chars=${fullSummary.length} schema=${schemaVersion} meta_main=${metaMain ?? 'null'} key_state=${keyStateCount} detected=${keyStateDetectedCount}`);
+        await diag(`SIDECAR_WRITTEN stub=${stubId} path=${sidecarPath} chars=${fullSummary.length} schema=${schemaVersion} meta_main=${metaMain ?? 'null'} key_state=${keyStateCount} detected=${keyStateDetectedCount} candidates_sent=${candidatesSent} candidates_preserved=${candidatesPreserved}`);
+        // Fix 1 — log candidate preservation metrics to hook-events.jsonl for KSSR observability.
+        try {
+            const { appendFile: af } = await import('node:fs/promises');
+            const hookLogPath = process.env['KASETT_HOOK_LOG'] ||
+                '/home/node/.openclaw/workspace/repos/kasett-rewind/research/hook-events.jsonl';
+            const hookEv = JSON.stringify({
+                ts: new Date().toISOString(),
+                hook: 'after_compaction',
+                action: 'candidate_preservation',
+                detail: {
+                    stubId,
+                    candidates_sent: candidatesSent,
+                    candidates_preserved: candidatesPreserved,
+                    key_state_output: keyStateCount,
+                    preservation_rate: candidatesSent > 0
+                        ? Math.round((candidatesPreserved / candidatesSent) * 1000) / 10
+                        : null,
+                },
+            });
+            await af(hookLogPath, hookEv + '\n');
+        }
+        catch { /* never throw from observability */ }
         onSidecarWritten?.({
             sidecarPath,
             summaryChars: fullSummary.length,

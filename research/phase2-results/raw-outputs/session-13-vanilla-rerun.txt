@@ -1,0 +1,84 @@
+# Q2 Platform Work - Summary of 10 Parallel Tracks
+
+## 1. Kafka Migration
+**Status:** Kicking off
+- **Source:** MSK cluster `arn:aws:kafka:us-east-1:492372116065:cluster/msk-prod/abc-123`
+- **Target:** Strimzi 0.39.0 on EKS, namespace `kafka-prod`
+- **MSK EOL Date:** 2026-08-15
+- **Blockers:** None reported
+
+## 2. PostgreSQL Upgrade (14 → 16)
+**Status:** Scheduled
+- **Maintenance Window:** 2026-05-25 03:00 UTC
+- **Version Upgrade:** 14.10 → 16.2
+- **Endpoint:** `molt-prod-rds.cluster-xyz.us-east-1.rds.amazonaws.com` (endpoint remains unchanged)
+- **Backup Plan:** Snapshot before upgrade, manual rollback path documented
+- **Blockers:** None reported
+
+## 3. Bundle Size Optimization
+**Status:** In progress
+- **Current Size:** 847KB
+- **Target Size:** 500KB
+- **Progress:** Tree-shaking and lazy-loading implementation underway
+- **Key Win:** Replaced full Lodash import with selective imports (saved 80KB)
+- **Blockers:** None reported
+
+## 4. Feature Store (Feast) Rollout
+**Status:** In progress
+- **Registry:** `s3://moltai-feast-registry-prod`
+- **Online Store:** `feast-online.cache.amazonaws.com:6379`
+- **Offline Store:** `s3://moltai-feast-offline-prod`
+- **First Model:** Recommendation model
+- **Blockers:** None reported
+
+## 5. v1 API Deprecation
+**Status:** Customer notification complete
+- **Sunset Date:** 2026-09-01
+- **Deprecated Endpoints:** 34 endpoints
+- **Migration Guide:** Published with v2 equivalents documented
+- **Customer Notification:** Email sent
+- **Blockers:** None reported
+
+## 6. Distributed Tracing (OpenTelemetry)
+**Status:** Partial deployment
+- **OTel Collector:** `otel-collector.observability:4317`
+- **Jaeger UI:** `https://jaeger.moltaicorp.com`
+- **Instrumented Services:** Auth, API gateway, billing
+- **Blockers:** None reported
+
+## 7. Cost Tagging
+**Status:** Enforcement active
+- **Tag Namespace:** `moltai:` prefix
+- **Required Tags:** `environment`, `service`, `owner`, `cost-center`
+- **Enforcement:** AWS Config rule active
+- **Dashboard:** `https://grafana.moltaicorp.com/d/cost-allocation`
+- **Remediation:** Untagged resources flagged for owner action
+- **Blockers:** None reported
+
+## 8. IAM/SSO Migration
+**Status:** In progress
+- **SSO URL:** `https://moltaicorp.awsapps.com/start`
+- **Permission Set:** `DeveloperAccess-Prod`
+- **Okta App ID:** `okta-app-0oa3xyz123`
+- **Legacy IAM Users:** 23 users to be deprecated
+- **Blockers:** None reported
+
+## 9. Feature Flags (LaunchDarkly)
+**Status:** Migration in progress
+- **Project Key:** `moltai-prod`
+- **SDK Key:** Environment variable `LAUNCHDARKLY_SDK_KEY`
+- **Migrated Flags:** 156 flags from legacy system
+- **Blockers:** None reported
+
+## 10. On-Call Rotation (PagerDuty → Opsgenie)
+**Status:** Migration in progress
+- **Opsgenie Integration Key:** `og-int-key-2026-05`
+- **Team ID:** `team-sre-prod`
+- **Routing Rules:** All ported and wired into Alertmanager
+- **PagerDuty EOL:** 2026-07-01
+- **Blockers:** None reported
+
+---
+
+## Overall Status
+All 10 tracks are progressing with **no blockers reported** across any initiative. Key dates to monitor: PagerDuty EOL (2026-07-01), MSK EOL (2026-08-15), and v1 API sunset (2026-09-01).

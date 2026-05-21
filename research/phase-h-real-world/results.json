@@ -1,0 +1,77 @@
+{
+  "phase": "H",
+  "title": "Real-world 7-day Kasett compaction analysis",
+  "window_start": "2026-05-12T00:00:00Z",
+  "window_end": "2026-05-19T21:42:00Z",
+  "generated_at": "2026-05-19T21:50:00Z",
+  "model_used_for_probes": "anthropic/claude-sonnet-4.5",
+  "scoring_method": "substring (canonical in response, case-insensitive)",
+
+  "sample": {
+    "total_sidecar_files": 8,
+    "unique_sessions": 7,
+    "total_compaction_records": 11,
+    "note_duplicate": "64734813-1063-4693-96d6-d7b994fd9ba8.jsonl.kasett-meta.jsonl is byte-identical to agent:main:telegram:group:-1003723465246:topic:12388.jsonl.kasett-meta.jsonl (legacy filename → same session). Effective unique compactions = 9.",
+    "schema_distribution": {
+      "v1": 6,
+      "v3": 3,
+      "v3-recovered": 2
+    },
+    "multi_compaction_sessions_raw": 3,
+    "multi_compaction_sessions_real": 1,
+    "note_recovered": "Two of the three multi-compaction sessions are the v1 + v3-recovered backfill pair (64734813 and its dup alias). Same ts, same content — recovered is a retroactive schema upgrade, not a real second compaction. Effective real multi-compaction session count = 1 (4ce855d8)."
+  },
+
+  "v3_field_stats": {
+    "n": 5,
+    "key_state_candidates_len": {"mean": 562.2, "median": 101, "min": 34, "max": 1519},
+    "sub_thread_count": {"mean": 5.0, "median": 5, "min": 5, "max": 5, "cap_hit": "ALL v3 records have exactly 5 sub-threads — schema cap of 5 confirmed reached on every v3 emission"},
+    "decisions_count": {"mean": 3.8, "median": 3, "min": 3, "max": 5},
+    "open_questions_count": {"mean": 2.4, "median": 3, "min": 0, "max": 4}
+  },
+
+  "schema_observation": {
+    "expected_field_key_state": "Per spec, v3 should expose `key_state` as a flat structured array.",
+    "actual_field": "Sidecars contain `key_state_candidates` (the un-filtered candidate dump) but NOT a curated `key_state` field. The curated key_state appears ONLY inside the trailing `## Exact identifiers` JSON block of `summary_rich`, not as a top-level sidecar field.",
+    "implication": "Programmatic consumers must parse summary_rich to extract key_state. The 'sidecar enables structured access' design intent is partially unrealized."
+  },
+
+  "vanilla_kasett_ablation": {
+    "design": "On the one real multi-compaction session (4ce855d8 C2), we constructed VANILLA = summary_rich with the trailing '## Exact identifiers' JSON block stripped (3,559 chars of prose only), and KASETT = full summary_rich (8,340 chars including thread_meta_v2 + key_state JSON). This is the correct ablation given that v3 inlines the structured block INTO summary_rich rather than keeping it as a separate consumer-side field.",
+    "vanilla_context_chars": 3559,
+    "kasett_context_chars": 8340,
+    "delta_chars_added_by_kasett": 4781,
+    "n_probes": 7,
+    "results": {
+      "vanilla_recall_at_1": "2/7 (28.6%)",
+      "kasett_recall_at_1": "7/7 (100.0%)",
+      "absolute_lift_pp": 71.4,
+      "wins": ["p1: Greg's TG ID 8275265360", "p2: Brain instance i-0241ec1c631202ea8", "p3: Eschabot IP 34.136.186.121", "p4: Sentinel EFS fs-095822d3ba8f8ea17", "p5: OC version 2026.5.7"],
+      "ties_both_correct": ["p6: EBS backup tag 'hourly'", "p7: moltaiconnect repo name"],
+      "vanilla_only": [],
+      "kasett_only": ["p1","p2","p3","p4","p5"]
+    },
+    "statistical_warning": "n=7 probes from n=1 real multi-compaction session. Underpowered for population-level inference. McNemar test on 5 discordant pairs (kasett wins all 5) gives a one-sided exact p = 1/2^5 = 0.03125, suggestive but NOT robust given single-session sourcing."
+  },
+
+  "per_session_breakdown": [
+    {"session": "07d2f2d5-...-topic-5392", "compactions": 1, "schemas": ["v1"], "summary_rich_chars": [101422], "key_state_candidates": [35], "sub_threads": [0]},
+    {"session": "2ab19b6e-...-topic-11727", "compactions": 1, "schemas": ["v1"], "summary_rich_chars": [2179], "key_state_candidates": [534], "sub_threads": [0]},
+    {"session": "4ce855d8-...-topic-5392", "compactions": 2, "schemas": ["v1","v3"], "summary_rich_chars": [635, 8340], "key_state_candidates": [1633, 1519], "sub_threads": [0, 5], "real_multi_compaction": true, "gap_hours": 41.97},
+    {"session": "64734813", "compactions": 2, "schemas": ["v1","v3-recovered"], "summary_rich_chars": [14113, 14113], "key_state_candidates": [34, 34], "sub_threads": [0, 5], "real_multi_compaction": false, "note": "v3-recovered is a backfill of v1 — same timestamp range, no real second compaction event"},
+    {"session": "73647668-...-topic-5392", "compactions": 1, "schemas": ["v1"], "summary_rich_chars": [40286], "key_state_candidates": [32], "sub_threads": [0]},
+    {"session": "b3b78b63-...-topic-28204", "compactions": 1, "schemas": ["v3"], "summary_rich_chars": [12222], "key_state_candidates": [101], "sub_threads": [5]},
+    {"session": "c975ec28-...-topic-28727", "compactions": 1, "schemas": ["v3"], "summary_rich_chars": [10082], "key_state_candidates": [1123], "sub_threads": [5]}
+  ],
+
+  "bugs_observed": {
+    "v1_to_v3_partial_adoption": "Of 6 v1 records, 3 are from 2026-05-19 (today) — Path C compaction (compact-CNsgTXwX.js) is still producing v1 schema after the v2 hot-patch. Confirms bug from 2026-05-19-sidecar-failure-diagnostic.md.",
+    "missed_compaction_2026_05_18T21:19": "Known compaction event on session 5ab439f7-...-topic-5392 produced no sidecar at all. Not present in /home/node/.openclaw/agents/main/sessions/. Confirms the v3-path-c.diff is not yet in production.",
+    "sub_thread_cap_5": "Every v3 record reports exactly 5 sub-threads — hitting (or being capped at) the schema ceiling. Suggests truncation; real thread diversity may be higher.",
+    "key_state_field_missing": "Top-level `key_state` field absent; only `key_state_candidates` present (containing raw URL/path mentions, not curated identifiers). The curated key_state lives only inside the summary_rich JSON block.",
+    "duplicate_sidecar_files": "agent:main:telegram:group:-1003723465246:topic:12388.jsonl.kasett-meta.jsonl is a byte-identical copy of 64734813's sidecar — orphaned legacy filename. Cleanup opportunity."
+  },
+
+  "verdict": "POSITIVE-but-UNDERPOWERED",
+  "verdict_detail": "On the single real multi-compaction case in the 7-day window, kasett's structured block recovers 5 high-value identifiers that vanilla prose drops (71.4 pp absolute lift). The mechanism works as designed. However n=1 session × 7 probes is far below publication threshold. Phase 4 (synthetic, 22.2% vs 55.6%, p=0.0005) remains the publishable result; Phase H confirms the mechanism produces the SAME class of wins on a real Clyde session."
+}

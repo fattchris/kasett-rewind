@@ -1,0 +1,119 @@
+The session covered six parallel workstreams for the Moltai product: customer onboarding revamp, pricing tier restructuring, Stripe billing portal setup, product analytics dashboard, email migration to Postmark, and GDPR data export implementation. All six tracks are in active development with no outstanding blockers.
+
+The customer onboarding revamp (formerly signup-v2) is being designed in Figma and will land as PR #892. The pricing tier restructuring moves from a 3-tier to 4-tier model with starter at $49/mo, pro at $199/mo, business at $499/mo, and enterprise custom. New customers get the 4-tier model starting next Monday; existing customers remain on grandfathered 3-tier until renewal. This change is coordinated with PR #897 and the Stripe portal rollout.
+
+The Stripe billing portal is configured at billing.moltaicorp.com with DNS verified and SSL automatically provisioned. A test $1 transaction was successfully processed and refunded through Stripe account acct_1OqB7zE2k9jX4mPp, confirming end-to-end flow.
+
+The product analytics dashboard reads from molt-analytics-prod.aurora.us-east-1 and is accessible at https://dashboards.moltaicorp.com/product-usage-v2. It performs hourly aggregations from raw events and refreshes on access. Access is restricted to the product team SSO group with PII redacted at the SQL view layer.
+
+Email migration from Mailgun to Postmark is underway with Mailgun EOL set for 2026-06-15. The new transactional domain mail.moltaicorp.com is configured with SPF, DKIM, and DMARC records. Postmark server token pm-server-token-2026-05 is in place, and the plan supports up to 300k emails/month against current peak usage of 180k.
+
+The GDPR data export feature exposes GET /api/v2/users/{id}/data-export, returning a signed URL into s3://moltai-gdpr-exports-prod with 24-hour TTL. The implementation covers 47 PII columns across 12 tables with KMS encryption at rest and object-lock for compliance hold.
+
+```json
+{
+  "main": "Six parallel product workstreams: onboarding revamp, pricing restructure, billing portal, analytics dashboard, email migration, and GDPR export",
+  "sub": [
+    {
+      "id": "customer-onboarding-revamp",
+      "label": "Customer onboarding revamp (formerly signup-v2) — Figma design to PR #892",
+      "status": "active"
+    },
+    {
+      "id": "pricing-tier-restructure",
+      "label": "Pricing tier restructuring from 3-tier to 4-tier model",
+      "status": "active"
+    },
+    {
+      "id": "stripe-billing-portal",
+      "label": "Stripe billing portal setup at billing.moltaicorp.com",
+      "status": "active"
+    },
+    {
+      "id": "product-analytics-dashboard",
+      "label": "Product analytics dashboard for usage metrics",
+      "status": "active"
+    },
+    {
+      "id": "email-migration-postmark",
+      "label": "Email migration from Mailgun to Postmark",
+      "status": "active"
+    },
+    {
+      "id": "gdpr-data-export",
+      "label": "GDPR data export API endpoint implementation",
+      "status": "active"
+    }
+  ],
+  "decisions": [
+    "Renamed signup-v2 to customer-onboarding-revamp; PR #892 will reference both names for searchability",
+    "New 4-tier pricing (starter $49, pro $199, business $499, enterprise custom) effective next Monday for new customers only",
+    "Existing customers remain on grandfathered 3-tier until next renewal",
+    "Postmark transactional domain is mail.moltaicorp.com with full DNS authentication configured",
+    "GDPR export covers 47 PII columns across 12 tables with 24h signed URL TTL"
+  ],
+  "open_questions": [],
+  "key_state": [
+    {
+      "kind": "url",
+      "value": "https://figma.com/file/aBcD3fGhI4j/onboarding-revamp",
+      "label": "Customer onboarding revamp Figma design",
+      "thread_id": "customer-onboarding-revamp"
+    },
+    {
+      "kind": "id",
+      "value": "acct_1OqB7zE2k9jX4mPp",
+      "label": "Stripe account ID",
+      "thread_id": "stripe-billing-portal"
+    },
+    {
+      "kind": "url",
+      "value": "https://dashboards.moltaicorp.com/product-usage-v2",
+      "label": "Product analytics dashboard",
+      "thread_id": "product-analytics-dashboard"
+    },
+    {
+      "kind": "path",
+      "value": "/api/v2/users/{id}/data-export",
+      "label": "GDPR data export endpoint",
+      "thread_id": "gdpr-data-export"
+    },
+    {
+      "kind": "config",
+      "value": "pm-server-token-2026-05",
+      "label": "Postmark server token",
+      "thread_id": "email-migration-postmark"
+    },
+    {
+      "kind": "value",
+      "value": "molt-analytics-prod.aurora.us-east-1",
+      "label": "Analytics database datasource",
+      "thread_id": "product-analytics-dashboard"
+    },
+    {
+      "kind": "value",
+      "value": "s3://moltai-gdpr-exports-prod",
+      "label": "GDPR export S3 bucket",
+      "thread_id": "gdpr-data-export"
+    },
+    {
+      "kind": "value",
+      "value": "billing.moltaicorp.com",
+      "label": "Stripe billing portal custom domain",
+      "thread_id": "stripe-billing-portal"
+    },
+    {
+      "kind": "value",
+      "value": "mail.moltaicorp.com",
+      "label": "Postmark transactional email domain",
+      "thread_id": "email-migration-postmark"
+    },
+    {
+      "kind": "value",
+      "value": "2026-06-15",
+      "label": "Mailgun EOL date",
+      "thread_id": "email-migration-postmark"
+    }
+  ]
+}
+```

@@ -11,7 +11,7 @@
 - [x] G3 — Tests (lifecycle-resurface, window-aggregation) + full suite green — DONE (448/448 pass; +14 new tests over baseline 434)
 - [x] G4 — Re-run Phase 4 protocol with fixed plugin code — DONE
 - [x] G5 — Update Paper 1 discussion — DONE
-- [ ] G6 — Commit and push
+- [x] G6 — Commit and push — DONE (commit cced56a, pushed to origin/main)
 
 ## G4 results (honest)
 
