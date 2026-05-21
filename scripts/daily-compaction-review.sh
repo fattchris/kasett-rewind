@@ -28,10 +28,13 @@ FIVE_PLUS_KEY_STATE_SESSIONS=0
 
 # Phase D — lifecycle event aggregation
 TOTAL_LIFECYCLE_EVENTS=0
+LIFECYCLE_CREATED=0
+LIFECYCLE_COMPLETED=0
 LIFECYCLE_RENAMED=0
 LIFECYCLE_MERGED=0
 LIFECYCLE_SPLIT=0
 LIFECYCLE_COMPACTIONS=0
+TOTAL_THREADS_SEEN=0
 
 echo "## Sessions Compacted (last 24h)" >> "$OUTPUT"
 echo "" >> "$OUTPUT"
@@ -205,10 +208,13 @@ print(f'{total} {compactions_with_ks} {max_ks}')
 import sys, json, os
 path = sys.argv[1] + '.kasett-meta.jsonl'
 total = 0
+created = 0
+completed = 0
 renamed = 0
 merged = 0
 split = 0
 compactions_with = 0
+threads_seen = 0
 if os.path.exists(path):
     try:
         with open(path, 'r', encoding='utf-8', errors='replace') as sf:
@@ -226,23 +232,37 @@ if os.path.exists(path):
                     total += len(evs)
                     for e in evs:
                         k = e.get('kind') if isinstance(e, dict) else None
-                        if k == 'renamed': renamed += 1
+                        if k == 'created': created += 1
+                        elif k == 'completed': completed += 1
+                        elif k == 'renamed': renamed += 1
                         elif k == 'merged': merged += 1
                         elif k == 'split': split += 1
+                # Count unique thread IDs seen in this sidecar entry for turnover_rate denominator
+                tm = obj.get('thread_meta_v3') or obj.get('thread_meta_v2')
+                if isinstance(tm, dict):
+                    subs = tm.get('sub', [])
+                    if isinstance(subs, list):
+                        threads_seen += len(subs)
     except Exception:
         pass
-print(f'{total} {renamed} {merged} {split} {compactions_with}')
-" "$session_file" 2>/dev/null) || LC_STATS="0 0 0 0 0"
+print(f'{total} {created} {completed} {renamed} {merged} {split} {compactions_with} {threads_seen}')
+" "$session_file" 2>/dev/null) || LC_STATS="0 0 0 0 0 0 0 0"
   LC_TOTAL=$(echo "$LC_STATS" | awk '{print $1}')
-  LC_RENAMED=$(echo "$LC_STATS" | awk '{print $2}')
-  LC_MERGED=$(echo "$LC_STATS" | awk '{print $3}')
-  LC_SPLIT=$(echo "$LC_STATS" | awk '{print $4}')
-  LC_COMP=$(echo "$LC_STATS" | awk '{print $5}')
+  LC_CREATED=$(echo "$LC_STATS" | awk '{print $2}')
+  LC_COMPLETED=$(echo "$LC_STATS" | awk '{print $3}')
+  LC_RENAMED=$(echo "$LC_STATS" | awk '{print $4}')
+  LC_MERGED=$(echo "$LC_STATS" | awk '{print $5}')
+  LC_SPLIT=$(echo "$LC_STATS" | awk '{print $6}')
+  LC_COMP=$(echo "$LC_STATS" | awk '{print $7}')
+  LC_THREADS=$(echo "$LC_STATS" | awk '{print $8}')
   TOTAL_LIFECYCLE_EVENTS=$((TOTAL_LIFECYCLE_EVENTS + LC_TOTAL))
+  LIFECYCLE_CREATED=$((LIFECYCLE_CREATED + LC_CREATED))
+  LIFECYCLE_COMPLETED=$((LIFECYCLE_COMPLETED + LC_COMPLETED))
   LIFECYCLE_RENAMED=$((LIFECYCLE_RENAMED + LC_RENAMED))
   LIFECYCLE_MERGED=$((LIFECYCLE_MERGED + LC_MERGED))
   LIFECYCLE_SPLIT=$((LIFECYCLE_SPLIT + LC_SPLIT))
   LIFECYCLE_COMPACTIONS=$((LIFECYCLE_COMPACTIONS + LC_COMP))
+  TOTAL_THREADS_SEEN=$((TOTAL_THREADS_SEEN + LC_THREADS))
 
   if [[ "$STATUS" == "rich-sidecar" || "$STATUS" == "rich-inline" || "$STATUS" == "stub" || "$STATUS" == "kasett-other" ]]; then
     KASETT_HANDLED=$((KASETT_HANDLED + 1))
@@ -363,7 +383,17 @@ echo "### Thread lifecycle (Phase D)" >> "$OUTPUT"
 echo "" >> "$OUTPUT"
 echo "- Total lifecycle events: $TOTAL_LIFECYCLE_EVENTS" >> "$OUTPUT"
 echo "- Compactions with lifecycle events: $LIFECYCLE_COMPACTIONS" >> "$OUTPUT"
+echo "- Created: $LIFECYCLE_CREATED  Completed: $LIFECYCLE_COMPLETED" >> "$OUTPUT"
 echo "- Renamed: $LIFECYCLE_RENAMED  Merged: $LIFECYCLE_MERGED  Split: $LIFECYCLE_SPLIT" >> "$OUTPUT"
+# Turnover rate: (created + completed) / max(total_threads_seen, 1)
+TURNOVER_NUMERATOR=$((LIFECYCLE_CREATED + LIFECYCLE_COMPLETED))
+if [ "$TOTAL_THREADS_SEEN" -gt 0 ]; then
+  # Compute as integer percent (round down)
+  TURNOVER_RATE=$((TURNOVER_NUMERATOR * 100 / TOTAL_THREADS_SEEN))
+  echo "- Turnover rate: ${TURNOVER_RATE}% ((created+completed)/threads_seen = ${TURNOVER_NUMERATOR}/${TOTAL_THREADS_SEEN})" >> "$OUTPUT"
+else
+  echo "- Turnover rate: N/A (no threads seen)" >> "$OUTPUT"
+fi
 if [ "$LIFECYCLE_COMPACTIONS" -gt 0 ]; then
   RENAME_PER_100=$((LIFECYCLE_RENAMED * 100 / LIFECYCLE_COMPACTIONS))
   echo "- Renames per 100 lifecycle-bearing compactions: $RENAME_PER_100" >> "$OUTPUT"
