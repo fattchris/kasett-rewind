@@ -480,6 +480,27 @@ function buildJsonInstructions(
           `relevant: ${coreSubIds.map((id) => `"${id}"`).join(', ')}`,
       );
     }
+    lines.push('');
+    lines.push('#### Thread ID continuity (prior thread_meta is present)');
+    lines.push('');
+    lines.push(
+      '- REUSE existing sub_thread IDs (sub1, sub2, sub3...) when the workstream they describe ' +
+        'is still active. Same work = same ID.',
+    );
+    lines.push(
+      '- Only mint a NEW sub_thread ID for genuinely new workstreams not represented in the prior thread_meta.',
+    );
+    lines.push(
+      '- When a prior workstream has clearly ended, emit a lifecycle_events entry with ' +
+        "kind='completed' for that sub_thread ID. Do not silently drop it.",
+    );
+    lines.push(
+      '- When reusing a sub_thread ID, preserve its canonical_id from the prior thread_meta.',
+    );
+    lines.push(
+      '- Continuity > novelty. Fresh decomposition every compaction = amnesia. ' +
+        'Inherit the prior structure unless the work has fundamentally shifted.',
+    );
   }
   if (recentLifecycle && recentLifecycle.length > 0) {
     const renames = recentLifecycle.filter((e) => e.kind === 'renamed');

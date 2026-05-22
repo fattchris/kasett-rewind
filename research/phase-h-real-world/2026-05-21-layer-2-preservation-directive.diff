@@ -1,0 +1,84 @@
+diff --git a/src/tests/steering-v3.test.ts b/src/tests/steering-v3.test.ts
+index 312b7f8..7d9dc3a 100644
+--- a/src/tests/steering-v3.test.ts
++++ b/src/tests/steering-v3.test.ts
+@@ -78,6 +78,47 @@ describe('buildSteeringPrompt — V3 schema embedding', () => {
+   });
+ });
+ 
++describe('buildSteeringPrompt — Layer 2 ID-preservation directive', () => {
++  test('includes ID-preservation directive when previousSubIds provided', () => {
++    const out = buildSteeringPrompt([], {
++      previousSubIds: ['infra-setup', 'deploy-pipeline'],
++    });
++    assert.match(out, /Thread ID continuity/);
++    assert.match(out, /REUSE existing sub_thread IDs/);
++    assert.match(out, /Only mint a NEW sub_thread ID/);
++    assert.match(out, /Continuity > novelty/);
++  });
++
++  test('ID-preservation directive is ABSENT when no previousSubIds', () => {
++    const out = buildSteeringPrompt([], {});
++    assert.equal(out.includes('Thread ID continuity'), false);
++    assert.equal(out.includes('REUSE existing sub_thread IDs'), false);
++    assert.equal(out.includes('Continuity > novelty'), false);
++  });
++
++  test('ID-preservation directive is ABSENT when previousSubIds is empty', () => {
++    const out = buildSteeringPrompt([], { previousSubIds: [] });
++    assert.equal(out.includes('Thread ID continuity'), false);
++    assert.equal(out.includes('REUSE existing sub_thread IDs'), false);
++  });
++
++  test('directive instructs canonical_id preservation on reuse', () => {
++    const out = buildSteeringPrompt([], {
++      previousSubIds: ['my-thread'],
++    });
++    assert.match(out, /canonical_id from the prior thread_meta/);
++  });
++
++  test('directive instructs completed lifecycle_events for dropped workstreams', () => {
++    const out = buildSteeringPrompt([], {
++      previousSubIds: ['old-thread'],
++    });
++    assert.match(out, /lifecycle_events/);
++    assert.match(out, /completed/);
++    assert.match(out, /Do not silently drop it/);
++  });
++});
++
+ describe('buildOrientationPromptV3', () => {
+   test('appends "Recent values" when V3 has key_state', () => {
+     const v3: ThreadMetaV3 = {
+diff --git a/src/threads/steering.ts b/src/threads/steering.ts
+index 37dd05d..2a4af56 100644
+--- a/src/threads/steering.ts
++++ b/src/threads/steering.ts
+@@ -480,6 +480,27 @@ function buildJsonInstructions(
+           `relevant: ${coreSubIds.map((id) => `"${id}"`).join(', ')}`,
+       );
+     }
++    lines.push('');
++    lines.push('#### Thread ID continuity (prior thread_meta is present)');
++    lines.push('');
++    lines.push(
++      '- REUSE existing sub_thread IDs (sub1, sub2, sub3...) when the workstream they describe ' +
++        'is still active. Same work = same ID.',
++    );
++    lines.push(
++      '- Only mint a NEW sub_thread ID for genuinely new workstreams not represented in the prior thread_meta.',
++    );
++    lines.push(
++      '- When a prior workstream has clearly ended, emit a lifecycle_events entry with ' +
++        "kind='completed' for that sub_thread ID. Do not silently drop it.",
++    );
++    lines.push(
++      '- When reusing a sub_thread ID, preserve its canonical_id from the prior thread_meta.',
++    );
++    lines.push(
++      '- Continuity > novelty. Fresh decomposition every compaction = amnesia. ' +
++        'Inherit the prior structure unless the work has fundamentally shifted.',
++    );
+   }
+   if (recentLifecycle && recentLifecycle.length > 0) {
+     const renames = recentLifecycle.filter((e) => e.kind === 'renamed');

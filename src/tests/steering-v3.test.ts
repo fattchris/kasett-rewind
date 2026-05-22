@@ -78,6 +78,47 @@ describe('buildSteeringPrompt — V3 schema embedding', () => {
   });
 });
 
+describe('buildSteeringPrompt — Layer 2 ID-preservation directive', () => {
+  test('includes ID-preservation directive when previousSubIds provided', () => {
+    const out = buildSteeringPrompt([], {
+      previousSubIds: ['infra-setup', 'deploy-pipeline'],
+    });
+    assert.match(out, /Thread ID continuity/);
+    assert.match(out, /REUSE existing sub_thread IDs/);
+    assert.match(out, /Only mint a NEW sub_thread ID/);
+    assert.match(out, /Continuity > novelty/);
+  });
+
+  test('ID-preservation directive is ABSENT when no previousSubIds', () => {
+    const out = buildSteeringPrompt([], {});
+    assert.equal(out.includes('Thread ID continuity'), false);
+    assert.equal(out.includes('REUSE existing sub_thread IDs'), false);
+    assert.equal(out.includes('Continuity > novelty'), false);
+  });
+
+  test('ID-preservation directive is ABSENT when previousSubIds is empty', () => {
+    const out = buildSteeringPrompt([], { previousSubIds: [] });
+    assert.equal(out.includes('Thread ID continuity'), false);
+    assert.equal(out.includes('REUSE existing sub_thread IDs'), false);
+  });
+
+  test('directive instructs canonical_id preservation on reuse', () => {
+    const out = buildSteeringPrompt([], {
+      previousSubIds: ['my-thread'],
+    });
+    assert.match(out, /canonical_id from the prior thread_meta/);
+  });
+
+  test('directive instructs completed lifecycle_events for dropped workstreams', () => {
+    const out = buildSteeringPrompt([], {
+      previousSubIds: ['old-thread'],
+    });
+    assert.match(out, /lifecycle_events/);
+    assert.match(out, /completed/);
+    assert.match(out, /Do not silently drop it/);
+  });
+});
+
 describe('buildOrientationPromptV3', () => {
   test('appends "Recent values" when V3 has key_state', () => {
     const v3: ThreadMetaV3 = {
