@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { SessionReader } from '../storage/reader.js';
 import { weightSummaries } from '../threads/weight.js';
 import { buildSteeringPrompt, buildOrientationPrompt } from '../threads/steering.js';
-import { parseCompactionOutput } from '../threads/parser.js';
+import { parseCompactionOutput, parseCompactionOutputBestEffort } from '../threads/parser.js';
 import { DEFAULT_CONFIG } from '../types.js';
 import type { ThreadMeta } from '../types.js';
 
@@ -68,7 +68,7 @@ sub3: planning v2 auth features (PKCE, refresh tokens)
     const metas: ThreadMeta[] = recentSummaries
       .slice()
       .reverse()
-      .map((s) => parseCompactionOutput(s).meta)
+      .map((s) => parseCompactionOutputBestEffort(s).metaV1)
       .filter((m): m is ThreadMeta => m !== null);
 
     assert.ok(metas.length > 0);
@@ -87,6 +87,24 @@ sub3: planning v2 auth features (PKCE, refresh tokens)
     assert.ok(orientation!.includes('-2:'));
   });
 
+  test('v3 sidecar summaries still produce orientation (hot-swap continuity path)', async () => {
+    const reader = new SessionReader();
+    const filePath = join(fixturesDir, 'session-with-kasett-meta.jsonl');
+    const recentSummaries = await reader.readLastNSummaries(filePath, DEFAULT_CONFIG.compaction.windowSize);
+
+    assert.ok(recentSummaries.length > 0);
+    const metas: ThreadMeta[] = recentSummaries
+      .slice()
+      .reverse()
+      .map((s) => parseCompactionOutputBestEffort(s).metaV1)
+      .filter((m): m is ThreadMeta => m !== null);
+
+    assert.ok(metas.length > 0, 'best-effort parser should recover v3 sidecar meta');
+    const orientation = buildOrientationPrompt(metas);
+    assert.ok(orientation);
+    assert.ok(orientation!.includes('building OAuth2 authentication system'));
+  });
+
   test('readLastNSummaries returns all compaction summaries including plain ones', async () => {
     const reader = new SessionReader();
     const filePath = join(fixturesDir, 'session-mixed.jsonl');
@@ -101,12 +119,12 @@ sub3: planning v2 auth features (PKCE, refresh tokens)
     const filePath = join(fixturesDir, 'session-plain-compaction.jsonl');
     const recentSummaries = await reader.readLastNSummaries(filePath, DEFAULT_CONFIG.compaction.windowSize);
 
-    // Has summaries but no [THREAD_META] blocks — metas will be empty
+    // Has summaries but no thread metadata in any supported schema.
     assert.ok(recentSummaries.length > 0);
     const metas: ThreadMeta[] = recentSummaries
       .slice()
       .reverse()
-      .map((s) => parseCompactionOutput(s).meta)
+      .map((s) => parseCompactionOutputBestEffort(s).metaV1)
       .filter((m): m is ThreadMeta => m !== null);
 
     assert.equal(metas.length, 0);
