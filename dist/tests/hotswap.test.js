@@ -15,7 +15,7 @@ import { tmpdir } from 'node:os';
 import { randomUUID } from 'node:crypto';
 import { generateStub } from '../hotswap/stub.js';
 import { acquireLock, waitForLockAbsent } from '../hotswap/lock.js';
-import { runHotSwapWorker } from '../hotswap/worker.js';
+import { runHotSwapWorker, rewriteJsonlStub } from '../hotswap/worker.js';
 import { KASETT_STUB_REGEX, THREAD_META_REGEX } from '../hotswap/constants.js';
 // ---------------------------------------------------------------------------
 // Helper: create a temp directory
@@ -356,9 +356,11 @@ describe('runHotSwapWorker: sidecar write', () => {
         });
         // Verify LLM was called
         assert.equal(callCount, 1);
-        // Session JSONL should be UNCHANGED — we never touch OC's territory
+        // Session JSONL should have the stub replaced with the rich summary (Scenario C)
         const sessionContent = await readFile(sessionFile, 'utf-8');
-        assert.equal(sessionContent, originalJsonl, 'session JSONL must remain byte-identical');
+        assert.ok(!sessionContent.includes(`[KASETT_STUB::${stubId}]`), 'stub must be replaced in JSONL');
+        // The rich summary is JSON-encoded in the JSONL line, so check for a plain substring
+        assert.ok(sessionContent.includes('Full LLM summary') || sessionContent.includes('finished the work'), 'rich summary content must appear in JSONL');
         // Sidecar should exist with one entry
         assert.ok(writtenInfo, 'onSidecarWritten callback should fire');
         const info = writtenInfo;
@@ -452,10 +454,12 @@ describe('runHotSwapWorker: sidecar write', () => {
             logger,
             callLLM: mockCallLLM,
         });
-        // Session JSONL must be byte-identical to what we wrote
+        // Scenario C: JSONL stub must be replaced with the rich summary
         const content = await readFile(sessionFile, 'utf-8');
-        assert.equal(content, originalContent, 'session JSONL must be untouched');
-        // And the sidecar should exist with the rich summary
+        assert.ok(!content.includes(`[KASETT_STUB::${stubId}]`), 'stub must be replaced in JSONL');
+        // fullSummary is JSON-encoded in the JSONL; check for a plain text substring
+        assert.ok(content.includes('Full summary after swap'), 'rich summary content must appear in JSONL');
+        // And the sidecar should also exist with the rich summary
         const sidecarContent = await readFile(`${sessionFile}.kasett-meta.jsonl`, 'utf-8');
         assert.ok(sidecarContent.includes(fullSummary));
     });
@@ -624,15 +628,15 @@ describe('Integration: generateStub + runHotSwapWorker end-to-end', () => {
             logger,
             callLLM: mockCallLLM,
         });
-        // The session JSONL must be untouched (sidecar approach).
-        // The compaction entry should still contain the original stub.
+        // Phase G (Scenario C): the JSONL stub should be replaced with the rich summary.
         const result = await readFile(sessionFile, 'utf-8');
         const lines = result.split('\n').filter((l) => l.trim());
         const cmpLine = lines.find((l) => l.includes('"compaction"'));
-        assert.ok(cmpLine);
+        assert.ok(cmpLine, 'compaction line must exist in JSONL');
         const entry = JSON.parse(cmpLine);
-        assert.ok(entry.data.summary.includes(`[KASETT_STUB::${stubId}]`), 'stub must remain in JSONL');
-        // The sidecar should have the rich summary instead.
+        assert.ok(!entry.data.summary.includes(`[KASETT_STUB::${stubId}]`), 'stub placeholder must be replaced in JSONL');
+        assert.equal(entry.data.summary, richSummary, 'JSONL summary must equal the rich summary after Scenario C rewrite');
+        // The sidecar should also have the rich summary (written first).
         const sidecarPath = `${sessionFile}.kasett-meta.jsonl`;
         const sidecarContent = await readFile(sidecarPath, 'utf-8');
         const sidecarLines = sidecarContent.split('\n').filter((l) => l.trim());
@@ -641,6 +645,115 @@ describe('Integration: generateStub + runHotSwapWorker end-to-end', () => {
         assert.equal(sidecarEntry.compaction_id, stubId);
         assert.equal(sidecarEntry.summary_rich, richSummary);
         assert.equal(sidecarEntry.thread_meta?.main, 'hot-swap compaction feature complete');
+    });
+});
+// ---------------------------------------------------------------------------
+// rewriteJsonlStub unit tests (Scenario C)
+// ---------------------------------------------------------------------------
+describe('rewriteJsonlStub: top-level summary field', () => {
+    test('replaces stub in top-level summary field and returns ok=true', async () => {
+        const sessionFile = join(tmpDir, `session-rw-toplevel-${randomUUID()}.jsonl`);
+        const stubId = randomUUID();
+        const stub = `[KASETT_STUB::${stubId}] Session compaction in progress`;
+        const rich = `Rich summary for top-level test.\n\n[THREAD_META]\nmain: top-level verified\nsub1: idle\n[/THREAD_META]`;
+        const jsonl = [
+            JSON.stringify({ type: 'session', id: 'test' }),
+            JSON.stringify({ type: 'compaction', id: 'c1', timestamp: new Date().toISOString(), summary: stub }),
+        ].join('\n') + '\n';
+        await writeFile(sessionFile, jsonl, 'utf-8');
+        const logLines = [];
+        const hookEvents = [];
+        const logger = {
+            info: (m) => { logLines.push(m); },
+            warn: (m) => { logLines.push(m); },
+            debug: (_) => { },
+        };
+        const result = await rewriteJsonlStub(sessionFile, stubId, rich, logger, (ev) => { hookEvents.push(ev.action); });
+        assert.equal(result.ok, true, 'should return ok=true');
+        assert.ok(typeof result.bytesWritten === 'number' && result.bytesWritten > 0, 'bytesWritten should be positive');
+        const newContent = await readFile(sessionFile, 'utf-8');
+        assert.ok(newContent.includes('"compaction"'), 'compaction line must remain');
+        const lines = newContent.split('\n').filter((l) => l.trim());
+        const cmpLine = lines.find((l) => l.includes('"compaction"'));
+        const entry = JSON.parse(cmpLine);
+        assert.equal(entry.summary, rich, 'top-level summary must be replaced');
+        assert.ok(!entry.summary.includes(`[KASETT_STUB::${stubId}]`), 'stub marker must be gone');
+        // Log and hook event checks
+        assert.ok(logLines.some((l) => l.includes('STUB_REPLACED_IN_JSONL')), 'must log STUB_REPLACED_IN_JSONL');
+        assert.ok(hookEvents.includes('stub_replaced_in_jsonl'), 'must emit stub_replaced_in_jsonl hook event');
+    });
+});
+describe('rewriteJsonlStub: data.summary field (fixture/legacy layout)', () => {
+    test('replaces stub in data.summary field', async () => {
+        const sessionFile = join(tmpDir, `session-rw-datasummary-${randomUUID()}.jsonl`);
+        const stubId = randomUUID();
+        const stub = `[KASETT_STUB::${stubId}] Session compaction in progress`;
+        const rich = `Rich summary for data.summary test.\n\n[THREAD_META]\nmain: data-summary verified\nsub1: idle\n[/THREAD_META]`;
+        const jsonl = [
+            JSON.stringify({ type: 'session', id: 'test' }),
+            JSON.stringify({ type: 'compaction', id: 'c1', data: { summary: stub } }),
+        ].join('\n') + '\n';
+        await writeFile(sessionFile, jsonl, 'utf-8');
+        const result = await rewriteJsonlStub(sessionFile, stubId, rich, { info: () => { }, warn: () => { }, debug: () => { } }, () => { });
+        assert.equal(result.ok, true, 'should return ok=true for data.summary');
+        const newContent = await readFile(sessionFile, 'utf-8');
+        const lines = newContent.split('\n').filter((l) => l.trim());
+        const cmpLine = lines.find((l) => l.includes('"compaction"'));
+        const entry = JSON.parse(cmpLine);
+        assert.equal(entry.data.summary, rich, 'data.summary must be replaced');
+        assert.ok(!entry.data.summary.includes(`[KASETT_STUB::${stubId}]`), 'stub marker must be gone');
+    });
+});
+describe('rewriteJsonlStub: not-found and edge cases', () => {
+    test('returns not_found when stub_id is not in the JSONL', async () => {
+        const sessionFile = join(tmpDir, `session-rw-notfound-${randomUUID()}.jsonl`);
+        const stubId = randomUUID();
+        const differentId = randomUUID();
+        const stub = `[KASETT_STUB::${differentId}] Session compaction in progress`;
+        const jsonl = [
+            JSON.stringify({ type: 'session', id: 'test' }),
+            JSON.stringify({ type: 'compaction', id: 'c1', summary: stub }),
+        ].join('\n') + '\n';
+        await writeFile(sessionFile, jsonl, 'utf-8');
+        const hookEvents = [];
+        const result = await rewriteJsonlStub(sessionFile, stubId, 'Some rich summary', { info: () => { }, warn: () => { }, debug: () => { } }, (ev) => { hookEvents.push(ev.action); });
+        assert.equal(result.ok, false, 'should return ok=false when stub not found');
+        assert.equal(result.reason, 'not_found');
+        assert.ok(hookEvents.includes('stub_rewrite_not_found'), 'must emit stub_rewrite_not_found hook event');
+        // JSONL must be unchanged
+        const content = await readFile(sessionFile, 'utf-8');
+        assert.ok(content.includes(differentId), 'original stub must remain intact');
+    });
+    test('returns empty_sidecar when richSummary is empty', async () => {
+        const sessionFile = join(tmpDir, `session-rw-empty-${randomUUID()}.jsonl`);
+        const stubId = randomUUID();
+        await writeFile(sessionFile, '{}\n', 'utf-8');
+        const logLines = [];
+        const result = await rewriteJsonlStub(sessionFile, stubId, '', { info: (m) => { logLines.push(m); }, warn: () => { }, debug: () => { } }, () => { });
+        assert.equal(result.ok, false);
+        assert.equal(result.reason, 'empty_sidecar');
+        assert.ok(logLines.some((l) => l.includes('STUB_REWRITE_SKIP') && l.includes('empty_sidecar')));
+    });
+    test('replaces ALL occurrences when multiple stubs exist in JSONL', async () => {
+        const sessionFile = join(tmpDir, `session-rw-multi-${randomUUID()}.jsonl`);
+        const stubId = randomUUID();
+        const stub = `[KASETT_STUB::${stubId}] Session compaction in progress`;
+        const rich = 'Replacement for all stubs';
+        const jsonl = [
+            JSON.stringify({ type: 'compaction', id: 'c1', summary: stub }),
+            JSON.stringify({ type: 'compaction', id: 'c2', summary: stub }),
+        ].join('\n') + '\n';
+        await writeFile(sessionFile, jsonl, 'utf-8');
+        const result = await rewriteJsonlStub(sessionFile, stubId, rich, { info: () => { }, warn: () => { }, debug: () => { } }, () => { });
+        assert.equal(result.ok, true);
+        const newContent = await readFile(sessionFile, 'utf-8');
+        const lines = newContent.split('\n').filter((l) => l.trim());
+        const cmpLines = lines.filter((l) => l.includes('"compaction"'));
+        assert.equal(cmpLines.length, 2, 'both compaction lines must remain');
+        for (const cl of cmpLines) {
+            const entry = JSON.parse(cl);
+            assert.equal(entry.summary, rich, 'both stubs must be replaced');
+        }
     });
 });
 //# sourceMappingURL=hotswap.test.js.map

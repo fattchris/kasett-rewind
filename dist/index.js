@@ -50,7 +50,7 @@ import { readdir, appendFile, stat } from 'node:fs/promises';
 import { SessionReader, KasettError } from './storage/reader.js';
 import { weightSummaries } from './threads/weight.js';
 import { buildSteeringPrompt, buildOrientationPrompt } from './threads/steering.js';
-import { parseCompactionOutput, parseCompactionOutputBestEffort } from './threads/parser.js';
+import { parseCompactionOutputBestEffort } from './threads/parser.js';
 import { generateStub } from './hotswap/stub.js';
 import { runHotSwapWorker } from './hotswap/worker.js';
 import { detectCandidateKeyState } from './keystate/detector.js';
@@ -218,14 +218,20 @@ export function register(api) {
                 if (recentSummaries.length > 0) {
                     // Parse [THREAD_META] from each, collect valid ones
                     // Reverse so most-recent-first for trajectory display
-                    const metas = recentSummaries
+                    const parsedSummaries = recentSummaries
                         .slice()
                         .reverse()
-                        .map((s) => parseCompactionOutput(s).meta)
+                        .map((s) => parseCompactionOutputBestEffort(s));
+                    const metas = parsedSummaries
+                        .map((p) => p.metaV1)
                         .filter((m) => m !== null);
                     if (metas.length > 0) {
                         const orientation = buildOrientationPrompt(metas);
                         if (orientation) {
+                            const versionCounts = parsedSummaries.reduce((acc, parsed) => {
+                                acc[parsed.version] = (acc[parsed.version] ?? 0) + 1;
+                                return acc;
+                            }, {});
                             api.logger.debug(`[kasett-rewind] Injecting thread trajectory orientation (${metas.length} compaction(s))`);
                             void logHookEvent({
                                 hook: 'before_prompt_build',
@@ -235,7 +241,17 @@ export function register(api) {
                                 parsed: true,
                                 charCount: orientation.length,
                                 metaMain: metas[0]?.main ?? null,
-                                detail: { metaCount: metas.length, summaryCount: recentSummaries.length },
+                                detail: { metaCount: metas.length, summaryCount: recentSummaries.length, versionCounts },
+                            });
+                            void logHookEvent({
+                                hook: 'before_prompt_build',
+                                sessionId: sessionKey,
+                                agentId,
+                                action: 'summaries_injected',
+                                parsed: true,
+                                charCount: orientation.length,
+                                metaMain: metas[0]?.main ?? null,
+                                detail: { metaCount: metas.length, summaryCount: recentSummaries.length, versionCounts },
                             });
                             return { prependContext: orientation };
                         }

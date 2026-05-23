@@ -20,7 +20,7 @@
  * The OC-stored stub remains in place in the JSONL. Reads prefer the sidecar
  * (rich), fall back to the JSONL for legacy entries.
  */
-import { appendFile } from 'node:fs/promises';
+import { appendFile, readFile, writeFile, rename } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { basename, dirname } from 'node:path';
 import { writeSidecarEntry, sidecarPathFor, readSidecar, resolveSessionFilePath, } from '../storage/sidecar.js';
@@ -255,6 +255,20 @@ export async function runHotSwapWorker(params) {
             keyStateCount,
             keyStateDetectedCount,
         });
+        // Scenario C: after the sidecar is written, attempt to replace the
+        // stub placeholder in the parent JSONL with the rich summary.
+        // Best-effort — failures are logged but never block the sidecar result.
+        try {
+            const hookLogPath = process.env['KASETT_HOOK_LOG'] ||
+                '/home/node/.openclaw/workspace/repos/kasett-rewind/research/hook-events.jsonl';
+            const jsonlRewriteResult = await rewriteJsonlStub(resolvedSessionFile, stubId, fullSummary, logger, (ev) => {
+                void appendFile(hookLogPath, JSON.stringify({ ts: new Date().toISOString(), hook: 'after_compaction', ...ev }) + '\n').catch(() => { });
+            });
+            await diag(`JSONL_REWRITE_RESULT stub=${stubId} ok=${jsonlRewriteResult.ok} reason=${jsonlRewriteResult.reason ?? 'none'} bytes=${jsonlRewriteResult.bytesWritten ?? 0}`);
+        }
+        catch (err) {
+            await diag(`JSONL_REWRITE_ERROR stub=${stubId} err=${String(err).slice(0, 200)}`);
+        }
         // Phase E: cross-session global index. Best-effort; never blocks the
         // per-session sidecar (which has already been written above).
         if (params.agentId) {
@@ -374,6 +388,105 @@ export async function runHotSwapWorker(params) {
         await diag(`WORKER_ERROR stub=${stubId} err=${String(err)}`);
         onSidecarFailed?.({ reason: 'worker_error', detail: String(err).slice(0, 200) });
     }
+}
+/**
+ * After the sidecar is written, scan the parent JSONL for a compaction record
+ * whose summary field contains `[KASETT_STUB::<stubId>]` and atomically
+ * replace it with `richSummary`. Handles both:
+ *   - Top-level `summary` field: `{ type: "compaction", summary: "..." }`
+ *   - Nested `data.summary` field: `{ type: "compaction", data: { summary: "..." } }`
+ *
+ * Writes to `<jsonlPath>.kasett-rewrite.tmp` then renames atomically.
+ *
+ * Edge cases:
+ *   - Empty richSummary → STUB_REWRITE_SKIP empty_sidecar, return early
+ *   - Stub not found → STUB_REWRITE_NOT_FOUND, return early
+ *   - Multiple stubs → all replaced
+ *   - File read/write error → logged, returned as { ok: false }
+ */
+export async function rewriteJsonlStub(jsonlPath, stubId, richSummary, logger, hookEmitter) {
+    if (!richSummary || richSummary.trim().length === 0) {
+        logger.info(`STUB_REWRITE_SKIP stub=${stubId} reason=empty_sidecar`);
+        return { ok: false, reason: 'empty_sidecar' };
+    }
+    let content;
+    try {
+        content = await readFile(jsonlPath, 'utf-8');
+    }
+    catch (err) {
+        const reason = err.code === 'ENOENT' ? 'file_not_found' : 'read_error';
+        logger.info(`STUB_REWRITE_SKIP stub=${stubId} reason=${reason}`);
+        return { ok: false, reason };
+    }
+    const lines = content.split('\n');
+    const matchPattern = `[KASETT_STUB::${stubId}]`;
+    let replaceCount = 0;
+    const newLines = lines.map((line) => {
+        // Fast pre-check: skip lines that don't mention compaction or the stub
+        if (!line.includes('"compaction"'))
+            return line;
+        if (!line.includes(matchPattern))
+            return line;
+        try {
+            const obj = JSON.parse(line);
+            if (obj['type'] !== 'compaction')
+                return line;
+            // Check top-level summary field first (real OC layout)
+            const topLevel = obj['summary'];
+            if (typeof topLevel === 'string' && topLevel.includes(matchPattern)) {
+                obj['summary'] = richSummary;
+                replaceCount++;
+                return JSON.stringify(obj);
+            }
+            // Fall back to data.summary (fixture / legacy layout)
+            const data = obj['data'];
+            if (data && typeof data === 'object' && data !== null) {
+                const d = data;
+                const nested = d['summary'];
+                if (typeof nested === 'string' && nested.includes(matchPattern)) {
+                    d['summary'] = richSummary;
+                    replaceCount++;
+                    return JSON.stringify(obj);
+                }
+            }
+            return line;
+        }
+        catch {
+            return line;
+        }
+    });
+    if (replaceCount === 0) {
+        logger.info(`STUB_REWRITE_NOT_FOUND stub=${stubId}`);
+        hookEmitter({ action: 'stub_rewrite_not_found', detail: { stubId } });
+        return { ok: false, reason: 'not_found' };
+    }
+    // Atomic write: write to .tmp then rename
+    const tmpPath = `${jsonlPath}.kasett-rewrite.tmp`;
+    const newContent = newLines.join('\n');
+    try {
+        await writeFile(tmpPath, newContent, 'utf-8');
+        await rename(tmpPath, jsonlPath);
+    }
+    catch (err) {
+        logger.warn(`STUB_REWRITE_SKIP stub=${stubId} reason=write_error err=${String(err).slice(0, 150)}`);
+        // Clean up the tmp file on failure
+        try {
+            await rename(tmpPath, tmpPath + '.failed');
+        }
+        catch { /* ignore */ }
+        return { ok: false, reason: 'write_error' };
+    }
+    logger.info(`STUB_REPLACED_IN_JSONL stub=${stubId} summary_chars=${richSummary.length} replaced=${replaceCount}`);
+    hookEmitter({
+        action: 'stub_replaced_in_jsonl',
+        detail: {
+            stubId,
+            summaryChars: richSummary.length,
+            bytesWritten: newContent.length,
+            replaceCount,
+        },
+    });
+    return { ok: true, bytesWritten: newContent.length };
 }
 /**
  * Re-export for back-compat: the sidecar path helper.

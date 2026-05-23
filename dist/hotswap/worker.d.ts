@@ -140,6 +140,40 @@ export interface CallLLMParams {
  */
 export declare function runHotSwapWorker(params: WorkerParams): Promise<void>;
 /**
+ * Minimal hook event shape used for JSONL rewrite observability.
+ * Mirrors the HookEvent interface in index.ts (kept local to avoid circular deps).
+ */
+export interface HookEvent {
+    ts?: string;
+    hook?: string;
+    action: string;
+    detail?: Record<string, unknown>;
+}
+/**
+ * After the sidecar is written, scan the parent JSONL for a compaction record
+ * whose summary field contains `[KASETT_STUB::<stubId>]` and atomically
+ * replace it with `richSummary`. Handles both:
+ *   - Top-level `summary` field: `{ type: "compaction", summary: "..." }`
+ *   - Nested `data.summary` field: `{ type: "compaction", data: { summary: "..." } }`
+ *
+ * Writes to `<jsonlPath>.kasett-rewrite.tmp` then renames atomically.
+ *
+ * Edge cases:
+ *   - Empty richSummary → STUB_REWRITE_SKIP empty_sidecar, return early
+ *   - Stub not found → STUB_REWRITE_NOT_FOUND, return early
+ *   - Multiple stubs → all replaced
+ *   - File read/write error → logged, returned as { ok: false }
+ */
+export declare function rewriteJsonlStub(jsonlPath: string, stubId: string, richSummary: string, logger: {
+    info(msg: string): void;
+    warn(msg: string): void;
+    debug(msg: string): void;
+}, hookEmitter: (event: HookEvent) => void): Promise<{
+    ok: boolean;
+    reason?: string;
+    bytesWritten?: number;
+}>;
+/**
  * Re-export for back-compat: the sidecar path helper.
  * Some integration code references this from the worker module.
  */
