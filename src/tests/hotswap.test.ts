@@ -757,22 +757,16 @@ describe('Integration: generateStub + runHotSwapWorker end-to-end', () => {
       callLLM: mockCallLLM,
     });
 
-    // Phase G: the JSONL stub should be replaced with the rich summary.
+    // The session JSONL must be untouched (sidecar approach).
+    // The compaction entry should still contain the original stub.
     const result = await readFile(sessionFile, 'utf-8');
     const lines = result.split('\n').filter((l) => l.trim());
     const cmpLine = lines.find((l) => l.includes('"compaction"'));
-    assert.ok(cmpLine, 'compaction line must exist in JSONL');
+    assert.ok(cmpLine);
     const entry = JSON.parse(cmpLine) as { data: { summary: string } };
-    assert.ok(
-      !entry.data.summary.includes(`[KASETT_STUB::${stubId}]`),
-      'stub placeholder must be replaced in JSONL',
-    );
-    assert.ok(
-      entry.data.summary === richSummary,
-      'JSONL summary must equal the rich summary after Phase G rewrite',
-    );
+    assert.ok(entry.data.summary.includes(`[KASETT_STUB::${stubId}]`), 'stub must remain in JSONL');
 
-    // The sidecar should also have the rich summary (written first).
+    // The sidecar should have the rich summary instead.
     const sidecarPath = `${sessionFile}.kasett-meta.jsonl`;
     const sidecarContent = await readFile(sidecarPath, 'utf-8');
     const sidecarLines = sidecarContent.split('\n').filter((l) => l.trim());
@@ -785,50 +779,5 @@ describe('Integration: generateStub + runHotSwapWorker end-to-end', () => {
     assert.equal(sidecarEntry.compaction_id, stubId);
     assert.equal(sidecarEntry.summary_rich, richSummary);
     assert.equal(sidecarEntry.thread_meta?.main, 'hot-swap compaction feature complete');
-  });
-
-  test('rewriteJsonlStub: JSONL with top-level summary field is rewritten', async () => {
-    const sessionFile = join(tmpDir, `session-rewrite-toplevel-${randomUUID()}.jsonl`);
-    const { stub, stubId } = generateStub('Previous.', [
-      { role: 'user', content: 'top-level summary test' },
-    ]);
-
-    // Write JSONL with top-level summary (real OC layout)
-    const jsonlContent = [
-      JSON.stringify({ type: 'session', id: 'test', cwd: '/tmp' }),
-      JSON.stringify({
-        type: 'compaction',
-        id: 'cmp_toplevel',
-        timestamp: new Date().toISOString(),
-        summary: stub,
-      }),
-    ].join('\n') + '\n';
-    await writeFile(sessionFile, jsonlContent, 'utf-8');
-
-    const richSummary = `Rich content for top-level test.\n\n[THREAD_META]\nmain: top-level rewrite verified\nsub1: idle\n[/THREAD_META]`;
-    const mockCallLLM = async (): Promise<string | undefined> => richSummary;
-    const logger = { info: () => {}, warn: () => {}, error: () => {}, debug: () => {} };
-
-    await runHotSwapWorker({
-      sessionFile,
-      stubId,
-      messages: [{ role: 'user', content: 'top-level summary test' }],
-      previousSummaries: [],
-      steeringPrompt: 'steer',
-      hotSwapTimeoutMs: 5000,
-      logger,
-      callLLM: mockCallLLM,
-    });
-
-    const result = await readFile(sessionFile, 'utf-8');
-    const lines = result.split('\n').filter((l) => l.trim());
-    const cmpLine = lines.find((l) => l.includes('"compaction"'));
-    assert.ok(cmpLine, 'compaction line must exist');
-    const entry = JSON.parse(cmpLine) as { summary: string };
-    assert.ok(
-      !entry.summary.includes(`[KASETT_STUB::${stubId}]`),
-      'stub placeholder must be replaced in top-level summary',
-    );
-    assert.equal(entry.summary, richSummary, 'top-level summary must equal rich summary');
   });
 });
