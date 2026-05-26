@@ -90,8 +90,8 @@
             "type": "integer",
             "minimum": 1000,
             "maximum": 300000,
-            "default": 30000,
-            "description": "Maximum time (ms) the background worker will wait before giving up."
+            "default": 90000,
+            "description": "Maximum time (ms) the background worker will wait before giving up. Bumped from 30s to 90s in v0.3.1 — real compaction-style LLM calls regularly take 30-55s."
           },
           "maxSourceTurns": {
             "type": "integer",

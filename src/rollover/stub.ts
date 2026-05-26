@@ -37,8 +37,8 @@ export function buildRolloverStub(params: StubBuildParams): RolloverSidecarEntry
   const { siblingTurns, siblingFile, siblingMtimeMs } = params;
   const maxChars = params.maxChars ?? 400;
 
-  const lastUser = findLastByRole(siblingTurns, 'user');
-  const lastAssistant = findLastByRole(siblingTurns, 'assistant');
+  const lastUser = findLastNonEmptyByRole(siblingTurns, 'user');
+  const lastAssistant = findLastNonEmptyByRole(siblingTurns, 'assistant');
   const idleMs = Math.max(0, Date.now() - siblingMtimeMs);
   const idleHours = idleMs / (3600 * 1000);
 
@@ -81,12 +81,20 @@ export function buildRolloverStub(params: StubBuildParams): RolloverSidecarEntry
   };
 }
 
-function findLastByRole(
+/**
+ * Find the last turn for a role that has non-empty extracted text content.
+ * Fixes the "Last user turn: \"\"" stub-empty-quote bug observed in
+ * production v0.3.0 where heartbeat-only or content-filtered turns produced
+ * blank quotes in the stub.
+ */
+function findLastNonEmptyByRole(
   turns: Array<{ role: string; content: unknown }>,
   role: string,
 ): { role: string; content: unknown } | null {
   for (let i = turns.length - 1; i >= 0; i--) {
-    if (turns[i].role === role) return turns[i];
+    if (turns[i].role !== role) continue;
+    const text = extractTextContent(turns[i].content).trim();
+    if (text.length > 0) return turns[i];
   }
   return null;
 }

@@ -125,7 +125,10 @@ export const DEFAULT_CONFIG: KasettConfig = {
     minTurns: 2,
     maxIdleHours: 168,
     hotSwap: true,
-    hotSwapTimeoutMs: 30_000,
+    // Bumped from 30s to 90s in v0.3.1 — production diag showed compaction
+    // LLM calls regularly take 30-55s for moderately-sized transcripts. 30s
+    // hit timeouts in real load.
+    hotSwapTimeoutMs: 90_000,
     maxSourceTurns: 200,
   },
 };

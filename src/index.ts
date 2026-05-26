@@ -1061,6 +1061,20 @@ export interface LLMCallParams {
    * config.compaction.compactionMaxTokens (default 32000).
    */
   maxTokens?: number;
+  /**
+   * Optional override for the user-side prompt template. The function will
+   * pass `{historyText}` as the messages-as-text body. Use {{HISTORY}} as
+   * the substitution token, OR pass a function that receives historyText
+   * and returns the full user prompt. When unset, the default compaction
+   * user prompt is used ("Please produce a compaction summary of the
+   * following conversation...").
+   *
+   * Added 2026-05-26 (v0.3.1) for the rollover worker, which needs a
+   * different user prompt than the compaction provider — the compaction
+   * prompt and rollover system prompt were conflicting and the model was
+   * resolving the conflict by hallucinating a conversation continuation.
+   */
+  userPromptBuilder?: (historyText: string) => string;
   logger: {
     debug(msg: string): void;
     warn(msg: string): void;
@@ -1083,7 +1097,7 @@ function resolveModel(
 }
 
 export async function callLLMForCompaction(params: LLMCallParams): Promise<string | undefined> {
-  const { messages, signal, customInstructions, steeringPrompt, compactionModel, maxTokens, logger } = params;
+  const { messages, signal, customInstructions, steeringPrompt, compactionModel, maxTokens, userPromptBuilder, logger } = params;
   const effectiveMaxTokens = typeof maxTokens === 'number' && maxTokens > 0 ? maxTokens : 8192;
 
   // Build system prompt: steering + OC custom instructions
@@ -1098,11 +1112,14 @@ export async function callLLMForCompaction(params: LLMCallParams): Promise<strin
   // Convert messages to text for summarization
   const historyText = messagesToText(messages);
 
-  const userPrompt =
-    'Please produce a compaction summary of the following conversation. ' +
-    'Follow the thread meta instructions in your system prompt exactly.\n\n' +
-    '---\n\n' +
-    historyText;
+  // Default user prompt is the compaction one. Callers (like the rollover
+  // worker) can override by passing userPromptBuilder.
+  const userPrompt = userPromptBuilder
+    ? userPromptBuilder(historyText)
+    : 'Please produce a compaction summary of the following conversation. ' +
+      'Follow the thread meta instructions in your system prompt exactly.\n\n' +
+      '---\n\n' +
+      historyText;
 
   // Diagnostic log file
   const diagLog = '/home/node/.openclaw/workspace/repos/kasett-rewind/research/hotswap-diag.log';

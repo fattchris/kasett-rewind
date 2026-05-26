@@ -1,5 +1,71 @@
 # Changelog
 
+## [0.3.1] — 2026-05-26
+
+### Fixed — Cold-start rollover quality
+
+Post-deployment review on Clyde's agent (2026-05-26 morning) found three
+problems in the v0.3.0 worker output:
+
+**1. Rich rollover hallucinated a conversation continuation instead of
+summarizing.** The worker reused `callLLMForCompaction`, which hardcoded
+a user prompt saying "Please produce a compaction summary." That
+conflicted with the rollover system prompt asking for a `[ROLLOVER_CONTEXT]`
+block. The model resolved the conflict by reading the input as a live
+conversation it was joining, producing replies ("NO_REPLY",
+"HEARTBEAT_OK") instead of a summary.
+
+Fix: `callLLMForCompaction` now accepts an optional `userPromptBuilder`
+parameter. The rollover worker supplies its own builder that wraps the
+history in `=== TRANSCRIPT_START === ... === TRANSCRIPT_END ===` markers
+and instructs the model to act as a third-party summarizer. The system
+prompt was also hardened with explicit "you are NOT a participant" and
+"do NOT respond with NO_REPLY or HEARTBEAT_OK" guidance, plus a
+requirement to write in past-tense third-person ("the user asked", "the
+assistant did") to break the first-person identification.
+
+**2. 30s timeout too tight.** Production diag showed compaction-style
+LLM calls regularly take 30-55s for moderately-sized transcripts.
+Multiple v0.3.0 rollover workers hit `rollover_timeout` before getting
+a response.
+
+Fix: default `coldStart.hotSwapTimeoutMs` raised from 30000 to 90000 ms.
+Schema max remains 300000.
+
+**3. Stub showed `Last user turn: ""` when sibling's last user turn had
+empty content** (e.g., heartbeat-only sessions where the user side was
+filtered or the content was a non-text part). The stub builder's
+`findLastByRole` was a pure role match — it picked the most recent turn
+even if its extracted text was empty.
+
+Fix: stub builder now uses `findLastNonEmptyByRole`, which iterates back
+from the tail and skips turns whose extracted text is empty or
+whitespace-only. If every turn is empty, falls through to the existing
+"No user/assistant turns recoverable" path.
+
+### Tests
+
+- New `passes a rollover-specific user prompt to the LLM` test that
+  asserts the worker MUST pass `userPromptBuilder` and that the
+  resulting prompt does NOT contain the compaction-prompt language.
+- New `skips empty-content turns when finding last user/assistant` test
+  for the stub builder.
+- New `falls back to no-content message if every turn is empty` test for
+  the stub-builder-all-empty fallback.
+
+### Files touched
+
+- `src/index.ts` — `callLLMForCompaction` accepts `userPromptBuilder`
+- `src/rollover/worker.ts` — hardened system prompt, new
+  `buildRolloverUserPrompt` passed via `userPromptBuilder`
+- `src/rollover/stub.ts` — `findLastNonEmptyByRole` replaces
+  `findLastByRole`
+- `src/types.ts` — `coldStart.hotSwapTimeoutMs` default 30000 → 90000
+- `openclaw.plugin.json` — schema default updated to match
+- `src/tests/rollover.test.ts` — 3 new tests
+
+All 516 tests pass (513 existing + 3 new).
+
 ## [0.3.0] — 2026-05-26
 
 ### Added — Cold-start / session-rollover bridge

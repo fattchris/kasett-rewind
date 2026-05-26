@@ -169,6 +169,20 @@ export interface LLMCallParams {
      * config.compaction.compactionMaxTokens (default 32000).
      */
     maxTokens?: number;
+    /**
+     * Optional override for the user-side prompt template. The function will
+     * pass `{historyText}` as the messages-as-text body. Use {{HISTORY}} as
+     * the substitution token, OR pass a function that receives historyText
+     * and returns the full user prompt. When unset, the default compaction
+     * user prompt is used ("Please produce a compaction summary of the
+     * following conversation...").
+     *
+     * Added 2026-05-26 (v0.3.1) for the rollover worker, which needs a
+     * different user prompt than the compaction provider — the compaction
+     * prompt and rollover system prompt were conflicting and the model was
+     * resolving the conflict by hallucinating a conversation continuation.
+     */
+    userPromptBuilder?: (historyText: string) => string;
     logger: {
         debug(msg: string): void;
         warn(msg: string): void;

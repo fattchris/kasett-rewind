@@ -412,6 +412,47 @@ describe('buildRolloverStub', () => {
     assert.ok(entry.summary.includes('No user/assistant turns recoverable'));
   });
 
+  test('skips empty-content turns when finding last user/assistant (v0.3.1 fix)', () => {
+    // Repro: production v0.3.0 showed `Last user turn: ""` because the
+    // sibling's last user turn had empty content. The stub should skip
+    // empties and find the most-recent non-empty turn for each role.
+    const entry = buildRolloverStub({
+      siblingTurns: [
+        { role: 'user', content: 'real user message' },
+        { role: 'assistant', content: 'real assistant reply' },
+        { role: 'user', content: '' }, // empty — should be skipped
+        { role: 'assistant', content: [] }, // empty array — should be skipped
+        { role: 'user', content: [{ type: 'text', text: '' }] }, // empty inside parts
+      ],
+      siblingFile: '/tmp/skip-empty.jsonl',
+      siblingMtimeMs: Date.now(),
+    });
+    // The stub MUST NOT show empty quotes
+    assert.ok(
+      !entry.summary.includes('""'),
+      `stub contains empty quotes: ${entry.summary}`,
+    );
+    assert.ok(entry.summary.includes('real user message'));
+    assert.ok(entry.summary.includes('real assistant reply'));
+  });
+
+  test('falls back to no-content message if every turn is empty (v0.3.1 fix)', () => {
+    const entry = buildRolloverStub({
+      siblingTurns: [
+        { role: 'user', content: '' },
+        { role: 'assistant', content: '' },
+        { role: 'user', content: '   ' }, // whitespace-only
+      ],
+      siblingFile: '/tmp/all-empty.jsonl',
+      siblingMtimeMs: Date.now(),
+    });
+    assert.ok(
+      !entry.summary.includes('""'),
+      `stub contains empty quotes: ${entry.summary}`,
+    );
+    assert.ok(entry.summary.includes('No user/assistant turns recoverable'));
+  });
+
   test('handles array content from OC schema', () => {
     const entry = buildRolloverStub({
       siblingTurns: [
@@ -595,6 +636,61 @@ describe('runRolloverWorker', () => {
     const onDisk = await readRolloverSidecar(current);
     assert.ok(onDisk);
     assert.equal(onDisk!.stub, false);
+    await cleanupMarkers(current);
+  });
+
+  test('passes a rollover-specific user prompt to the LLM (v0.3.1 fix)', async () => {
+    // Repro: v0.3.0 reused callLLMForCompaction which hardcoded a "Please
+    // produce a compaction summary" user prompt that conflicted with the
+    // rollover system prompt. The fix: worker must pass userPromptBuilder
+    // so the user prompt matches the system prompt.
+    const current = join(tmpDir, 'worker-userprompt-current.jsonl');
+    await writeFile(current, '{}\n');
+    const sibling = await writeSession(
+      'worker-userprompt-sibling-topic-204.jsonl',
+      [
+        { role: 'user', text: 'hello' },
+        { role: 'assistant', text: 'hi' },
+      ],
+    );
+    await cleanupMarkers(current);
+
+    let capturedParams: any = null;
+    const result = await runRolloverWorker({
+      currentSessionFile: current,
+      siblingFile: sibling,
+      siblingMtimeMs: Date.now(),
+      maxSourceTurns: 100,
+      timeoutMs: 5000,
+      maxTokens: 4000,
+      logger: silentLogger,
+      callLLM: async (params) => {
+        capturedParams = params;
+        return '[ROLLOVER_CONTEXT]\nx\n[/ROLLOVER_CONTEXT]';
+      },
+    });
+
+    assert.equal(result.success, true);
+    assert.ok(capturedParams);
+    assert.equal(
+      typeof capturedParams.userPromptBuilder,
+      'function',
+      'worker must pass userPromptBuilder to override the default compaction prompt',
+    );
+    // The user prompt MUST NOT contain compaction-prompt language
+    const userPrompt = capturedParams.userPromptBuilder('SAMPLE_HISTORY');
+    assert.ok(
+      !userPrompt.includes('compaction summary'),
+      'rollover user prompt must not say "compaction summary" (v0.3.1 fix)',
+    );
+    assert.ok(
+      userPrompt.includes('TRANSCRIPT_START'),
+      'rollover user prompt must use transcript markers',
+    );
+    assert.ok(
+      userPrompt.includes('summariz'),
+      'rollover user prompt must instruct summarization explicitly',
+    );
     await cleanupMarkers(current);
   });
 
