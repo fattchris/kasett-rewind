@@ -55,6 +55,10 @@ import { generateStub } from './hotswap/stub.js';
 import { runHotSwapWorker } from './hotswap/worker.js';
 import { detectCandidateKeyState } from './keystate/detector.js';
 import { DEFAULT_CONFIG } from './types.js';
+import { detectRolloverOpportunity } from './rollover/detector.js';
+import { buildRolloverStub } from './rollover/stub.js';
+import { runRolloverWorker } from './rollover/worker.js';
+import { readRolloverSidecar, writeRolloverSidecar, consumeRolloverSidecar, rolloverPending, markStubInjected, stubAlreadyInjected, } from './rollover/sidecar.js';
 // ---------------------------------------------------------------------------
 // Hook diagnostic logger (Phase A, 2026-05-12)
 // ---------------------------------------------------------------------------
@@ -266,6 +270,30 @@ export function register(api) {
                     });
                 }
                 else {
+                    // ───────────────────────────────────────────────────────────
+                    // Tier 3: Cold-start rollover bridge
+                    //
+                    // Tier 1 (current session compactions) and Tier 2 (sibling
+                    // session compactions) both produced nothing. If a sibling
+                    // session exists with raw turns but no compactions, that's
+                    // the gap kasett previously didn't cover (e.g. topic was
+                    // active for <compaction-threshold turns, then sat idle,
+                    // then OC made a fresh sessionId on reawaken).
+                    //
+                    // Try to bridge it: produce a synchronous stub now, spawn a
+                    // background worker for the rich version on the next turn.
+                    // ───────────────────────────────────────────────────────────
+                    const rolloverInjected = await maybeInjectRollover({
+                        api,
+                        config,
+                        sessionFile,
+                        sessionKey,
+                        agentId,
+                        logHookEvent,
+                    });
+                    if (rolloverInjected) {
+                        return { prependContext: rolloverInjected };
+                    }
                     void logHookEvent({
                         hook: 'before_prompt_build',
                         sessionId: sessionKey,
@@ -740,7 +768,7 @@ function resolveModel(compactionModel, provider, defaultModel) {
     }
     return compactionModel;
 }
-async function callLLMForCompaction(params) {
+export async function callLLMForCompaction(params) {
     const { messages, signal, customInstructions, steeringPrompt, compactionModel, maxTokens, logger } = params;
     const effectiveMaxTokens = typeof maxTokens === 'number' && maxTokens > 0 ? maxTokens : 8192;
     // Build system prompt: steering + OC custom instructions
@@ -887,7 +915,7 @@ async function callOpenRouter(params) {
  * Convert OC messages (OpenAI role/content format) to a flat text representation
  * suitable for passing to the compaction LLM.
  */
-function messagesToText(messages) {
+export function messagesToText(messages) {
     const lines = [];
     for (const msg of messages) {
         const role = msg.role?.toUpperCase() ?? 'UNKNOWN';
@@ -904,7 +932,7 @@ function messagesToText(messages) {
  * - array: join text parts
  * - object with text: return text
  */
-function extractTextContent(content) {
+export function extractTextContent(content) {
     if (typeof content === 'string')
         return content;
     if (Array.isArray(content)) {
@@ -1092,6 +1120,160 @@ export async function findSiblingSessionForTopic(sessionsDir, currentFilename, t
         return null;
     }
 }
+async function maybeInjectRollover(params) {
+    const { api, config, sessionFile, sessionKey, agentId, logHookEvent } = params;
+    // (a) Already have a sidecar from a prior turn?
+    //   - If it's a RICH entry (worker finished): inject + consume.
+    //   - If it's still a stub but we've already injected the stub once on
+    //     a prior turn: don't re-inject (avoid noise on rapid-fire turns).
+    //   - If it's a stub and we haven't injected it yet (rare race): inject.
+    if (rolloverPending(sessionFile)) {
+        const existing = await readRolloverSidecar(sessionFile);
+        if (existing && existing.summary.trim()) {
+            if (existing.stub && stubAlreadyInjected(sessionFile)) {
+                // Stub-only and we already showed it. Don't re-inject; wait for the
+                // worker to upgrade the sidecar.
+                void logHookEvent({
+                    hook: 'before_prompt_build',
+                    sessionId: sessionKey,
+                    agentId,
+                    action: 'rollover_skip',
+                    detail: { reason: 'stub_already_injected' },
+                });
+                return null;
+            }
+            // Either a rich entry (worker finished) or a fresh stub we haven't
+            // shown yet. Consume on read.
+            try {
+                await consumeRolloverSidecar(sessionFile);
+            }
+            catch {
+                /* non-fatal */
+            }
+            void logHookEvent({
+                hook: 'before_prompt_build',
+                sessionId: sessionKey,
+                agentId,
+                action: 'rollover_injected',
+                parsed: existing.threadMeta !== null,
+                charCount: existing.summary.length,
+                detail: {
+                    stub: existing.stub,
+                    turnsConsumed: existing.turnsConsumed,
+                    sourceSessionFile: basename(existing.sourceSessionFile),
+                },
+            });
+            return existing.summary;
+        }
+    }
+    // (b) Run the detector.
+    const topicMatch = sessionKey.match(/:topic:(\d+)$/);
+    if (!topicMatch) {
+        // Cold-start path is currently topic-scoped. Non-topic sessions go
+        // through the standard fallthrough path.
+        void logHookEvent({
+            hook: 'before_prompt_build',
+            sessionId: sessionKey,
+            agentId,
+            action: 'rollover_skip',
+            detail: { reason: 'no_topic_in_sessionkey' },
+        });
+        return null;
+    }
+    const topicId = topicMatch[1];
+    const verdict = await detectRolloverOpportunity({
+        config: config.coldStart,
+        currentSessionFile: sessionFile,
+        topicId,
+        findSibling: findSiblingSessionForTopic,
+    });
+    if (!verdict.fire) {
+        void logHookEvent({
+            hook: 'before_prompt_build',
+            sessionId: sessionKey,
+            agentId,
+            action: 'rollover_skip',
+            detail: { reason: verdict.reason },
+        });
+        return null;
+    }
+    // Build + write the stub immediately so the user's first turn gets
+    // something. Then spawn the background worker.
+    let siblingTurnsForStub = [];
+    try {
+        const reader = new SessionReader();
+        // Cheap: only need the last ~10 to find last user + last assistant.
+        siblingTurnsForStub = await reader.readRawTurns(verdict.siblingFile, 10);
+    }
+    catch (err) {
+        api.logger.warn(`[kasett-rewind] rollover stub: failed to read sibling turns: ${String(err)}`);
+        void logHookEvent({
+            hook: 'before_prompt_build',
+            sessionId: sessionKey,
+            agentId,
+            action: 'rollover_skip',
+            detail: { reason: 'stub_read_failed', error: String(err).slice(0, 200) },
+        });
+        return null;
+    }
+    const stub = buildRolloverStub({
+        siblingTurns: siblingTurnsForStub,
+        siblingFile: verdict.siblingFile,
+        siblingMtimeMs: verdict.siblingMtimeMs,
+    });
+    try {
+        await writeRolloverSidecar(sessionFile, stub);
+    }
+    catch (err) {
+        api.logger.warn(`[kasett-rewind] rollover stub: write failed: ${String(err)}`);
+        void logHookEvent({
+            hook: 'before_prompt_build',
+            sessionId: sessionKey,
+            agentId,
+            action: 'rollover_skip',
+            detail: { reason: 'stub_write_failed', error: String(err).slice(0, 200) },
+        });
+        return null;
+    }
+    // Spawn the background worker. Don't await — we want to return the stub
+    // synchronously.
+    if (config.coldStart.hotSwap) {
+        void runRolloverWorker({
+            currentSessionFile: sessionFile,
+            siblingFile: verdict.siblingFile,
+            siblingMtimeMs: verdict.siblingMtimeMs,
+            maxSourceTurns: config.coldStart.maxSourceTurns,
+            timeoutMs: config.coldStart.hotSwapTimeoutMs,
+            compactionModel: config.compaction.model,
+            maxTokens: config.compaction.compactionMaxTokens,
+            logger: api.logger,
+        }).catch((err) => {
+            api.logger.warn(`[kasett-rewind] rollover worker promise rejected: ${String(err)}`);
+        });
+    }
+    // NOTE: We do NOT consume the stub here. The background worker will
+    // overwrite `.rollover.json` with the rich version. On the NEXT turn,
+    // branch (a) of this function picks up that rich version and consumes it.
+    //
+    // The trade-off: if the user sends a second turn before the worker
+    // finishes, they'd see the stub again. We mitigate this by recording a
+    // "stub already injected" marker that branch (a) checks.
+    await markStubInjected(sessionFile);
+    void logHookEvent({
+        hook: 'before_prompt_build',
+        sessionId: sessionKey,
+        agentId,
+        action: 'rollover_stub_injected',
+        parsed: false,
+        charCount: stub.summary.length,
+        detail: {
+            siblingTurnCount: verdict.siblingTurnCount,
+            siblingFile: basename(verdict.siblingFile),
+            hotSwap: config.coldStart.hotSwap,
+        },
+    });
+    return stub.summary;
+}
 // ---------------------------------------------------------------------------
 // Abort error detection
 // ---------------------------------------------------------------------------
@@ -1132,10 +1314,26 @@ function resolveConfig(api) {
         const threadTracking = rawSteering['threadTracking'] ??
             raw['threadTracking'] ??
             DEFAULT_CONFIG.steering.threadTracking;
+        const rawColdStart = raw['coldStart'] ?? {};
+        const coldStart = {
+            enabled: rawColdStart['enabled'] ??
+                DEFAULT_CONFIG.coldStart.enabled,
+            minTurns: rawColdStart['minTurns'] ??
+                DEFAULT_CONFIG.coldStart.minTurns,
+            maxIdleHours: rawColdStart['maxIdleHours'] ??
+                DEFAULT_CONFIG.coldStart.maxIdleHours,
+            hotSwap: rawColdStart['hotSwap'] ??
+                DEFAULT_CONFIG.coldStart.hotSwap,
+            hotSwapTimeoutMs: rawColdStart['hotSwapTimeoutMs'] ??
+                DEFAULT_CONFIG.coldStart.hotSwapTimeoutMs,
+            maxSourceTurns: rawColdStart['maxSourceTurns'] ??
+                DEFAULT_CONFIG.coldStart.maxSourceTurns,
+        };
         return {
             enabled: raw['enabled'] ?? true,
             compaction: { model, hotSwap, hotSwapTimeoutMs, windowSize, weights, compactionMaxTokens },
             steering: { threadTracking },
+            coldStart,
         };
     }
     catch {

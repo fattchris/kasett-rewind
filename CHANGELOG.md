@@ -1,5 +1,74 @@
 # Changelog
 
+## [0.3.0] — 2026-05-26
+
+### Added — Cold-start / session-rollover bridge
+
+When a brand-new OC session is created for a `sessionKey` that has prior
+session JSONLs on disk but no compaction summaries to inherit from (e.g.
+a topic was active for fewer than the compaction threshold of turns, then
+sat idle, then OC made a fresh sessionId on reawaken), kasett now produces
+a one-shot rollover summary from the prior session's raw turns instead of
+letting the new session cold-start with zero context.
+
+This closes the gap observed in production on 2026-05-24 where topic-35868
+had ~8 hours of light activity (compactionCount=0), 41h idle, then a fresh
+session came up empty even though kasett-rewind's hot-swap fix (9313a34)
+was already running.
+
+**How it works** — A new "Tier 3" path in `before_prompt_build`:
+
+1. **Detector** (`src/rollover/detector.ts`) — fires only when the current
+   session has 0 compactions AND ≤ minTurns user/assistant turns AND a
+   sibling session exists with raw turns AND mtime within maxIdleHours.
+2. **Stub** (`src/rollover/stub.ts`) — synchronous, no LLM. Quotes the
+   last user + last assistant turn from the sibling and tells the agent a
+   richer summary is loading. Returns in milliseconds. Injected via
+   `prependContext` on the first turn.
+3. **Worker** (`src/rollover/worker.ts`) — background. Runs the full LLM
+   summarization against the sibling's tail (capped at maxSourceTurns).
+   Overwrites the sidecar with a rich rollover entry that includes a
+   `[THREAD_META]` line.
+4. **Sidecar** (`src/rollover/sidecar.ts`) — `<session>.rollover.json`
+   holds the entry between turns. The next `before_prompt_build` reads
+   the rich version, injects it, and renames the file to
+   `.rollover.consumed.json`. One-shot, no re-injection cost on later turns.
+
+**Failure handling** — LLM timeout, empty response, or throw → writes
+`.rollover.failed.json` to prevent retry storms. Stub remains in place.
+
+**Config** — New `coldStart` block in plugin config. Defaults are
+production-ready:
+
+```json
+{
+  "coldStart": {
+    "enabled": true,
+    "minTurns": 2,
+    "maxIdleHours": 168,
+    "hotSwap": true,
+    "hotSwapTimeoutMs": 30000,
+    "maxSourceTurns": 200
+  }
+}
+```
+
+Set `enabled: false` to disable the entire Tier 3 path. Reversible by
+config only — no on-disk schema changes.
+
+**New exported symbols** (for plugin composition / debugging):
+
+- `callLLMForCompaction` — promoted to public export. Reused by the
+  rollover worker for the LLM call (single source of truth per Rule 4).
+- `messagesToText`, `extractTextContent` — promoted to public exports.
+  Reused by `rollover/stub.ts` and `rollover/worker.ts`.
+
+**Tests** — 26 new tests across detector, stub, sidecar, worker, and the
+new `SessionReader.readRawTurns` method. All 513 tests pass.
+
+**Spec** — `research/specs/session-rollover-bridge.md` is the authoring
+spec. Read it before extending.
+
 ## [0.2.2] — 2026-05-08
 
 ### Fixed

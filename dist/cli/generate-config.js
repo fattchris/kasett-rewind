@@ -88,6 +88,7 @@ function buildConfig(options) {
         steering: {
             threadTracking,
         },
+        coldStart: { ...DEFAULT_CONFIG.coldStart },
     };
 }
 /**

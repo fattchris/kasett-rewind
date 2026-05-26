@@ -149,6 +149,48 @@ export declare function aggregateContinuityHints(summaries: ReadonlyArray<string
     coreSubIds?: string[];
     previousKeyState?: KeyStateEntry[];
 };
+export interface LLMCallParams {
+    messages: Array<{
+        role: string;
+        content: unknown;
+    }>;
+    signal?: AbortSignal;
+    customInstructions?: string;
+    steeringPrompt: string;
+    /**
+     * Model override from plugin config.
+     * Undefined or "default" = use the environment's default model.
+     * Any other value = passed directly to the API as the model identifier.
+     */
+    compactionModel?: string;
+    /**
+     * Maximum output tokens. When unset, falls back to a conservative default
+     * (8192) for backward compat. Phase F: callers should pass
+     * config.compaction.compactionMaxTokens (default 32000).
+     */
+    maxTokens?: number;
+    logger: {
+        debug(msg: string): void;
+        warn(msg: string): void;
+        info(msg: string): void;
+    };
+}
+export declare function callLLMForCompaction(params: LLMCallParams): Promise<string | undefined>;
+/**
+ * Convert OC messages (OpenAI role/content format) to a flat text representation
+ * suitable for passing to the compaction LLM.
+ */
+export declare function messagesToText(messages: Array<{
+    role: string;
+    content: unknown;
+}>): string;
+/**
+ * Extract text from various OC content formats:
+ * - string: return as-is
+ * - array: join text parts
+ * - object with text: return text
+ */
+export declare function extractTextContent(content: unknown): string;
 /**
  * Scan `sessionsDir` for sibling JSONL files that belong to the same topic
  * (matching the `*-topic-${topicId}.jsonl` suffix). Excludes:

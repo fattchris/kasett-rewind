@@ -111,6 +111,7 @@ function buildConfig(options: GenerateConfigOptions): KasettConfig {
     steering: {
       threadTracking,
     },
+    coldStart: { ...DEFAULT_CONFIG.coldStart },
   };
 }
 
