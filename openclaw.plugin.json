@@ -57,6 +57,51 @@
           }
         },
         "additionalProperties": false
+      },
+      "coldStart": {
+        "type": "object",
+        "description": "Cold-start / session-rollover bridge. When a new session is created for a sessionKey that has prior session JSONLs on disk but no compaction summaries to inherit from, this branch generates a one-shot rollover summary from the prior session's raw turns.",
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "default": true,
+            "description": "Master switch. When false, the cold-start path is completely inert."
+          },
+          "minTurns": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 20,
+            "default": 2,
+            "description": "If the current session has more than this many user/assistant turns, it isn't 'cold' and the rollover path is skipped."
+          },
+          "maxIdleHours": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 720,
+            "default": 168,
+            "description": "Sibling sessions older than this (mtime delta) are considered stale and skipped. Default 7 days."
+          },
+          "hotSwap": {
+            "type": "boolean",
+            "default": true,
+            "description": "When true, first turn gets a cheap synchronous stub; the rich summary is generated in the background and picked up on subsequent turns."
+          },
+          "hotSwapTimeoutMs": {
+            "type": "integer",
+            "minimum": 1000,
+            "maximum": 300000,
+            "default": 30000,
+            "description": "Maximum time (ms) the background worker will wait before giving up."
+          },
+          "maxSourceTurns": {
+            "type": "integer",
+            "minimum": 10,
+            "maximum": 2000,
+            "default": 200,
+            "description": "Maximum number of turns from the sibling session that feed the rollover summary LLM call. Capped from the tail (most-recent N)."
+          }
+        },
+        "additionalProperties": false
       }
     },
     "additionalProperties": false

@@ -14,5 +14,13 @@ export const DEFAULT_CONFIG = {
     steering: {
         threadTracking: true,
     },
+    coldStart: {
+        enabled: true,
+        minTurns: 2,
+        maxIdleHours: 168,
+        hotSwap: true,
+        hotSwapTimeoutMs: 30_000,
+        maxSourceTurns: 200,
+    },
 };
 //# sourceMappingURL=types.js.map

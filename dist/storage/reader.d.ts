@@ -128,6 +128,27 @@ export declare class SessionReader {
      */
     readLastNSummaries(filePath: string, count: number): Promise<string[]>;
     /**
+     * Read raw user/assistant turns from an OC session JSONL file.
+     *
+     * Unlike `readCompactionEvents`, this reads the actual conversation turns
+     * (type="message" lines) and returns them as { role, content } objects in
+     * chronological order. Used by the cold-start rollover bridge to source
+     * material for a one-shot summary when a sibling session never compacted.
+     *
+     * OC schema (verified 2026-05-26):
+     *   { type: "message", message: { role, content: [{type:"text", text:...}], timestamp } }
+     *
+     * @param filePath - Absolute path to the session .jsonl file
+     * @param maxTurns - Cap on number of turns returned. Returns the LAST N
+     *                   turns (tail) since recent context is most relevant for
+     *                   rollover. Pass 0/negative for no cap.
+     * @returns Array of { role, content } objects, oldest first
+     */
+    readRawTurns(filePath: string, maxTurns: number): Promise<Array<{
+        role: string;
+        content: unknown;
+    }>>;
+    /**
      * Parse a single JSONL line into a CompactionEvent.
      * Returns undefined if the line is not a valid compaction event.
      *

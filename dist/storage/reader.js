@@ -414,6 +414,74 @@ export class SessionReader {
         return resolved.slice(-count);
     }
     /**
+     * Read raw user/assistant turns from an OC session JSONL file.
+     *
+     * Unlike `readCompactionEvents`, this reads the actual conversation turns
+     * (type="message" lines) and returns them as { role, content } objects in
+     * chronological order. Used by the cold-start rollover bridge to source
+     * material for a one-shot summary when a sibling session never compacted.
+     *
+     * OC schema (verified 2026-05-26):
+     *   { type: "message", message: { role, content: [{type:"text", text:...}], timestamp } }
+     *
+     * @param filePath - Absolute path to the session .jsonl file
+     * @param maxTurns - Cap on number of turns returned. Returns the LAST N
+     *                   turns (tail) since recent context is most relevant for
+     *                   rollover. Pass 0/negative for no cap.
+     * @returns Array of { role, content } objects, oldest first
+     */
+    async readRawTurns(filePath, maxTurns) {
+        const turns = [];
+        try {
+            const stream = createReadStream(filePath, { encoding: 'utf-8' });
+            const rl = createInterface({ input: stream, crlfDelay: Infinity });
+            for await (const line of rl) {
+                const trimmed = line.trim();
+                if (!trimmed)
+                    continue;
+                try {
+                    const parsed = JSON.parse(trimmed);
+                    if (typeof parsed !== 'object' ||
+                        parsed === null ||
+                        parsed.type !== 'message') {
+                        continue;
+                    }
+                    const obj = parsed;
+                    const msg = obj.message;
+                    if (typeof msg !== 'object' || msg === null)
+                        continue;
+                    const m = msg;
+                    const role = typeof m.role === 'string' ? m.role : undefined;
+                    if (!role)
+                        continue;
+                    // Only keep human-readable turns. Skip tool/system noise that
+                    // wouldn't make sense in a rollover summary.
+                    if (role !== 'user' && role !== 'assistant')
+                        continue;
+                    const content = m.content;
+                    if (content === undefined || content === null)
+                        continue;
+                    turns.push({ role, content });
+                }
+                catch {
+                    // Malformed line — skip
+                    continue;
+                }
+            }
+        }
+        catch (err) {
+            if (err instanceof Error && 'code' in err && err.code === 'ENOENT') {
+                return [];
+            }
+            const message = err instanceof Error ? err.message : String(err);
+            throw new KasettError(`Failed to read session file for raw turns: ${filePath} — ${message}`, 'READ_ERROR');
+        }
+        if (maxTurns > 0 && turns.length > maxTurns) {
+            return turns.slice(turns.length - maxTurns);
+        }
+        return turns;
+    }
+    /**
      * Parse a single JSONL line into a CompactionEvent.
      * Returns undefined if the line is not a valid compaction event.
      *
