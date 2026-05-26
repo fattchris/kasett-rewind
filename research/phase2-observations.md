@@ -9,3 +9,5 @@
 - 2026-05-19: 1/1 compaction (100% coverage) but stub-only — sidecar missing/empty on topic-5392 (Infra). Recurring pattern: kasett hook reached but rich sidecar not produced.
 
 - 2026-05-20: 75% coverage (3/4). Vanilla fallback on session 07162f7f (topic-5392, 12 messages, fromHook=true at 03:37Z) — real compaction kasett missed, no sidecar produced. Worth checking why kasett didn't engage on this one (timing/race? hook routing?).
+- 2026-05-23: 1/2 compactions stub-only (session 9904a1d4-b586) — no sidecar file written. Coverage detection works but sidecar generation failed silently.
+- 2026-05-25: 100% coverage (3/3) with 2 rich + 1 stub-only. Stub session 9d6c6f23 is a DM (no topic suffix) — sidecar missing/empty. Recurring stub-only pattern persists; may correlate with low-content or DM sessions.
